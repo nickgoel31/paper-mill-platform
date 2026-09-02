@@ -1,0 +1,13 @@
+﻿{
+  "name": "hra-solver-container",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "image": "./Dockerfile",
+      "name": "solver-engine",
+      "port": 8000
+    }
+  ]
+}
