@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --port 3000",
     "build": "next build",
+    "build:cloudflare": "opennextjs-cloudflare build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -13,6 +14,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1124.0",
     "@hookform/resolvers": "^3.10.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@opennextjs/cloudflare": "^1.20.5",
     "@prisma/adapter-d1": "^7.10.0",
     "@prisma/adapter-neon": "^7.10.0",
     "@prisma/client": "^6.3.0",
