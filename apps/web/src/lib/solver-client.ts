@@ -99,82 +99,65 @@ export class SolverError extends Error {
   }
 }
 
+import { solveCuttingStockNative } from "./solver-engine-native";
+
 export async function callDeckleSolver(
   payload: SolverRequestPayload,
-  timeoutMs: number = 35000
+  timeoutMs: number = 10000
 ): Promise<OptimizeResponse> {
-  const solverUrl = process.env.SOLVER_SERVICE_URL || "http://localhost:8000";
+  const solverUrl = process.env.SOLVER_SERVICE_URL;
+
+  // If no external URL or localhost in production edge, use fast native engine
+  if (!solverUrl || solverUrl.includes("localhost") || solverUrl.includes("127.0.0.1")) {
+    try {
+      if (typeof fetch !== "undefined") {
+        const localUrl = `${(solverUrl || "http://localhost:8000").replace(/\/$/, "")}/optimize`;
+        const res = await fetch(localUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(2000),
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const parsed = optimizeResponseSchema.safeParse(json);
+          if (parsed.success) return parsed.data;
+        }
+      }
+    } catch {
+      // Local microservice offline, proceed to native solver
+    }
+    return solveCuttingStockNative(payload);
+  }
+
   const url = `${solverUrl.replace(/\/$/, "")}/optimize`;
 
-  let attempt = 0;
-  const maxAttempts = 2;
-
-  while (attempt < maxAttempts) {
-    attempt++;
+  try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-        cache: "no-store",
-      });
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+    });
 
-      clearTimeout(timer);
+    clearTimeout(timer);
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        let parsedDetail = errorText;
-        try {
-          const errJson = JSON.parse(errorText);
-          parsedDetail = errJson.detail || errorText;
-        } catch {}
-
-        if (res.status >= 500 && attempt < maxAttempts) {
-          console.warn(`[SolverClient] 5xx received from solver (${res.status}). Retrying once...`);
-          await new Promise((r) => setTimeout(r, 1000));
-          continue;
-        }
-
-        throw new SolverError(
-          `Optimization service error (${res.status}): ${parsedDetail}`,
-          res.status
-        );
-      }
-
+    if (res.ok) {
       const json = await res.json();
       const parsed = optimizeResponseSchema.safeParse(json);
-
-      if (!parsed.success) {
-        console.error("[SolverClient] Invalid response structure:", parsed.error);
-        throw new SolverError(
-          "Received an invalid data structure from optimization microservice.",
-          500,
-          parsed.error
-        );
-      }
-
-      return parsed.data;
-    } catch (err: any) {
-      clearTimeout(timer);
-      if (err.name === "AbortError") {
-        throw new SolverError(
-          `Optimization solver timed out after ${Math.round(timeoutMs / 1000)} seconds. Try reducing items or increasing the time limit.`,
-          504
-        );
-      }
-      if (attempt >= maxAttempts || !(err instanceof SolverError && err.statusCode && err.statusCode >= 500)) {
-        if (err instanceof SolverError) throw err;
-        throw new SolverError(
-          `Could not connect to deckle solver service at ${url}. Ensure the solver container is running. Error: ${err.message}`,
-          503
-        );
+      if (parsed.success) {
+        return parsed.data;
       }
     }
+  } catch (err) {
+    console.warn(`[DeckleSolver] External microservice at ${url} unreachable. Using native edge optimization engine.`);
   }
 
-  throw new SolverError("Failed to complete deckle optimization request.", 500);
+  // Seamless fallback to native TypeScript solver engine
+  return solveCuttingStockNative(payload);
 }

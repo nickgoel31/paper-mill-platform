@@ -1,9 +1,6 @@
 name: Deploy Solver Container to Cloudflare
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
