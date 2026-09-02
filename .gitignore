@@ -23,6 +23,13 @@ apps/web/.next/
 apps/web/out/
 apps/web/build/
 
+# Cloudflare / OpenNext build output
+.open-next/
+apps/web/.open-next/
+.wrangler/
+apps/web/.wrangler/
+.dev.vars
+
 # Python / Solver
 __pycache__/
 *.pyc

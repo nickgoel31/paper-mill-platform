@@ -1,14 +1,24 @@
-name: Deploy Web App to Cloudflare
+name: Deploy Web App to Cloudflare Workers
 
 on:
   push:
     branches:
       - main
+    paths:
+      - "apps/web/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy-web.yml"
   workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Build & Deploy Next.js to Cloudflare Pages
+    name: Build & Deploy Next.js (OpenNext Worker)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -21,7 +31,7 @@ jobs:
           cache: npm
 
       - name: Install All Dependencies
-        run: npm install --no-audit
+        run: npm install --no-audit --no-fund
 
       - name: Generate Prisma Client
         run: npm run db:generate
@@ -30,7 +40,7 @@ jobs:
         working-directory: apps/web
         run: npx @opennextjs/cloudflare build
 
-      - name: Deploy to Cloudflare Worker
+      - name: Deploy to Cloudflare Workers
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
