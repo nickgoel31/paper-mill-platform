@@ -3,7 +3,7 @@
 
 -- Users (one per role)
 INSERT OR IGNORE INTO "User" ("id","name","email","passwordHash","role","isActive","updatedAt") VALUES
- ('usr_admin','Ramesh Patel (Admin)','admin@papermill.local','$2a$10$NXfFek8iEAtd9JXTK52KwuxkAWmAcXwp08XPVJWGVU8gXdM808/fa','ADMIN',true,CURRENT_TIMESTAMP),
+ ('usr_admin','Ramesh Patel (Admin)','admin@hrapapermill.com','$2a$10$NXfFek8iEAtd9JXTK52KwuxkAWmAcXwp08XPVJWGVU8gXdM808/fa','ADMIN',true,CURRENT_TIMESTAMP),
  ('usr_sales','Pooja Shah (Sales)','sales@papermill.local','$2a$10$NXfFek8iEAtd9JXTK52KwuxkAWmAcXwp08XPVJWGVU8gXdM808/fa','SALES',true,CURRENT_TIMESTAMP),
  ('usr_planner','Vikas Sharma (Planner)','planner@papermill.local','$2a$10$NXfFek8iEAtd9JXTK52KwuxkAWmAcXwp08XPVJWGVU8gXdM808/fa','PLANNER',true,CURRENT_TIMESTAMP),
  ('usr_operator','Jagdish Yadav (Operator)','operator@papermill.local','$2a$10$NXfFek8iEAtd9JXTK52KwuxkAWmAcXwp08XPVJWGVU8gXdM808/fa','OPERATOR',true,CURRENT_TIMESTAMP),
