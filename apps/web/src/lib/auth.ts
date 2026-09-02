@@ -60,5 +60,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.AUTH_SECRET,
+  // `secret` is intentionally NOT set here: on the Cloudflare Worker the env
+  // (incl. the AUTH_SECRET secret) is only populated onto process.env at
+  // request time by OpenNext, whereas this module initialises earlier. Auth.js
+  // reads process.env.AUTH_SECRET itself when handling each request.
 });
