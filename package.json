@@ -17,7 +17,6 @@
     "db:studio": "prisma studio --schema=prisma/schema.prisma"
   },
   "devDependencies": {
-    "@cloudflare/workerd-windows-64": "^1.20260902.1",
     "@types/node": "^22.10.7",
     "embedded-postgres": "^18.4.0-beta.17",
     "prisma": "^6.3.0",
