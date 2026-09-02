@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getAnalyticsData } from "@/server/services/analytics-service";
-import { AnalyticsDashboardClient } from "./analytics-dashboard-client";
+import { AnalyticsDashboardClient } from "./analytics-dashboard-client.lazy";
 
 export const metadata: Metadata = {
   title: "Analytics & Business Performance | HRA Paper Mill",

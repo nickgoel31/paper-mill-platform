@@ -1,7 +1,7 @@
 import { requireRole } from "@/server/auth-helpers";
 import { Role } from "@/generated/prisma/browser";
 import { getDashboardData } from "@/server/services/dashboard-service";
-import { ExecutiveDashboardView } from "@/components/dashboard/executive-dashboard-view";
+import { ExecutiveDashboardView } from "@/components/dashboard/executive-dashboard-view.lazy";
 
 export const metadata = {
   title: "Executive Dashboard | PaperMill ERP",

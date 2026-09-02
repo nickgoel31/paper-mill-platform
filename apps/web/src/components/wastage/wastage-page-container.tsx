@@ -23,7 +23,8 @@ import {
   getWastageAnalytics,
 } from "@/server/services/wastage-service";
 import { formatWeightKg } from "@/lib/utils";
-import { WastageAnalyticsView } from "./wastage-analytics-view";
+import dynamic from "next/dynamic";
+const WastageAnalyticsView = dynamic(() => import("./wastage-analytics-view").then((m) => m.WastageAnalyticsView), { ssr: false, loading: () => <div className="p-6 text-sm text-muted-foreground">Loading analytics…</div> });
 import { WastageLogModal } from "./wastage-log-modal";
 import {
   Scissors,
