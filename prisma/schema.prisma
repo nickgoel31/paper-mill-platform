@@ -1,0 +1,560 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS
+// -----------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  SALES
+  PLANNER
+  OPERATOR
+  DISPATCH
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  PLANNED
+  IN_PRODUCTION
+  PRODUCED
+  DISPATCHED
+  CANCELLED
+}
+
+enum OrderPriority {
+  URGENT
+  NORMAL
+  STOCK
+}
+
+enum RunStatus {
+  PLANNED
+  RELEASED
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+enum LoadStatus {
+  DRAFT
+  PLANNED
+  LOADING
+  DISPATCHED
+  DELIVERED
+  CANCELLED
+}
+
+enum StockStatus {
+  AVAILABLE
+  ALLOCATED
+  DISPATCHED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+// -----------------------------------------------------------------------------
+// MODELS
+// -----------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Audit and creator relations
+  createdClients      Client[]
+  createdMachines     Machine[]
+  createdTransporters Transporter[]
+  createdTrucks       Truck[]
+  createdOrders       Order[]
+  createdLoadBatches  LoadBatch[]
+  createdRuns         ProductionRun[]
+  createdWastageLogs  WastageLog[]
+  createdDispatches   Dispatch[]
+  createdInvoices     Invoice[]
+  createdStockPresets StockPreset[]
+  auditLogs           AuditLog[]
+
+  @@index([role])
+  @@index([email])
+}
+
+model Client {
+  id             String    @id @default(cuid())
+  name           String
+  code           String    @unique
+  gstin          String?
+  addressLine1   String
+  addressLine2   String?
+  city           String
+  state          String
+  pincode        String
+  contactPerson  String?
+  phone          String
+  whatsappNumber String
+  email          String?
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdById    String?
+
+  createdBy     User?                  @relation(fields: [createdById], references: [id])
+  orders        Order[]
+  invoices      Invoice[]
+  notifications WhatsAppNotification[]
+
+  @@index([code])
+  @@index([deletedAt])
+  @@index([city, state])
+  @@index([createdById])
+}
+
+model Machine {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  code          String    @unique
+  maxDeckleInch Decimal   @db.Decimal(8, 2) // e.g. 196.00
+  minDeckleInch Decimal   @db.Decimal(8, 2) // minimum usable width for a run
+  minTrimInch   Decimal   @db.Decimal(6, 2) // mandatory edge trim, e.g. 0.50
+  maxTrimInch   Decimal   @db.Decimal(6, 2) // reject patterns above this, e.g. 6.00
+  minGsm        Int
+  maxGsm        Int
+  speedMpm      Int? // metres per minute, for run time estimate
+  isActive      Boolean   @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   String?
+
+  createdBy      User?           @relation(fields: [createdById], references: [id])
+  productionRuns ProductionRun[]
+
+  @@index([deletedAt])
+  @@index([isActive])
+  @@index([createdById])
+}
+
+model Transporter {
+  id          String    @id @default(cuid())
+  name        String
+  phone       String
+  gstin       String?
+  isActive    Boolean   @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdById String?
+
+  createdBy   User?       @relation(fields: [createdById], references: [id])
+  trucks      Truck[]
+  loadBatches LoadBatch[]
+
+  @@index([deletedAt])
+  @@index([createdById])
+}
+
+model Truck {
+  id                 String    @id @default(cuid())
+  registrationNumber String    @unique
+  capacityKg         Int
+  transporterId      String?
+  isActive           Boolean   @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  createdById        String?
+
+  transporter User?       @relation(fields: [createdById], references: [id])
+  owner       Transporter? @relation(fields: [transporterId], references: [id])
+  loadBatches LoadBatch[]
+
+  @@index([transporterId])
+  @@index([deletedAt])
+  @@index([createdById])
+}
+
+model Order {
+  id           String        @id @default(cuid())
+  orderNumber  String        @unique
+  clientId     String
+  orderDate    DateTime      @default(now())
+  deliveryDate DateTime?
+  priority     OrderPriority @default(NORMAL)
+  status       OrderStatus   @default(DRAFT)
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdById  String?
+
+  client          Client           @relation(fields: [clientId], references: [id])
+  createdBy       User?            @relation(fields: [createdById], references: [id])
+  items           OrderItem[]
+  loadAssignments LoadBatchOrder[]
+
+  @@index([clientId])
+  @@index([status])
+  @@index([priority])
+  @@index([orderDate])
+  @@index([deliveryDate])
+  @@index([createdById])
+}
+
+model OrderItem {
+  id               String   @id @default(cuid())
+  orderId          String
+  widthInch        Decimal  @db.Decimal(8, 2)
+  gsm              Int
+  quantityKg       Decimal  @db.Decimal(12, 3)
+  tolerancePercent Decimal  @db.Decimal(5, 2) @default(5.00)
+  ratePerKg        Decimal? @db.Decimal(10, 2)
+  producedKg       Decimal  @db.Decimal(12, 3) @default(0)
+  dispatchedKg     Decimal  @db.Decimal(12, 3) @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  patternCuts  PatternCut[]
+  stockItems   StockItem[]
+  invoiceLines InvoiceLine[]
+
+  @@index([gsm, widthInch])
+  @@index([orderId])
+}
+
+model LoadBatch {
+  id                  String     @id @default(cuid())
+  batchNumber         String     @unique
+  truckId             String?
+  transporterId       String?
+  driverName          String?
+  driverPhone         String?
+  status              LoadStatus @default(DRAFT)
+  plannedDispatchDate DateTime?
+  dispatchedAt        DateTime?
+  deliveredAt         DateTime?
+  totalPlannedKg      Decimal    @default(0) @db.Decimal(12, 3)
+  notes               String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  createdById         String?
+
+  truck         Truck?                 @relation(fields: [truckId], references: [id])
+  transporter   Transporter?           @relation(fields: [transporterId], references: [id])
+  createdBy     User?                  @relation(fields: [createdById], references: [id])
+  orders        LoadBatchOrder[]
+  invoice       Invoice?
+  notifications WhatsAppNotification[]
+  dispatch      Dispatch?
+
+  @@index([truckId])
+  @@index([transporterId])
+  @@index([status])
+  @@index([plannedDispatchDate])
+  @@index([createdById])
+}
+
+model LoadBatchOrder {
+  id          String   @id @default(cuid())
+  loadBatchId String
+  orderId     String
+  createdAt   DateTime @default(now())
+
+  loadBatch LoadBatch @relation(fields: [loadBatchId], references: [id], onDelete: Cascade)
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([loadBatchId, orderId])
+  @@index([loadBatchId])
+  @@index([orderId])
+}
+
+model ProductionRun {
+  id               String    @id @default(cuid())
+  runNumber        String    @unique
+  machineId        String
+  gsm              Int
+  status           RunStatus @default(PLANNED)
+  plannedDate      DateTime  @default(now())
+  startedAt        DateTime?
+  completedAt      DateTime?
+  totalTrimPercent Decimal?  @db.Decimal(6, 3)
+  totalPlannedKg   Decimal   @default(0) @db.Decimal(12, 3)
+  totalActualKg    Decimal   @default(0) @db.Decimal(12, 3)
+  solverPayload    Json?
+  aiExplanation    String?   @db.Text
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String?
+
+  machine     Machine          @relation(fields: [machineId], references: [id])
+  createdBy   User?            @relation(fields: [createdById], references: [id])
+  patterns    CuttingPattern[]
+  stockItems  StockItem[]
+  wastageLogs WastageLog[]
+
+  @@index([machineId])
+  @@index([gsm])
+  @@index([status])
+  @@index([plannedDate])
+  @@index([createdById])
+}
+
+model CuttingPattern {
+  id               String   @id @default(cuid())
+  productionRunId  String
+  sequence         Int
+  repetitions          Int
+  completedRepetitions Int      @default(0)
+  runLengthM           Float    @default(0)  // Exact run length in meters from solver (source of truth for weight calc)
+  usedWidthInch        Decimal  @db.Decimal(8, 2)
+  trimWidthInch        Decimal  @db.Decimal(8, 2)
+  trimPercent          Decimal  @db.Decimal(6, 3)
+  estimatedKg          Decimal  @db.Decimal(12, 3)
+  actualKg             Decimal  @default(0) @db.Decimal(12, 3)
+  isManuallyEdited     Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  productionRun ProductionRun @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
+  cuts          PatternCut[]
+  wastageLogs   WastageLog[]
+
+  @@index([productionRunId])
+  @@index([sequence])
+}
+
+model PatternCut {
+  id               String   @id @default(cuid())
+  cuttingPatternId String
+  orderItemId      String?
+  stockPresetId    String?
+  widthInch        Decimal  @db.Decimal(8, 2)
+  count            Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cuttingPattern CuttingPattern @relation(fields: [cuttingPatternId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem?     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  stockPreset    StockPreset?   @relation(fields: [stockPresetId], references: [id], onDelete: SetNull)
+
+  @@index([cuttingPatternId])
+  @@index([orderItemId])
+  @@index([stockPresetId])
+}
+
+model StockItem {
+  id              String      @id @default(cuid())
+  orderItemId     String?
+  productionRunId String?
+  widthInch       Decimal     @db.Decimal(8, 2)
+  gsm             Int
+  quantityKg      Decimal     @db.Decimal(12, 3)
+  status          StockStatus @default(AVAILABLE)
+  location        String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  orderItem     OrderItem?     @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+  productionRun ProductionRun? @relation(fields: [productionRunId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([gsm, widthInch])
+  @@index([orderItemId])
+  @@index([productionRunId])
+}
+
+model WastageLog {
+  id               String   @id @default(cuid())
+  productionRunId  String?
+  cuttingPatternId String?
+  wastageKg        Decimal  @db.Decimal(12, 3)
+  wastageType      String // "TRIM" | "REJECT" | "OTHER"
+  reason           String?
+  recordedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdById      String?
+
+  productionRun  ProductionRun?  @relation(fields: [productionRunId], references: [id], onDelete: SetNull)
+  cuttingPattern CuttingPattern? @relation(fields: [cuttingPatternId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation(fields: [createdById], references: [id])
+
+  @@index([productionRunId])
+  @@index([cuttingPatternId])
+  @@index([recordedAt])
+  @@index([wastageType])
+  @@index([createdById])
+}
+
+model Dispatch {
+  id                String   @id @default(cuid())
+  dispatchNumber    String   @unique
+  loadBatchId       String   @unique
+  dispatchedAt      DateTime @default(now())
+  gatePassNumber    String?
+  vehicleNumber     String
+  driverName        String
+  driverPhone       String
+  totalDispatchedKg Decimal  @db.Decimal(12, 3)
+  remarks           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdById       String?
+
+  loadBatch LoadBatch @relation(fields: [loadBatchId], references: [id])
+  createdBy User?     @relation(fields: [createdById], references: [id])
+  invoices  Invoice[]
+
+  @@index([dispatchedAt])
+  @@index([createdById])
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  clientId      String
+  loadBatchId   String?       @unique
+  dispatchId    String?
+  invoiceDate   DateTime      @default(now())
+  subtotal      Decimal       @db.Decimal(12, 2)
+  cgst          Decimal       @default(0) @db.Decimal(12, 2)
+  sgst          Decimal       @default(0) @db.Decimal(12, 2)
+  igst          Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  status        InvoiceStatus @default(DRAFT)
+  pdfUrl        String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdById   String?
+
+  client      Client        @relation(fields: [clientId], references: [id])
+  loadBatch   LoadBatch?    @relation(fields: [loadBatchId], references: [id])
+  dispatch    Dispatch?     @relation(fields: [dispatchId], references: [id])
+  createdBy   User?         @relation(fields: [createdById], references: [id])
+  lines       InvoiceLine[]
+
+  @@index([clientId])
+  @@index([invoiceDate])
+  @@index([status])
+  @@index([dispatchId])
+  @@index([createdById])
+}
+
+model InvoiceLine {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  orderItemId String?
+  description String
+  quantityKg  Decimal  @db.Decimal(12, 3)
+  ratePerKg   Decimal  @db.Decimal(10, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoice   Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  orderItem OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([orderItemId])
+}
+
+model WhatsAppNotification {
+  id                String             @id @default(cuid())
+  loadBatchId       String?
+  clientId          String
+  phoneNumber       String
+  templateName      String
+  payload           Json
+  status            NotificationStatus @default(QUEUED)
+  providerMessageId String?
+  errorMessage      String?
+  attempts          Int                @default(0)
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  loadBatch LoadBatch? @relation(fields: [loadBatchId], references: [id], onDelete: SetNull)
+  client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([clientId])
+  @@index([loadBatchId])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  entityType String
+  entityId   String
+  action     String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model StockPreset {
+  id               String    @id @default(cuid())
+  name             String
+  code             String    @unique
+  widthInch        Decimal   @db.Decimal(8, 2)
+  gsm              Int
+  standardWeightKg Decimal   @db.Decimal(12, 3)
+  defaultLocation  String?   @default("BAY-A (Primary Warehouse)")
+  shade            String?   @default("NATURAL")
+  bf               String?   @default("18BF")
+  paperType        String?   @default("KRAFT")
+  description      String?
+  isActive         Boolean   @default(true)
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdById      String?
+
+  createdBy        User?         @relation(fields: [createdById], references: [id])
+  patternCuts      PatternCut[]
+
+  @@index([gsm, widthInch])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@index([createdById])
+}
+

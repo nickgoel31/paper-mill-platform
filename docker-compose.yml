@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: papermill_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: papermill_erp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d papermill_erp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  solver:
+    build:
+      context: ./apps/solver
+      dockerfile: Dockerfile
+    container_name: papermill_solver
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+    container_name: papermill_web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/papermill_erp?schema=public
+      AUTH_SECRET: super-secret-auth-key-change-in-production-min-32-chars
+      NEXTAUTH_URL: http://localhost:3000
+      SOLVER_SERVICE_URL: http://solver:8000
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      solver:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    name: papermill_postgres_data

@@ -1,0 +1,70 @@
+﻿# ==============================================================================
+# HRA Paper Mill ERP — .gitignore
+# ==============================================================================
+
+# Environment files (NEVER commit — contain secrets)
+.env
+.env.local
+.env.*.local
+apps/web/.env
+apps/web/.env.local
+apps/web/.env.production.local
+apps/web/.env.development.local
+
+# Node.js
+node_modules/
+apps/web/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Next.js
+apps/web/.next/
+apps/web/out/
+apps/web/build/
+
+# Python / Solver
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+apps/solver/__pycache__/
+apps/solver/*.pyc
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Debug / Scratch files
+scratch/
+apps/solver/debug_test*.py
+apps/solver/verify_demo.py
+apps/solver/test_solver.py
+
+# Local Database / Data files
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Misc
+.vercel
+.turbo
+coverage/

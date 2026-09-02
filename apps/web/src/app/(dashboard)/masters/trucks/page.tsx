@@ -1,0 +1,45 @@
+import { auth } from "@/lib/auth";
+import { getTrucks, getTransporters } from "@/server/services/truck-service";
+import { TrucksManager } from "@/components/masters/trucks-manager";
+import { Role } from "@prisma/client";
+import { db } from "@/lib/db";
+
+export const metadata = {
+  title: "Trucks & Transporters | PaperMill ERP",
+};
+
+export default async function TrucksMasterPage() {
+  const session = await auth();
+  const userRole = (session?.user as any)?.role as Role;
+  const isAdmin = userRole === Role.ADMIN;
+
+  const [trucksRes, transportersRes, allTransporters] = await Promise.all([
+    getTrucks({ page: 1, pageSize: 20 }),
+    getTransporters({ page: 1, pageSize: 20 }),
+    db.transporter.findMany({
+      where: { deletedAt: null, isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Fleet & Transport Master</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage transport partners and vehicle payloads for truck load batching.
+          </p>
+        </div>
+      </div>
+
+      <TrucksManager
+        initialTransporters={JSON.parse(JSON.stringify(transportersRes))}
+        initialTrucks={JSON.parse(JSON.stringify(trucksRes))}
+        transportersList={allTransporters}
+        isAdmin={isAdmin}
+      />
+    </div>
+  );
+}
