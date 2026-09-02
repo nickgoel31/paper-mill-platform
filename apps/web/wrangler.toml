@@ -9,17 +9,17 @@ pages_build_output_dir = ".vercel/output/static"
 [[d1_databases]]
 binding = "DB"
 database_name = "hra-papermill-db"
-database_id = "your-d1-database-id"
+database_id = "63ae12d8-96ed-428f-a80f-f265ee2e9490"
 
 # Cloudflare R2 Object Storage (10 GB Free, Zero Egress Fees)
 [[r2_buckets]]
-binding = "DOCUMENTS_BUCKET"
+binding = "hra_documents"
 bucket_name = "hra-documents"
 
 # Cloudflare Workers KV (1 GB Free In-Memory Cache)
 [[kv_namespaces]]
 binding = "ERP_KV"
-id = "your-kv-namespace-id"
+id = "5cea5db459f94b3b80dbcc8124d25ac9"
 
 [vars]
 NODE_ENV = "production"

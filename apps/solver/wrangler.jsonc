@@ -1,13 +1,28 @@
-﻿{
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hra-solver-container",
   "main": "src/index.ts",
   "compatibility_date": "2024-12-18",
   "compatibility_flags": ["nodejs_compat"],
   "containers": [
     {
+      "class_name": "SolverContainer",
       "image": "./Dockerfile",
-      "name": "solver-engine",
-      "port": 8000
+      "max_instances": 5
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SOLVER_CONTAINER",
+        "class_name": "SolverContainer"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["SolverContainer"]
     }
   ]
 }
