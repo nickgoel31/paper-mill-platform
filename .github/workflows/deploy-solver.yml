@@ -1,12 +1,9 @@
-﻿name: Deploy Solver Container to Cloudflare
+name: Deploy Solver Container to Cloudflare
 
 on:
   push:
     branches:
       - main
-    paths:
-      - 'apps/solver/**'
-      - '.github/workflows/deploy-solver.yml'
   workflow_dispatch:
 
 jobs:
