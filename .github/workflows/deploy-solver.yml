@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Solver Dependencies
         working-directory: apps/solver
-        run: npm install
+        run: npm install --no-audit
 
       - name: Deploy to Cloudflare Containers
         working-directory: apps/solver
