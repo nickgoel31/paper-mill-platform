@@ -27,10 +27,10 @@ export async function getNotifications(params: NotificationQueryParams) {
     ...(search
       ? {
           OR: [
-            { phoneNumber: { contains: search, mode: "insensitive" } },
-            { client: { name: { contains: search, mode: "insensitive" } } },
-            { templateName: { contains: search, mode: "insensitive" } },
-            { providerMessageId: { contains: search, mode: "insensitive" } },
+            { phoneNumber: { contains: search } },
+            { client: { name: { contains: search } } },
+            { templateName: { contains: search } },
+            { providerMessageId: { contains: search } },
           ],
         }
       : {}),

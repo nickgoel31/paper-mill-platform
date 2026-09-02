@@ -82,10 +82,10 @@ export async function getInvoices(params: InvoiceQueryParams) {
     ...(search
       ? {
           OR: [
-            { invoiceNumber: { contains: search, mode: "insensitive" } },
-            { client: { name: { contains: search, mode: "insensitive" } } },
-            { client: { code: { contains: search, mode: "insensitive" } } },
-            { dispatch: { dispatchNumber: { contains: search, mode: "insensitive" } } },
+            { invoiceNumber: { contains: search } },
+            { client: { name: { contains: search } } },
+            { client: { code: { contains: search } } },
+            { dispatch: { dispatchNumber: { contains: search } } },
           ],
         }
       : {}),
@@ -240,7 +240,7 @@ export async function createInvoicesFromDispatch(dispatchId: string) {
       let subtotal = 0;
       const linesData = data.items.map((it) => {
         const qtyKg = Number(it.dispatchedKg > 0 ? it.dispatchedKg : it.quantityKg);
-        const ratePerKg = Number(it.ratePerKg || 38.50); // Default ₹38.50/kg if rate not set
+        const ratePerKg = Number(it.ratePerKg || 38.50); // Default â‚¹38.50/kg if rate not set
         const lineAmount = Number((qtyKg * ratePerKg).toFixed(2));
         subtotal += lineAmount;
 

@@ -146,7 +146,7 @@ export async function getPendingDispatchLoadBatches() {
       truckCapacityKg: b.truck ? Number(b.truck.capacityKg) : 25000,
       transporterName: b.transporter?.name || "Direct / Self",
       driverName: b.driverName || "Assigned Driver",
-      driverPhone: b.driverPhone || "—",
+      driverPhone: b.driverPhone || "â€”",
       orderCount: b.orders.length,
       itemCount: totalItemsCount,
       fulfilledCount: fulfilledItemsCount,
@@ -387,16 +387,16 @@ export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
     ...(search
       ? {
           OR: [
-            { dispatchNumber: { contains: search, mode: "insensitive" } },
-            { vehicleNumber: { contains: search, mode: "insensitive" } },
-            { driverName: { contains: search, mode: "insensitive" } },
-            { gatePassNumber: { contains: search, mode: "insensitive" } },
-            { loadBatch: { batchNumber: { contains: search, mode: "insensitive" } } },
+            { dispatchNumber: { contains: search } },
+            { vehicleNumber: { contains: search } },
+            { driverName: { contains: search } },
+            { gatePassNumber: { contains: search } },
+            { loadBatch: { batchNumber: { contains: search } } },
           ],
         }
       : {}),
     ...(params.vehicleNumber
-      ? { vehicleNumber: { contains: params.vehicleNumber, mode: "insensitive" } }
+      ? { vehicleNumber: { contains: params.vehicleNumber } }
       : {}),
     ...(params.transporterId
       ? { loadBatch: { transporterId: params.transporterId } }

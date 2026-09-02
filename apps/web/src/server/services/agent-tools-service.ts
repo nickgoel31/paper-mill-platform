@@ -37,8 +37,8 @@ export async function agentGetOrders(params: {
         ...(params.search
           ? {
               OR: [
-                { orderNumber: { contains: params.search, mode: "insensitive" } },
-                { client: { name: { contains: params.search, mode: "insensitive" } } },
+                { orderNumber: { contains: params.search } },
+                { client: { name: { contains: params.search } } },
               ],
             }
           : {}),
@@ -98,8 +98,8 @@ export async function agentCreateOrder(input: {
     let client = await db.client.findFirst({
       where: {
         OR: [
-          { name: { contains: input.clientNameOrCode, mode: "insensitive" } },
-          { code: { contains: input.clientNameOrCode, mode: "insensitive" } },
+          { name: { contains: input.clientNameOrCode } },
+          { code: { contains: input.clientNameOrCode } },
         ],
         deletedAt: null,
       },
@@ -312,10 +312,10 @@ export async function agentGetClients(params: { search?: string; limit?: number 
         ...(params.search
           ? {
               OR: [
-                { name: { contains: params.search, mode: "insensitive" } },
-                { code: { contains: params.search, mode: "insensitive" } },
-                { city: { contains: params.search, mode: "insensitive" } },
-                { gstin: { contains: params.search, mode: "insensitive" } },
+                { name: { contains: params.search } },
+                { code: { contains: params.search } },
+                { city: { contains: params.search } },
+                { gstin: { contains: params.search } },
               ],
             }
           : {}),
@@ -997,7 +997,7 @@ export async function agentCreateTruck(input: {
         where: {
           OR: [
             { id: input.transporterNameOrId },
-            { name: { contains: input.transporterNameOrId, mode: "insensitive" } },
+            { name: { contains: input.transporterNameOrId } },
           ],
         },
       });
@@ -1036,7 +1036,7 @@ export async function agentCreateLoadBatch(input: {
     let truckId: string | null = null;
     if (input.truckRegistration) {
       const truck = await db.truck.findFirst({
-        where: { registrationNumber: { contains: input.truckRegistration, mode: "insensitive" } },
+        where: { registrationNumber: { contains: input.truckRegistration } },
       });
       if (truck) truckId = truck.id;
     }

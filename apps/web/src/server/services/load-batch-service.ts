@@ -73,10 +73,10 @@ export async function getLoadBatches(params: LoadQueryParams) {
     ...(search
       ? {
           OR: [
-            { batchNumber: { contains: search, mode: "insensitive" } },
-            { driverName: { contains: search, mode: "insensitive" } },
-            { truck: { registrationNumber: { contains: search, mode: "insensitive" } } },
-            { transporter: { name: { contains: search, mode: "insensitive" } } },
+            { batchNumber: { contains: search } },
+            { driverName: { contains: search } },
+            { truck: { registrationNumber: { contains: search } } },
+            { transporter: { name: { contains: search } } },
           ],
         }
       : {}),

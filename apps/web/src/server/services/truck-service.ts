@@ -29,9 +29,9 @@ export async function getTransporters(params: QueryParams) {
     ...(search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { phone: { contains: search, mode: "insensitive" } },
-            { gstin: { contains: search, mode: "insensitive" } },
+            { name: { contains: search } },
+            { phone: { contains: search } },
+            { gstin: { contains: search } },
           ],
         }
       : {}),
@@ -194,8 +194,8 @@ export async function getTrucks(params: QueryParams) {
     ...(search
       ? {
           OR: [
-            { registrationNumber: { contains: search, mode: "insensitive" } },
-            { owner: { name: { contains: search, mode: "insensitive" } } },
+            { registrationNumber: { contains: search } },
+            { owner: { name: { contains: search } } },
           ],
         }
       : {}),

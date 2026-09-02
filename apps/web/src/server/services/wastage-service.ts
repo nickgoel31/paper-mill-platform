@@ -26,9 +26,9 @@ export async function getWastageLogs(params: WastageQueryParams) {
     ...(search
       ? {
           OR: [
-            { reason: { contains: search, mode: "insensitive" } },
-            { productionRun: { runNumber: { contains: search, mode: "insensitive" } } },
-            { productionRun: { machine: { name: { contains: search, mode: "insensitive" } } } },
+            { reason: { contains: search } },
+            { productionRun: { runNumber: { contains: search } } },
+            { productionRun: { machine: { name: { contains: search } } } },
           ],
         }
       : {}),

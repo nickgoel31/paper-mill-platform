@@ -30,9 +30,9 @@ export async function getProductionRuns(params: ProductionQueryParams) {
     ...(search
       ? {
           OR: [
-            { runNumber: { contains: search, mode: "insensitive" } },
-            { machine: { name: { contains: search, mode: "insensitive" } } },
-            { machine: { code: { contains: search, mode: "insensitive" } } },
+            { runNumber: { contains: search } },
+            { machine: { name: { contains: search } } },
+            { machine: { code: { contains: search } } },
           ],
         }
       : {}),

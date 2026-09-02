@@ -30,8 +30,8 @@ export async function getUsers(params: QueryParams) {
     ...(search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
+            { name: { contains: search } },
+            { email: { contains: search } },
           ],
         }
       : {}),

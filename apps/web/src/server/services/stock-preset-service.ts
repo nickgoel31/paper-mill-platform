@@ -24,15 +24,15 @@ export async function getStockPresets(params: StockPresetQueryParams = {}) {
     deletedAt: null,
     ...(params.isActive !== undefined ? { isActive: params.isActive } : {}),
     ...(params.gsm ? { gsm: Number(params.gsm) } : {}),
-    ...(params.shade ? { shade: { contains: params.shade, mode: "insensitive" } } : {}),
+    ...(params.shade ? { shade: { contains: params.shade } } : {}),
     ...(search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { code: { contains: search, mode: "insensitive" } },
-            { description: { contains: search, mode: "insensitive" } },
-            { defaultLocation: { contains: search, mode: "insensitive" } },
-            { paperType: { contains: search, mode: "insensitive" } },
+            { name: { contains: search } },
+            { code: { contains: search } },
+            { description: { contains: search } },
+            { defaultLocation: { contains: search } },
+            { paperType: { contains: search } },
           ],
         }
       : {}),

@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -138,10 +138,10 @@ model Machine {
   id            String    @id @default(cuid())
   name          String    @unique
   code          String    @unique
-  maxDeckleInch Decimal   @db.Decimal(8, 2) // e.g. 196.00
-  minDeckleInch Decimal   @db.Decimal(8, 2) // minimum usable width for a run
-  minTrimInch   Decimal   @db.Decimal(6, 2) // mandatory edge trim, e.g. 0.50
-  maxTrimInch   Decimal   @db.Decimal(6, 2) // reject patterns above this, e.g. 6.00
+  maxDeckleInch Decimal // e.g. 196.00
+  minDeckleInch Decimal // minimum usable width for a run
+  minTrimInch   Decimal // mandatory edge trim, e.g. 0.50
+  maxTrimInch   Decimal // reject patterns above this, e.g. 6.00
   minGsm        Int
   maxGsm        Int
   speedMpm      Int? // metres per minute, for run time estimate
@@ -227,13 +227,13 @@ model Order {
 model OrderItem {
   id               String   @id @default(cuid())
   orderId          String
-  widthInch        Decimal  @db.Decimal(8, 2)
+  widthInch        Decimal
   gsm              Int
-  quantityKg       Decimal  @db.Decimal(12, 3)
-  tolerancePercent Decimal  @db.Decimal(5, 2) @default(5.00)
-  ratePerKg        Decimal? @db.Decimal(10, 2)
-  producedKg       Decimal  @db.Decimal(12, 3) @default(0)
-  dispatchedKg     Decimal  @db.Decimal(12, 3) @default(0)
+  quantityKg       Decimal
+  tolerancePercent Decimal @default(5.00)
+  ratePerKg        Decimal?
+  producedKg       Decimal @default(0)
+  dispatchedKg     Decimal @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -257,7 +257,7 @@ model LoadBatch {
   plannedDispatchDate DateTime?
   dispatchedAt        DateTime?
   deliveredAt         DateTime?
-  totalPlannedKg      Decimal    @default(0) @db.Decimal(12, 3)
+  totalPlannedKg      Decimal    @default(0)
   notes               String?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
@@ -301,11 +301,11 @@ model ProductionRun {
   plannedDate      DateTime  @default(now())
   startedAt        DateTime?
   completedAt      DateTime?
-  totalTrimPercent Decimal?  @db.Decimal(6, 3)
-  totalPlannedKg   Decimal   @default(0) @db.Decimal(12, 3)
-  totalActualKg    Decimal   @default(0) @db.Decimal(12, 3)
+  totalTrimPercent Decimal?
+  totalPlannedKg   Decimal   @default(0)
+  totalActualKg    Decimal   @default(0)
   solverPayload    Json?
-  aiExplanation    String?   @db.Text
+  aiExplanation    String?
   notes            String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -331,11 +331,11 @@ model CuttingPattern {
   repetitions          Int
   completedRepetitions Int      @default(0)
   runLengthM           Float    @default(0)  // Exact run length in meters from solver (source of truth for weight calc)
-  usedWidthInch        Decimal  @db.Decimal(8, 2)
-  trimWidthInch        Decimal  @db.Decimal(8, 2)
-  trimPercent          Decimal  @db.Decimal(6, 3)
-  estimatedKg          Decimal  @db.Decimal(12, 3)
-  actualKg             Decimal  @default(0) @db.Decimal(12, 3)
+  usedWidthInch        Decimal
+  trimWidthInch        Decimal
+  trimPercent          Decimal
+  estimatedKg          Decimal
+  actualKg             Decimal  @default(0)
   isManuallyEdited     Boolean  @default(false)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -353,7 +353,7 @@ model PatternCut {
   cuttingPatternId String
   orderItemId      String?
   stockPresetId    String?
-  widthInch        Decimal  @db.Decimal(8, 2)
+  widthInch        Decimal
   count            Int
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -371,9 +371,9 @@ model StockItem {
   id              String      @id @default(cuid())
   orderItemId     String?
   productionRunId String?
-  widthInch       Decimal     @db.Decimal(8, 2)
+  widthInch       Decimal
   gsm             Int
-  quantityKg      Decimal     @db.Decimal(12, 3)
+  quantityKg      Decimal
   status          StockStatus @default(AVAILABLE)
   location        String?
   createdAt       DateTime    @default(now())
@@ -392,7 +392,7 @@ model WastageLog {
   id               String   @id @default(cuid())
   productionRunId  String?
   cuttingPatternId String?
-  wastageKg        Decimal  @db.Decimal(12, 3)
+  wastageKg        Decimal
   wastageType      String // "TRIM" | "REJECT" | "OTHER"
   reason           String?
   recordedAt       DateTime @default(now())
@@ -420,7 +420,7 @@ model Dispatch {
   vehicleNumber     String
   driverName        String
   driverPhone       String
-  totalDispatchedKg Decimal  @db.Decimal(12, 3)
+  totalDispatchedKg Decimal
   remarks           String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -441,11 +441,11 @@ model Invoice {
   loadBatchId   String?       @unique
   dispatchId    String?
   invoiceDate   DateTime      @default(now())
-  subtotal      Decimal       @db.Decimal(12, 2)
-  cgst          Decimal       @default(0) @db.Decimal(12, 2)
-  sgst          Decimal       @default(0) @db.Decimal(12, 2)
-  igst          Decimal       @default(0) @db.Decimal(12, 2)
-  totalAmount   Decimal       @db.Decimal(12, 2)
+  subtotal      Decimal
+  cgst          Decimal       @default(0)
+  sgst          Decimal       @default(0)
+  igst          Decimal       @default(0)
+  totalAmount   Decimal
   status        InvoiceStatus @default(DRAFT)
   pdfUrl        String?
   createdAt     DateTime      @default(now())
@@ -470,9 +470,9 @@ model InvoiceLine {
   invoiceId   String
   orderItemId String?
   description String
-  quantityKg  Decimal  @db.Decimal(12, 3)
-  ratePerKg   Decimal  @db.Decimal(10, 2)
-  amount      Decimal  @db.Decimal(12, 2)
+  quantityKg  Decimal
+  ratePerKg   Decimal
+  amount      Decimal
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -536,9 +536,9 @@ model StockPreset {
   id               String    @id @default(cuid())
   name             String
   code             String    @unique
-  widthInch        Decimal   @db.Decimal(8, 2)
+  widthInch        Decimal
   gsm              Int
-  standardWeightKg Decimal   @db.Decimal(12, 3)
+  standardWeightKg Decimal
   defaultLocation  String?   @default("BAY-A (Primary Warehouse)")
   shade            String?   @default("NATURAL")
   bf               String?   @default("18BF")

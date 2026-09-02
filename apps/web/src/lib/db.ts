@@ -1,63 +1,71 @@
-﻿import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { PrismaD1 } from "@prisma/adapter-d1";
-import { PrismaNeon } from "@prisma/adapter-neon";
-import { neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 declare global {
   // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
+  // eslint-disable-next-line no-var
+  var __prismaD1: PrismaClient | undefined;
 }
 
 /**
- * Creates a Prisma client using the correct adapter for the environment:
- * 1. Cloudflare D1 (via env.DB binding injected by OpenNext/wrangler)
- * 2. Neon serverless Postgres (DATABASE_URL contains neon.tech)
- * 3. Local Postgres (direct connection string)
+ * Database access.
+ *
+ * Production / `wrangler dev`  -> Cloudflare D1 via the `DB` binding (declared
+ *                                 in wrangler.toml, surfaced by OpenNext).
+ * Local `next dev` / scripts   -> SQLite file from DATABASE_URL (e.g.
+ *                                 "file:./prisma/dev.db").
+ *
+ * The `db` export is a lazy proxy so that the D1 binding — which only exists
+ * inside a request on the Worker — is resolved on first use, not at module load.
  */
-function createPrismaClient(d1Binding?: unknown): PrismaClient {
-  // 1. Cloudflare D1 binding (passed from the Worker env at request time)
-  if (d1Binding) {
-    const adapter = new PrismaD1(d1Binding as any);
-    return new PrismaClient({
-      adapter: adapter as any,
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-    });
-  }
 
-  const dbUrl = process.env.DATABASE_URL || "";
-  const isNeon = dbUrl.includes("neon.tech") || dbUrl.includes("sslmode=require");
-
-  // 2. Neon serverless Postgres
-  if (isNeon) {
-    if (typeof globalThis.WebSocket === "undefined") {
-      neonConfig.webSocketConstructor = ws;
-    }
-    neonConfig.poolQueryViaFetch = true;
-    const adapter = new PrismaNeon({ connectionString: dbUrl });
-    return new PrismaClient({
-      adapter: adapter as any,
-      log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
-    });
-  }
-
-  // 3. Local Postgres fallback
+function clientFromD1(d1: unknown): PrismaClient {
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+    adapter: new PrismaD1(d1 as never),
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }
 
-// Singleton for non-edge (local dev) environments
-export const db: PrismaClient = globalThis.__prisma ?? createPrismaClient();
-if (process.env.NODE_ENV !== "production") globalThis.__prisma = db;
+function localClient(): PrismaClient {
+  if (globalThis.__prisma) return globalThis.__prisma;
+  const client = new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  });
+  if (process.env.NODE_ENV !== "production") globalThis.__prisma = client;
+  return client;
+}
+
+function resolveClient(): PrismaClient {
+  // Attempt to pick up the Cloudflare D1 binding (present on the Worker).
+  try {
+    const d1 = (getCloudflareContext() as unknown as { env?: { DB?: unknown } })?.env?.DB;
+    if (d1) {
+      globalThis.__prismaD1 ??= clientFromD1(d1);
+      return globalThis.__prismaD1;
+    }
+  } catch {
+    // Not running inside a Cloudflare context — fall through to local SQLite.
+  }
+  return localClient();
+}
+
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = resolveClient();
+    const value = Reflect.get(client as object, prop, receiver);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
 
 /**
- * Call this in Cloudflare Workers/OpenNext contexts where env.DB is available.
- * Returns a D1-backed Prisma client for the current request.
+ * Explicit accessor for contexts where the Worker env is already in hand.
  */
 export function getDb(env?: { DB?: unknown }): PrismaClient {
   if (env?.DB) {
-    return createPrismaClient(env.DB);
+    globalThis.__prismaD1 ??= clientFromD1(env.DB);
+    return globalThis.__prismaD1;
   }
   return db;
 }

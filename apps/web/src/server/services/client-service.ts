@@ -20,13 +20,13 @@ export async function getClients(params: QueryParams) {
     ...(search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { code: { contains: search, mode: "insensitive" } },
-            { city: { contains: search, mode: "insensitive" } },
-            { state: { contains: search, mode: "insensitive" } },
-            { phone: { contains: search, mode: "insensitive" } },
-            { gstin: { contains: search, mode: "insensitive" } },
-            { contactPerson: { contains: search, mode: "insensitive" } },
+            { name: { contains: search } },
+            { code: { contains: search } },
+            { city: { contains: search } },
+            { state: { contains: search } },
+            { phone: { contains: search } },
+            { gstin: { contains: search } },
+            { contactPerson: { contains: search } },
           ],
         }
       : {}),

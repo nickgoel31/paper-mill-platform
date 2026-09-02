@@ -28,16 +28,16 @@ export async function getStockItems(params: StockQueryParams) {
     ...(search
       ? {
           OR: [
-            { location: { contains: search, mode: "insensitive" } },
-            { productionRun: { runNumber: { contains: search, mode: "insensitive" } } },
-            { orderItem: { order: { orderNumber: { contains: search, mode: "insensitive" } } } },
-            { orderItem: { order: { client: { name: { contains: search, mode: "insensitive" } } } } },
+            { location: { contains: search } },
+            { productionRun: { runNumber: { contains: search } } },
+            { orderItem: { order: { orderNumber: { contains: search } } } },
+            { orderItem: { order: { client: { name: { contains: search } } } } },
           ],
         }
       : {}),
     ...(params.gsm ? { gsm: Number(params.gsm) } : {}),
     ...(params.status ? { status: params.status } : {}),
-    ...(params.location ? { location: { contains: params.location, mode: "insensitive" } } : {}),
+    ...(params.location ? { location: { contains: params.location } } : {}),
     ...(params.minWidth || params.maxWidth
       ? {
           widthInch: {

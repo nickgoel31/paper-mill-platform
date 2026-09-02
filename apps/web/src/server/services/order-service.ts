@@ -158,10 +158,10 @@ export async function getOrders(params: OrderQueryParams) {
     ...(search
       ? {
           OR: [
-            { orderNumber: { contains: search, mode: "insensitive" } },
-            { client: { name: { contains: search, mode: "insensitive" } } },
-            { client: { code: { contains: search, mode: "insensitive" } } },
-            { notes: { contains: search, mode: "insensitive" } },
+            { orderNumber: { contains: search } },
+            { client: { name: { contains: search } } },
+            { client: { code: { contains: search } } },
+            { notes: { contains: search } },
           ],
         }
       : {}),
@@ -402,7 +402,7 @@ export async function createOrder(data: OrderFormInput) {
     if (compatibleMachines.length === 0) {
       throw new Error(
         `GSM ${item.gsm} cannot be run on any active machine. Active GSM ranges: ${machines
-          .map((m) => `${m.code} (${m.minGsm}–${m.maxGsm})`)
+          .map((m) => `${m.code} (${m.minGsm}â€“${m.maxGsm})`)
           .join(", ")}.`
       );
     }
