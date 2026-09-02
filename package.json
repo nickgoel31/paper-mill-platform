@@ -10,12 +10,12 @@
     "build": "npm --workspace=apps/web run build",
     "start": "npm --workspace=apps/web run start",
     "lint": "npm --workspace=apps/web run lint",
-    "db:generate": "prisma generate --schema=prisma/schema.prisma",
+    "db:generate": "prisma generate && node scripts/patch-prisma-compiler.mjs",
     "db:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
     "db:push": "prisma db push --schema=prisma/schema.prisma",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio --schema=prisma/schema.prisma",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && node scripts/patch-prisma-compiler.mjs"
   },
   "devDependencies": {
     "@prisma/adapter-better-sqlite3": "7.10.0",
