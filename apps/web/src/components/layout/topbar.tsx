@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { Badge } from "@/components/ui/badge";
 import { TutorialModal } from "@/components/layout/tutorial-modal";
 import { MobileSidebarDrawer } from "@/components/layout/mobile-nav/mobile-sidebar-drawer";

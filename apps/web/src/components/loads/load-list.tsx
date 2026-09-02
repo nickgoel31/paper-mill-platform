@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { LoadStatus, Role } from "@prisma/client";
+import { LoadStatus, Role } from "@/generated/prisma/browser";
 import {
   getLoadBatches,
   markBatchPlanned,

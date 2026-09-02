@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { Role, OrderStatus, RunStatus, LoadStatus, NotificationStatus } from "@prisma/client";
+import { Role, OrderStatus, RunStatus, LoadStatus, NotificationStatus } from "@/generated/prisma/browser";
 
 export async function getDashboardData(days: number = 30) {
   const now = new Date();

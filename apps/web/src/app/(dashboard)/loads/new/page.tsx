@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 import { getUnassignedConfirmedOrders } from "@/server/services/load-batch-service";
 import { LoadBuilder } from "@/components/loads/load-builder";

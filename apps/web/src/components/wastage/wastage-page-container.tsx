@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import {
   getWastageLogs,
   getWastageAnalytics,

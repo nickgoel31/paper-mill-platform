@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import {
   getStockItems,
   getStockSummaryStats,

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaD1 } from "@prisma/adapter-d1";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 
@@ -12,13 +12,13 @@ declare global {
 /**
  * Database access.
  *
- * Production / `wrangler dev`  -> Cloudflare D1 via the `DB` binding (declared
- *                                 in wrangler.toml, surfaced by OpenNext).
- * Local `next dev` / scripts   -> SQLite file from DATABASE_URL (e.g.
- *                                 "file:./prisma/dev.db").
+ * Production + `wrangler dev` + `next dev`  -> Cloudflare D1 via the `DB` binding
+ *   (declared in wrangler.toml, surfaced by OpenNext / initOpenNextCloudflareForDev).
+ * Plain Node scripts with no Worker context  -> local SQLite file from
+ *   DATABASE_URL (e.g. "file:./prisma/dev.db"), via better-sqlite3.
  *
- * The `db` export is a lazy proxy so that the D1 binding — which only exists
- * inside a request on the Worker — is resolved on first use, not at module load.
+ * `db` is a lazy proxy so the D1 binding — which only exists inside a request on
+ * the Worker — is resolved on first use, not at module load.
  */
 
 function clientFromD1(d1: unknown): PrismaClient {
@@ -30,7 +30,13 @@ function clientFromD1(d1: unknown): PrismaClient {
 
 function localClient(): PrismaClient {
   if (globalThis.__prisma) return globalThis.__prisma;
+  // Lazy require so the native better-sqlite3 module is never pulled into the
+  // Worker bundle.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PrismaBetterSQLite3 } = require("@prisma/adapter-better-sqlite3");
+  const url = process.env.DATABASE_URL || "file:./prisma/dev.db";
   const client = new PrismaClient({
+    adapter: new PrismaBetterSQLite3({ url }),
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });
   if (process.env.NODE_ENV !== "production") globalThis.__prisma = client;
@@ -38,7 +44,8 @@ function localClient(): PrismaClient {
 }
 
 function resolveClient(): PrismaClient {
-  // Attempt to pick up the Cloudflare D1 binding (present on the Worker).
+  // Attempt to pick up the Cloudflare D1 binding (present on the Worker and,
+  // via initOpenNextCloudflareForDev, during `next dev`).
   try {
     const d1 = (getCloudflareContext() as unknown as { env?: { DB?: unknown } })?.env?.DB;
     if (d1) {

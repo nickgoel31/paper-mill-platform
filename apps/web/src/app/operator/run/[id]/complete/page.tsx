@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getProductionRunById } from "@/server/services/production-service";
 import { CompleteRunScreen } from "@/components/operator/complete-run-screen";
 

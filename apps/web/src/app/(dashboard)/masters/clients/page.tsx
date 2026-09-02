@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getClients } from "@/server/services/client-service";
 import { ClientsManager } from "@/components/masters/clients-manager";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const metadata = {
   title: "Client Master | PaperMill ERP",

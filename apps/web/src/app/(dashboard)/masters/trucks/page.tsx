@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getTrucks, getTransporters } from "@/server/services/truck-service";
 import { TrucksManager } from "@/components/masters/trucks-manager";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 
 export const metadata = {

@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { AgenticAiSidebar } from "@/components/ai/agentic-ai-sidebar";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export default async function DashboardLayout({
   children,

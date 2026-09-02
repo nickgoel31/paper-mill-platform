@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { navConfig, NavItem } from "@/config/nav";
 import { cn } from "@/lib/utils";
 import {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { OrderPriority, OrderStatus } from "@prisma/client";
+import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import {
   agentGetOrders,
   agentCreateOrder,

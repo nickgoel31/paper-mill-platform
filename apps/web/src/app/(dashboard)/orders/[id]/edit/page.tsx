@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, OrderStatus } from "@prisma/client";
+import { Role, OrderStatus } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 import { getOrderById, getActiveMachineConstraints } from "@/server/services/order-service";
 import { OrderForm } from "@/components/orders/order-form";

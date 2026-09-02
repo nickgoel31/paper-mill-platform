@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 import { getPendingDemandItems } from "@/server/services/deckle-service";
 import { DecklePlanningWorkspace } from "@/components/deckle/deckle-planning-workspace";

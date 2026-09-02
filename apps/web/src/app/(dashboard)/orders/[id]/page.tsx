@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getOrderById } from "@/server/services/order-service";
 import { OrderDetailView } from "@/components/orders/order-detail-view";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const metadata = {
   title: "Order Details | PaperMill ERP",

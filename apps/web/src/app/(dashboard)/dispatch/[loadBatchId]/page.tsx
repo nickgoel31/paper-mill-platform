@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getLoadBatchLoadingSheetData } from "@/server/services/dispatch-service";
 import { LoadingSheetView } from "@/components/dispatch/loading-sheet-view";
 

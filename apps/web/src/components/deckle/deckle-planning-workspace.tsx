@@ -17,7 +17,7 @@ import {
 } from "@/lib/solver-client";
 import { PatternBar } from "./pattern-bar";
 import { PatternOverrideDialog } from "./pattern-override-dialog";
-import { OrderPriority, Role } from "@prisma/client";
+import { OrderPriority, Role } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";

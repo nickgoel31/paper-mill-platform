@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { OrderStatus, OrderPriority, Role } from "@prisma/client";
+import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
 import { formatWeightKg, formatCurrencyINR, formatWidthInch } from "@/lib/utils";
 import { transitionOrderStatus } from "@/server/services/order-service";
 import { toast } from "sonner";

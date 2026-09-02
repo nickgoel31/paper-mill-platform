@@ -1,4 +1,3 @@
--- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -9,8 +8,6 @@ CREATE TABLE "User" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL
 );
-
--- CreateTable
 CREATE TABLE "Client" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -32,8 +29,6 @@ CREATE TABLE "Client" (
     "createdById" TEXT,
     CONSTRAINT "Client_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Machine" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -52,8 +47,6 @@ CREATE TABLE "Machine" (
     "createdById" TEXT,
     CONSTRAINT "Machine_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Transporter" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -66,8 +59,6 @@ CREATE TABLE "Transporter" (
     "createdById" TEXT,
     CONSTRAINT "Transporter_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Truck" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "registrationNumber" TEXT NOT NULL,
@@ -81,8 +72,6 @@ CREATE TABLE "Truck" (
     CONSTRAINT "Truck_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Truck_transporterId_fkey" FOREIGN KEY ("transporterId") REFERENCES "Transporter" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Order" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "orderNumber" TEXT NOT NULL,
@@ -98,8 +87,6 @@ CREATE TABLE "Order" (
     CONSTRAINT "Order_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "Order_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "OrderItem" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "orderId" TEXT NOT NULL,
@@ -114,8 +101,6 @@ CREATE TABLE "OrderItem" (
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "OrderItem_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "LoadBatch" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "batchNumber" TEXT NOT NULL,
@@ -136,8 +121,6 @@ CREATE TABLE "LoadBatch" (
     CONSTRAINT "LoadBatch_transporterId_fkey" FOREIGN KEY ("transporterId") REFERENCES "Transporter" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "LoadBatch_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "LoadBatchOrder" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "loadBatchId" TEXT NOT NULL,
@@ -146,8 +129,6 @@ CREATE TABLE "LoadBatchOrder" (
     CONSTRAINT "LoadBatchOrder_loadBatchId_fkey" FOREIGN KEY ("loadBatchId") REFERENCES "LoadBatch" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "LoadBatchOrder_orderId_fkey" FOREIGN KEY ("orderId") REFERENCES "Order" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "ProductionRun" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "runNumber" TEXT NOT NULL,
@@ -169,8 +150,6 @@ CREATE TABLE "ProductionRun" (
     CONSTRAINT "ProductionRun_machineId_fkey" FOREIGN KEY ("machineId") REFERENCES "Machine" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "ProductionRun_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "CuttingPattern" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "productionRunId" TEXT NOT NULL,
@@ -188,8 +167,6 @@ CREATE TABLE "CuttingPattern" (
     "updatedAt" DATETIME NOT NULL,
     CONSTRAINT "CuttingPattern_productionRunId_fkey" FOREIGN KEY ("productionRunId") REFERENCES "ProductionRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "PatternCut" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "cuttingPatternId" TEXT NOT NULL,
@@ -203,8 +180,6 @@ CREATE TABLE "PatternCut" (
     CONSTRAINT "PatternCut_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "PatternCut_stockPresetId_fkey" FOREIGN KEY ("stockPresetId") REFERENCES "StockPreset" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "StockItem" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "orderItemId" TEXT,
@@ -219,8 +194,6 @@ CREATE TABLE "StockItem" (
     CONSTRAINT "StockItem_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "StockItem_productionRunId_fkey" FOREIGN KEY ("productionRunId") REFERENCES "ProductionRun" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "WastageLog" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "productionRunId" TEXT,
@@ -236,8 +209,6 @@ CREATE TABLE "WastageLog" (
     CONSTRAINT "WastageLog_cuttingPatternId_fkey" FOREIGN KEY ("cuttingPatternId") REFERENCES "CuttingPattern" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "WastageLog_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Dispatch" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "dispatchNumber" TEXT NOT NULL,
@@ -255,8 +226,6 @@ CREATE TABLE "Dispatch" (
     CONSTRAINT "Dispatch_loadBatchId_fkey" FOREIGN KEY ("loadBatchId") REFERENCES "LoadBatch" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT "Dispatch_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "Invoice" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "invoiceNumber" TEXT NOT NULL,
@@ -279,8 +248,6 @@ CREATE TABLE "Invoice" (
     CONSTRAINT "Invoice_dispatchId_fkey" FOREIGN KEY ("dispatchId") REFERENCES "Dispatch" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "Invoice_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "InvoiceLine" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "invoiceId" TEXT NOT NULL,
@@ -294,8 +261,6 @@ CREATE TABLE "InvoiceLine" (
     CONSTRAINT "InvoiceLine_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT "InvoiceLine_orderItemId_fkey" FOREIGN KEY ("orderItemId") REFERENCES "OrderItem" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "WhatsAppNotification" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "loadBatchId" TEXT,
@@ -313,8 +278,6 @@ CREATE TABLE "WhatsAppNotification" (
     CONSTRAINT "WhatsAppNotification_loadBatchId_fkey" FOREIGN KEY ("loadBatchId") REFERENCES "LoadBatch" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT "WhatsAppNotification_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "AuditLog" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "userId" TEXT,
@@ -326,8 +289,6 @@ CREATE TABLE "AuditLog" (
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "AuditLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateTable
 CREATE TABLE "SystemSetting" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "key" TEXT NOT NULL,
@@ -335,8 +296,6 @@ CREATE TABLE "SystemSetting" (
     "description" TEXT,
     "updatedAt" DATETIME NOT NULL
 );
-
--- CreateTable
 CREATE TABLE "StockPreset" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
@@ -356,253 +315,86 @@ CREATE TABLE "StockPreset" (
     "createdById" TEXT,
     CONSTRAINT "StockPreset_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "User" ("id") ON DELETE SET NULL ON UPDATE CASCADE
 );
-
--- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
-
--- CreateIndex
 CREATE INDEX "User_role_idx" ON "User"("role");
-
--- CreateIndex
 CREATE INDEX "User_email_idx" ON "User"("email");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Client_code_key" ON "Client"("code");
-
--- CreateIndex
 CREATE INDEX "Client_code_idx" ON "Client"("code");
-
--- CreateIndex
 CREATE INDEX "Client_deletedAt_idx" ON "Client"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "Client_city_state_idx" ON "Client"("city", "state");
-
--- CreateIndex
 CREATE INDEX "Client_createdById_idx" ON "Client"("createdById");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Machine_name_key" ON "Machine"("name");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Machine_code_key" ON "Machine"("code");
-
--- CreateIndex
 CREATE INDEX "Machine_deletedAt_idx" ON "Machine"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "Machine_isActive_idx" ON "Machine"("isActive");
-
--- CreateIndex
 CREATE INDEX "Machine_createdById_idx" ON "Machine"("createdById");
-
--- CreateIndex
 CREATE INDEX "Transporter_deletedAt_idx" ON "Transporter"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "Transporter_createdById_idx" ON "Transporter"("createdById");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Truck_registrationNumber_key" ON "Truck"("registrationNumber");
-
--- CreateIndex
 CREATE INDEX "Truck_transporterId_idx" ON "Truck"("transporterId");
-
--- CreateIndex
 CREATE INDEX "Truck_deletedAt_idx" ON "Truck"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "Truck_createdById_idx" ON "Truck"("createdById");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Order_orderNumber_key" ON "Order"("orderNumber");
-
--- CreateIndex
 CREATE INDEX "Order_clientId_idx" ON "Order"("clientId");
-
--- CreateIndex
 CREATE INDEX "Order_status_idx" ON "Order"("status");
-
--- CreateIndex
 CREATE INDEX "Order_priority_idx" ON "Order"("priority");
-
--- CreateIndex
 CREATE INDEX "Order_orderDate_idx" ON "Order"("orderDate");
-
--- CreateIndex
 CREATE INDEX "Order_deliveryDate_idx" ON "Order"("deliveryDate");
-
--- CreateIndex
 CREATE INDEX "Order_createdById_idx" ON "Order"("createdById");
-
--- CreateIndex
 CREATE INDEX "OrderItem_gsm_widthInch_idx" ON "OrderItem"("gsm", "widthInch");
-
--- CreateIndex
 CREATE INDEX "OrderItem_orderId_idx" ON "OrderItem"("orderId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "LoadBatch_batchNumber_key" ON "LoadBatch"("batchNumber");
-
--- CreateIndex
 CREATE INDEX "LoadBatch_truckId_idx" ON "LoadBatch"("truckId");
-
--- CreateIndex
 CREATE INDEX "LoadBatch_transporterId_idx" ON "LoadBatch"("transporterId");
-
--- CreateIndex
 CREATE INDEX "LoadBatch_status_idx" ON "LoadBatch"("status");
-
--- CreateIndex
 CREATE INDEX "LoadBatch_plannedDispatchDate_idx" ON "LoadBatch"("plannedDispatchDate");
-
--- CreateIndex
 CREATE INDEX "LoadBatch_createdById_idx" ON "LoadBatch"("createdById");
-
--- CreateIndex
 CREATE INDEX "LoadBatchOrder_loadBatchId_idx" ON "LoadBatchOrder"("loadBatchId");
-
--- CreateIndex
 CREATE INDEX "LoadBatchOrder_orderId_idx" ON "LoadBatchOrder"("orderId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "LoadBatchOrder_loadBatchId_orderId_key" ON "LoadBatchOrder"("loadBatchId", "orderId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "ProductionRun_runNumber_key" ON "ProductionRun"("runNumber");
-
--- CreateIndex
 CREATE INDEX "ProductionRun_machineId_idx" ON "ProductionRun"("machineId");
-
--- CreateIndex
 CREATE INDEX "ProductionRun_gsm_idx" ON "ProductionRun"("gsm");
-
--- CreateIndex
 CREATE INDEX "ProductionRun_status_idx" ON "ProductionRun"("status");
-
--- CreateIndex
 CREATE INDEX "ProductionRun_plannedDate_idx" ON "ProductionRun"("plannedDate");
-
--- CreateIndex
 CREATE INDEX "ProductionRun_createdById_idx" ON "ProductionRun"("createdById");
-
--- CreateIndex
 CREATE INDEX "CuttingPattern_productionRunId_idx" ON "CuttingPattern"("productionRunId");
-
--- CreateIndex
 CREATE INDEX "CuttingPattern_sequence_idx" ON "CuttingPattern"("sequence");
-
--- CreateIndex
 CREATE INDEX "PatternCut_cuttingPatternId_idx" ON "PatternCut"("cuttingPatternId");
-
--- CreateIndex
 CREATE INDEX "PatternCut_orderItemId_idx" ON "PatternCut"("orderItemId");
-
--- CreateIndex
 CREATE INDEX "PatternCut_stockPresetId_idx" ON "PatternCut"("stockPresetId");
-
--- CreateIndex
 CREATE INDEX "StockItem_status_idx" ON "StockItem"("status");
-
--- CreateIndex
 CREATE INDEX "StockItem_gsm_widthInch_idx" ON "StockItem"("gsm", "widthInch");
-
--- CreateIndex
 CREATE INDEX "StockItem_orderItemId_idx" ON "StockItem"("orderItemId");
-
--- CreateIndex
 CREATE INDEX "StockItem_productionRunId_idx" ON "StockItem"("productionRunId");
-
--- CreateIndex
 CREATE INDEX "WastageLog_productionRunId_idx" ON "WastageLog"("productionRunId");
-
--- CreateIndex
 CREATE INDEX "WastageLog_cuttingPatternId_idx" ON "WastageLog"("cuttingPatternId");
-
--- CreateIndex
 CREATE INDEX "WastageLog_recordedAt_idx" ON "WastageLog"("recordedAt");
-
--- CreateIndex
 CREATE INDEX "WastageLog_wastageType_idx" ON "WastageLog"("wastageType");
-
--- CreateIndex
 CREATE INDEX "WastageLog_createdById_idx" ON "WastageLog"("createdById");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Dispatch_dispatchNumber_key" ON "Dispatch"("dispatchNumber");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Dispatch_loadBatchId_key" ON "Dispatch"("loadBatchId");
-
--- CreateIndex
 CREATE INDEX "Dispatch_dispatchedAt_idx" ON "Dispatch"("dispatchedAt");
-
--- CreateIndex
 CREATE INDEX "Dispatch_createdById_idx" ON "Dispatch"("createdById");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Invoice_invoiceNumber_key" ON "Invoice"("invoiceNumber");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Invoice_loadBatchId_key" ON "Invoice"("loadBatchId");
-
--- CreateIndex
 CREATE INDEX "Invoice_clientId_idx" ON "Invoice"("clientId");
-
--- CreateIndex
 CREATE INDEX "Invoice_invoiceDate_idx" ON "Invoice"("invoiceDate");
-
--- CreateIndex
 CREATE INDEX "Invoice_status_idx" ON "Invoice"("status");
-
--- CreateIndex
 CREATE INDEX "Invoice_dispatchId_idx" ON "Invoice"("dispatchId");
-
--- CreateIndex
 CREATE INDEX "Invoice_createdById_idx" ON "Invoice"("createdById");
-
--- CreateIndex
 CREATE INDEX "InvoiceLine_invoiceId_idx" ON "InvoiceLine"("invoiceId");
-
--- CreateIndex
 CREATE INDEX "InvoiceLine_orderItemId_idx" ON "InvoiceLine"("orderItemId");
-
--- CreateIndex
 CREATE INDEX "WhatsAppNotification_status_idx" ON "WhatsAppNotification"("status");
-
--- CreateIndex
 CREATE INDEX "WhatsAppNotification_clientId_idx" ON "WhatsAppNotification"("clientId");
-
--- CreateIndex
 CREATE INDEX "WhatsAppNotification_loadBatchId_idx" ON "WhatsAppNotification"("loadBatchId");
-
--- CreateIndex
 CREATE INDEX "WhatsAppNotification_createdAt_idx" ON "WhatsAppNotification"("createdAt");
-
--- CreateIndex
 CREATE INDEX "AuditLog_entityType_entityId_idx" ON "AuditLog"("entityType", "entityId");
-
--- CreateIndex
 CREATE INDEX "AuditLog_userId_idx" ON "AuditLog"("userId");
-
--- CreateIndex
 CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
-
--- CreateIndex
 CREATE UNIQUE INDEX "SystemSetting_key_key" ON "SystemSetting"("key");
-
--- CreateIndex
 CREATE UNIQUE INDEX "StockPreset_code_key" ON "StockPreset"("code");
-
--- CreateIndex
 CREATE INDEX "StockPreset_gsm_widthInch_idx" ON "StockPreset"("gsm", "widthInch");
-
--- CreateIndex
 CREATE INDEX "StockPreset_isActive_idx" ON "StockPreset"("isActive");
-
--- CreateIndex
 CREATE INDEX "StockPreset_deletedAt_idx" ON "StockPreset"("deletedAt");
-
--- CreateIndex
 CREATE INDEX "StockPreset_createdById_idx" ON "StockPreset"("createdById");
-

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LoadStatus } from "@prisma/client";
+import { LoadStatus } from "@/generated/prisma/browser";
 import { PHONE_REGEX } from "@/lib/constants";
 
 export const loadBatchSchema = z.object({

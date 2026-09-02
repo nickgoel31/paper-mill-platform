@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RunStatus, Role } from "@prisma/client";
+import { RunStatus, Role } from "@/generated/prisma/browser";
 import { formatWeightKg, formatTrimPercent, formatWidthInch } from "@/lib/utils";
 import {
   releaseRunToFloor,

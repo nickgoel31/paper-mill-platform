@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getDispatchHistory } from "@/server/services/dispatch-service";
 import { DispatchHistoryList } from "@/components/dispatch/dispatch-history-list";
 

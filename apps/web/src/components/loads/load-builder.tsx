@@ -6,7 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { formatWeightKg } from "@/lib/utils";
 import { createLoadBatch } from "@/server/services/load-batch-service";
-import { OrderPriority, OrderStatus } from "@prisma/client";
+import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";

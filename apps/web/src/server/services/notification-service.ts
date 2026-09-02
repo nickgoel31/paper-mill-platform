@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, NotificationStatus, Prisma } from "@prisma/client";
+import { Role, NotificationStatus, Prisma } from "@/generated/prisma/browser";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/client";
 import { logAudit } from "./audit-service";
 import {

@@ -9,7 +9,7 @@ import {
   StockStatus,
   NotificationStatus,
   Prisma,
-} from "@prisma/client";
+} from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,

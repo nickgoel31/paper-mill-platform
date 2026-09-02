@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getLoadBatches } from "@/server/services/load-batch-service";
 import { LoadList } from "@/components/loads/load-list";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 
 export const metadata = {

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { OrderPriority, OrderStatus } from "@prisma/client";
+import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import {
   orderFormSchema,
   OrderFormInput,

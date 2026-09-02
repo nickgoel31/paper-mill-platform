@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { RunStatus, Role } from "@prisma/client";
+import { RunStatus, Role } from "@/generated/prisma/browser";
 import {
   getProductionRuns,
   getProductionSummaryStats,

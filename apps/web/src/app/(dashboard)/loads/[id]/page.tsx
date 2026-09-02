@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getLoadBatchById } from "@/server/services/load-batch-service";
 import { LoadDetailView } from "@/components/loads/load-detail-view";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const metadata = {
   title: "Load Batch Details | PaperMill ERP",

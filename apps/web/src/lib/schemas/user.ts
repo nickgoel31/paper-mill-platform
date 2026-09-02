@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const createUserSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),

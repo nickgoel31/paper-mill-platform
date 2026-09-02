@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getOrders, getOrderSummaryStats } from "@/server/services/order-service";
 import { OrderList } from "@/components/orders/order-list";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 
 export const metadata = {

@@ -37,7 +37,7 @@ import {
   Receipt,
   Download,
 } from "lucide-react";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 interface InvoiceDetailViewProps {
   invoice: any;

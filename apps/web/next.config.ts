@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["@prisma/client", "@prisma/adapter-d1", "bcryptjs"],
+  serverExternalPackages: [
+    "@prisma/client",
+    "@prisma/adapter-d1",
+    // native module, only ever require()'d in local Node (never on the Worker)
+    "@prisma/adapter-better-sqlite3",
+    "better-sqlite3",
+    "bcryptjs",
+  ],
   images: {
     unoptimized: true,
   },

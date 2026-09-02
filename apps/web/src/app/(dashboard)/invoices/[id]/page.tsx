@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getInvoiceById } from "@/server/services/invoice-service";
 import { InvoiceDetailView } from "@/components/invoices/invoice-detail-view";
 

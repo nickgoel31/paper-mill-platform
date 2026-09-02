@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized: You must be logged in.") {

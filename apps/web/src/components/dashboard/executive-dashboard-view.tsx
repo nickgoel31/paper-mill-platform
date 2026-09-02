@@ -57,7 +57,7 @@ import {
   Activity,
   FileText,
 } from "lucide-react";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 interface ExecutiveDashboardViewProps {
   data: any;

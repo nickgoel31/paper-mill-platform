@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LoadStatus, OrderStatus, Role } from "@prisma/client";
+import { LoadStatus, OrderStatus, Role } from "@/generated/prisma/browser";
 import { formatWeightKg } from "@/lib/utils";
 import {
   markBatchPlanned,

@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getDashboardData } from "@/server/services/dashboard-service";
 import { ExecutiveDashboardView } from "@/components/dashboard/executive-dashboard-view";
 

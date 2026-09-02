@@ -57,7 +57,7 @@ import {
   updateUser,
   resetUserPassword,
 } from "@/server/services/user-service";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import {
   Users as UsersIcon,
   Plus,

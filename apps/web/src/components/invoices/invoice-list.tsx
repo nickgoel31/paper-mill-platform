@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { InvoiceStatus } from "@prisma/client";
+import { InvoiceStatus } from "@/generated/prisma/browser";
 import { getInvoices, getInvoiceSummaryStats } from "@/server/services/invoice-service";
 import { formatCurrencyINR, formatWeightKg } from "@/lib/utils";
 import {

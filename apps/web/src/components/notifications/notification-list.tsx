@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { NotificationStatus } from "@prisma/client";
+import { NotificationStatus } from "@/generated/prisma/browser";
 import {
   getNotifications,
   getNotificationSummaryStats,

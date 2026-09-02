@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { getStockPresets } from "@/server/services/stock-preset-service";
 import { StockPresetsManager } from "@/components/masters/stock-presets-manager";
 

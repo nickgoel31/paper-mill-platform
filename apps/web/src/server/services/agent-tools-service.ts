@@ -10,7 +10,7 @@ import {
   LoadStatus,
   InvoiceStatus,
   Prisma,
-} from "@prisma/client";
+} from "@/generated/prisma/browser";
 import { revalidatePath } from "next/cache";
 
 export interface AgentToolResult {

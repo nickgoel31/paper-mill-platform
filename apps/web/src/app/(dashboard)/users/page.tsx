@@ -1,7 +1,7 @@
 import { requireRole } from "@/server/auth-helpers";
 import { getUsers } from "@/server/services/user-service";
 import { UsersManager } from "@/components/masters/users-manager";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const metadata = {
   title: "User Management | PaperMill ERP",

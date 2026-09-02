@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getMachines } from "@/server/services/machine-service";
 import { MachinesManager } from "@/components/masters/machines-manager";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 
 export const metadata = {
   title: "Machine Master | PaperMill ERP",

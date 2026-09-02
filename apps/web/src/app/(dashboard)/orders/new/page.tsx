@@ -1,5 +1,5 @@
 import { requireRole } from "@/server/auth-helpers";
-import { Role } from "@prisma/client";
+import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 import { getActiveMachineConstraints } from "@/server/services/order-service";
 import { OrderForm } from "@/components/orders/order-form";

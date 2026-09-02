@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, Prisma } from "@prisma/client";
+import { Role, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import bcrypt from "bcryptjs";
 import {
