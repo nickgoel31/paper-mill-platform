@@ -12,6 +12,11 @@ const loginSchema = z.object({
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  // Behind Cloudflare's edge there is no fixed deployment URL env var the way
+  // Vercel provides one; trust the incoming Host header so Auth.js builds
+  // callback/redirect URLs from the real request origin instead of
+  // defaulting to http://localhost:3000.
+  trustHost: true,
   providers: [
     Credentials({
       name: "Credentials",

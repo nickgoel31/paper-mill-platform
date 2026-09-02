@@ -29,4 +29,7 @@ id = "5cea5db459f94b3b80dbcc8124d25ac9"
 [vars]
 NODE_ENV = "production"
 SOLVER_SERVICE_URL = "https://hra-solver-worker.thewalkingjumbo.workers.dev"
+AUTH_TRUST_HOST = "true"
+AUTH_URL = "https://paper-mill-platform.thewalkingjumbo.workers.dev"
+NEXTAUTH_URL = "https://paper-mill-platform.thewalkingjumbo.workers.dev"
 
