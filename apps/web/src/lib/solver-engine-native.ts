@@ -54,7 +54,7 @@ export function solveCuttingStockNative(req: SolverRequestPayload): OptimizeResp
           order_number: it.order_number,
           width_inch: it.width_inch,
           gsm: it.gsm,
-          reason: No machine configured for GSM ,
+          reason: `No machine configured for GSM ${gsm}`,
         });
       }
       continue;
