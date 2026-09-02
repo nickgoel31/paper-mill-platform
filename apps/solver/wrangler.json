@@ -1,0 +1,8 @@
+﻿{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hra-solver-worker",
+  "account_id": "1b189b0a1970e13bd394d3d4584a83e4",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-12-18",
+  "workers_dev": true
+}

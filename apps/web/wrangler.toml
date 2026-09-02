@@ -1,5 +1,6 @@
-﻿#:schema node_modules/wrangler/config-schema.json
+#:schema node_modules/wrangler/config-schema.json
 name = "paper-mill-platform"
+account_id = "1b189b0a1970e13bd394d3d4584a83e4"
 main = ".open-next/worker.js"
 compatibility_date = "2024-12-18"
 compatibility_flags = ["nodejs_compat"]
@@ -26,3 +27,5 @@ id = "5cea5db459f94b3b80dbcc8124d25ac9"
 
 [vars]
 NODE_ENV = "production"
+SOLVER_SERVICE_URL = "https://hra-solver-worker.thewalkingjumbo.workers.dev"
+

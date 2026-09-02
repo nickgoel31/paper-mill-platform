@@ -1,18 +1,24 @@
-import { PrismaClient } from "@prisma/client";
-import { PrismaNeon } from "@prisma/adapter-neon";
+﻿import { PrismaClient } from "@prisma/client";
 import { PrismaD1 } from "@prisma/adapter-d1";
+import { PrismaNeon } from "@prisma/adapter-neon";
 import { neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-  DB?: any; // Cloudflare D1 Database binding
-};
+declare global {
+  // eslint-disable-next-line no-var
+  var __prisma: PrismaClient | undefined;
+}
 
-function createPrismaClient(): PrismaClient {
-  // 1. Cloudflare D1 Serverless SQL (if running inside Cloudflare Workers with D1 binding)
-  if (typeof globalThis !== "undefined" && (globalThis as any).DB) {
-    const adapter = new PrismaD1((globalThis as any).DB);
+/**
+ * Creates a Prisma client using the correct adapter for the environment:
+ * 1. Cloudflare D1 (via env.DB binding injected by OpenNext/wrangler)
+ * 2. Neon serverless Postgres (DATABASE_URL contains neon.tech)
+ * 3. Local Postgres (direct connection string)
+ */
+function createPrismaClient(d1Binding?: unknown): PrismaClient {
+  // 1. Cloudflare D1 binding (passed from the Worker env at request time)
+  if (d1Binding) {
+    const adapter = new PrismaD1(d1Binding as any);
     return new PrismaClient({
       adapter: adapter as any,
       log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
@@ -22,14 +28,12 @@ function createPrismaClient(): PrismaClient {
   const dbUrl = process.env.DATABASE_URL || "";
   const isNeon = dbUrl.includes("neon.tech") || dbUrl.includes("sslmode=require");
 
-  // 2. Neon / Serverless PostgreSQL via HTTP/WebSocket adapter
+  // 2. Neon serverless Postgres
   if (isNeon) {
-    // Configure WebSocket for environments where WebSocket isn't globally available (Node.js runtime)
     if (typeof globalThis.WebSocket === "undefined") {
       neonConfig.webSocketConstructor = ws;
     }
     neonConfig.poolQueryViaFetch = true;
-
     const adapter = new PrismaNeon({ connectionString: dbUrl });
     return new PrismaClient({
       adapter: adapter as any,
@@ -37,12 +41,23 @@ function createPrismaClient(): PrismaClient {
     });
   }
 
-  // 3. Local development / direct PostgreSQL fallback
+  // 3. Local Postgres fallback
   return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });
 }
 
-export const db = globalForPrisma.prisma ?? createPrismaClient();
+// Singleton for non-edge (local dev) environments
+export const db: PrismaClient = globalThis.__prisma ?? createPrismaClient();
+if (process.env.NODE_ENV !== "production") globalThis.__prisma = db;
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+/**
+ * Call this in Cloudflare Workers/OpenNext contexts where env.DB is available.
+ * Returns a D1-backed Prisma client for the current request.
+ */
+export function getDb(env?: { DB?: unknown }): PrismaClient {
+  if (env?.DB) {
+    return createPrismaClient(env.DB);
+  }
+  return db;
+}

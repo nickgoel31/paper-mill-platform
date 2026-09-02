@@ -1,13 +1,11 @@
-{
-  "name": "hra-solver-container",
-  "version": "1.0.0",
+﻿{
+  "name": "hra-solver-worker",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "deploy": "wrangler deploy",
-    "dev": "wrangler dev"
-  },
-  "dependencies": {
-    "@cloudflare/containers": "^0.3.7"
+    "dev": "wrangler dev",
+    "type-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250224.0",
