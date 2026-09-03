@@ -19,6 +19,13 @@ export const orderItemSchema = z.object({
     .trim()
     .optional()
     .nullable(),
+  numberOfReels: z.coerce
+    .number()
+    .int("Reel count must be a whole number")
+    .min(0, "Reel count cannot be negative")
+    .max(100000, "Reel count too large")
+    .optional()
+    .nullable(),
   remark: z
     .string()
     .max(500, "Remark cannot exceed 500 characters")

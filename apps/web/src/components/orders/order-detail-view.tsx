@@ -492,6 +492,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches)</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Quality (GSM)</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Paper Type</TableHead>
+              <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Reels</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Ordered Qty</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Produced</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Dispatched</TableHead>
@@ -533,6 +534,9 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
                       : it.paperType === "WHITE"
                       ? "White"
                       : "Brown (Kraft)"}
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-bold text-slate-700">
+                    {it.numberOfReels ? `${it.numberOfReels}` : "—"}
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-slate-900">
                     {formatWeightKg(reqKg)}

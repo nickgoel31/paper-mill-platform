@@ -375,6 +375,10 @@ export async function createOrder(data: OrderFormInput) {
               item.paperType === PaperType.COLOURED
                 ? item.paperColour?.trim() || null
                 : null,
+            numberOfReels:
+              item.numberOfReels != null && item.numberOfReels > 0
+                ? Math.round(item.numberOfReels)
+                : null,
             remark: item.remark?.trim() || null,
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),
             tolerancePercent: new Prisma.Decimal(item.tolerancePercent.toFixed(2)),
@@ -466,6 +470,10 @@ export async function updateOrder(id: string, data: OrderFormInput) {
             paperColour:
               item.paperType === PaperType.COLOURED
                 ? item.paperColour?.trim() || null
+                : null,
+            numberOfReels:
+              item.numberOfReels != null && item.numberOfReels > 0
+                ? Math.round(item.numberOfReels)
                 : null,
             remark: item.remark?.trim() || null,
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),

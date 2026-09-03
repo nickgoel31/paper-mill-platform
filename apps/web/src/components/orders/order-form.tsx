@@ -28,6 +28,7 @@ const NEW_ITEM_DEFAULTS = {
   gsm: 120,
   paperType: PaperType.BROWN,
   paperColour: "",
+  numberOfReels: null as number | null,
   remark: "",
   quantityKg: 3000,
   tolerancePercent: 5.0,
@@ -120,6 +121,7 @@ export function OrderForm({
     gsm: Number(it.gsm),
     paperType: (it.paperType as PaperType) || PaperType.BROWN,
     paperColour: it.paperColour || "",
+    numberOfReels: it.numberOfReels ?? null,
     remark: it.remark || "",
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent || 5.0),
@@ -212,6 +214,8 @@ export function OrderForm({
       } else {
         const existing = mergedMap.get(key);
         existing.quantityKg = (Number(existing.quantityKg) || 0) + (Number(it.quantityKg) || 0);
+        const reels = (Number(existing.numberOfReels) || 0) + (Number(it.numberOfReels) || 0);
+        existing.numberOfReels = reels > 0 ? reels : null;
         if (it.remark && !existing.remark) existing.remark = it.remark;
       }
     });
@@ -471,7 +475,7 @@ export function OrderForm({
                 )}
 
                 <div className="flex items-center gap-1.5">
-                  <label className="text-[10px] font-bold uppercase text-slate-400">Qty</label>
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Rows</label>
                   <Input
                     type="number"
                     min={1}
@@ -507,6 +511,7 @@ export function OrderForm({
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches) *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">GSM *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[150px]">Paper Type *</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Qty (Reels)</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Tolerance (%)</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Rate / KG (₹)</TableHead>
@@ -634,6 +639,39 @@ export function OrderForm({
                               />
                             )}
                           </div>
+                        </TableCell>
+
+                        {/* Qty (Reels) */}
+                        <TableCell>
+                          <FormField
+                            control={form.control}
+                            name={`items.${idx}.numberOfReels`}
+                            render={({ field: itField }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <div className="relative">
+                                    <Input
+                                      type="number"
+                                      step="1"
+                                      min="0"
+                                      placeholder="—"
+                                      value={itField.value ?? ""}
+                                      onChange={(e) =>
+                                        itField.onChange(
+                                          e.target.value ? Math.floor(Number(e.target.value)) : null
+                                        )
+                                      }
+                                      className="h-9 text-xs rounded-xl font-mono bg-slate-50/70 border-slate-200 w-24"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                      reels
+                                    </span>
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
                         </TableCell>
 
                         {/* Quantity (KG) */}
