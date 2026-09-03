@@ -12,11 +12,12 @@ export const authConfig = {
       const isAuthRoute = nextUrl.pathname === "/login";
       const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
       const isAiAgentRoute = nextUrl.pathname.startsWith("/api/ai-agent");
-      const isPublicAsset = nextUrl.pathname.startsWith("/_next") || 
+      const isHealthRoute = nextUrl.pathname === "/api/health";
+      const isPublicAsset = nextUrl.pathname.startsWith("/_next") ||
                             nextUrl.pathname.startsWith("/favicon.ico") ||
                             nextUrl.pathname.startsWith("/static");
 
-      if (isApiAuthRoute || isAiAgentRoute || isPublicAsset) {
+      if (isApiAuthRoute || isAiAgentRoute || isHealthRoute || isPublicAsset) {
         return true;
       }
 

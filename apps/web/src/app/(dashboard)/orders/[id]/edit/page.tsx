@@ -1,8 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
 import { Role, OrderStatus } from "@/generated/prisma/browser";
-import { db } from "@/lib/db";
 import { getOrderById, getActiveMachineConstraints } from "@/server/services/order-service";
+import { getClientOptions } from "@/server/services/lookup-service";
 import { OrderForm } from "@/components/orders/order-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,7 @@ export default async function EditOrderPage({
 
   const [order, clients, machineConstraints] = await Promise.all([
     getOrderById(id),
-    db.client.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { id: true, name: true, code: true, city: true, state: true },
-      orderBy: { name: "asc" },
-    }),
+    getClientOptions(),
     getActiveMachineConstraints(),
   ]);
 

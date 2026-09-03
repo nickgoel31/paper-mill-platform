@@ -3,7 +3,12 @@
  * Deployed to Cloudflare Workers — no Docker, no containers required.
  */
 
-export interface Env {}
+export interface Env {
+  /** Base URL of the ERP web worker to keep warm. Overridable via wrangler vars. */
+  WEB_APP_URL?: string;
+}
+
+const DEFAULT_WEB_APP_URL = "https://paper-mill-platform.thewalkingjumbo.workers.dev";
 
 interface SolverMachineInput {
   id: string;
@@ -226,6 +231,20 @@ function solve(req: SolverRequestPayload) {
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization" };
 
 export default {
+  /**
+   * Cron-triggered keep-warm ping for the ERP web worker. Hitting the DB-backed
+   * health endpoint keeps that isolate (and its Prisma/D1 connection) hot so
+   * interactive navigations don't pay cold-start latency.
+   */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const base = env.WEB_APP_URL || DEFAULT_WEB_APP_URL;
+    ctx.waitUntil(
+      fetch(`${base}/api/health`, { headers: { "user-agent": "hra-solver-keepwarm" } })
+        .then((r) => console.log(`[keep-warm] ${base}/api/health -> ${r.status}`))
+        .catch((e) => console.warn(`[keep-warm] failed: ${e}`))
+    );
+  },
+
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });

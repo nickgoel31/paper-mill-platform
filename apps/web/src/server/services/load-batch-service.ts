@@ -10,7 +10,8 @@ import {
   buildPaginatedResponse,
 } from "./base-service";
 import { loadBatchSchema, LoadBatchInput } from "@/lib/schemas/load-batch";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // BATCH NUMBER GENERATOR (Monthly Reset: LB-YYMM-0001)
@@ -311,6 +312,7 @@ export async function createLoadBatch(data: LoadBatchInput) {
 
   revalidatePath("/loads");
   revalidatePath("/load-planning");
+  revalidateTag(DASHBOARD_TAG);
   return batch;
 }
 
@@ -405,6 +407,7 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
   revalidatePath(`/loads/${id}`);
   revalidatePath("/loads");
   revalidatePath("/load-planning");
+  revalidateTag(DASHBOARD_TAG);
   return updated;
 }
 
@@ -459,6 +462,7 @@ export async function markBatchPlanned(id: string) {
   revalidatePath(`/loads/${id}`);
   revalidatePath("/loads");
   revalidatePath("/load-planning");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
 }
@@ -514,6 +518,7 @@ export async function revertBatchToDraft(id: string) {
   revalidatePath(`/loads/${id}`);
   revalidatePath("/loads");
   revalidatePath("/load-planning");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
 }
@@ -575,6 +580,7 @@ export async function cancelLoadBatch(id: string, reason?: string) {
   revalidatePath(`/loads/${id}`);
   revalidatePath("/loads");
   revalidatePath("/load-planning");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
 }

@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { getOrders, getOrderSummaryStats } from "@/server/services/order-service";
+import { getClientOptions } from "@/server/services/lookup-service";
 import { OrderList } from "@/components/orders/order-list";
 import { Role } from "@/generated/prisma/browser";
-import { db } from "@/lib/db";
 
 export const metadata = {
   title: "Sales Orders | PaperMill ERP",
@@ -15,11 +15,7 @@ export default async function OrdersPage() {
   const [ordersRes, stats, clients] = await Promise.all([
     getOrders({ page: 1, pageSize: 20 }),
     getOrderSummaryStats(),
-    db.client.findMany({
-      where: { deletedAt: null },
-      select: { id: true, name: true, code: true },
-      orderBy: { name: "asc" },
-    }),
+    getClientOptions(),
   ]);
 
   return (

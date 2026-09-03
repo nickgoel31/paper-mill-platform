@@ -1,7 +1,7 @@
 import { requireRole } from "@/server/auth-helpers";
 import { Role } from "@/generated/prisma/browser";
-import { db } from "@/lib/db";
 import { getActiveMachineConstraints } from "@/server/services/order-service";
+import { getClientOptions } from "@/server/services/lookup-service";
 import { OrderForm } from "@/components/orders/order-form";
 
 export const metadata = {
@@ -12,11 +12,7 @@ export default async function NewOrderPage() {
   await requireRole(Role.ADMIN, Role.SALES);
 
   const [clients, machineConstraints] = await Promise.all([
-    db.client.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { id: true, name: true, code: true, city: true, state: true },
-      orderBy: { name: "asc" },
-    }),
+    getClientOptions(),
     getActiveMachineConstraints(),
   ]);
 

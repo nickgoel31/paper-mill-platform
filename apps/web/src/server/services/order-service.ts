@@ -15,7 +15,9 @@ import {
   OrderFormInput,
   StatusTransitionInput,
 } from "@/lib/schemas/order";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { getMachineConstraints } from "./lookup-service";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // STATUS TRANSITION RULES (Single Source of Truth)
@@ -215,69 +217,35 @@ export async function getOrderSummaryStats() {
   const weekFromNow = new Date();
   weekFromNow.setDate(now.getDate() + 7);
 
-  const [openCount, allActiveItems, dueThisWeekCount, overdueCount] = await Promise.all([
-    db.order.count({
-      where: {
-        status: {
-          in: [
-            OrderStatus.DRAFT,
-            OrderStatus.CONFIRMED,
-            OrderStatus.PLANNED,
-            OrderStatus.IN_PRODUCTION,
-          ],
-        },
-      },
+  const activeStatuses = [
+    OrderStatus.DRAFT,
+    OrderStatus.CONFIRMED,
+    OrderStatus.PLANNED,
+    OrderStatus.IN_PRODUCTION,
+  ];
+
+  // Two queries instead of four: one pulls every active order's delivery date
+  // (open / due-this-week / overdue are all derived from it in JS), the other
+  // sums outstanding kg across their line items.
+  const [activeOrders, allActiveItems] = await Promise.all([
+    db.order.findMany({
+      where: { status: { in: activeStatuses } },
+      select: { deliveryDate: true },
     }),
     db.orderItem.findMany({
-      where: {
-        order: {
-          status: {
-            in: [
-              OrderStatus.DRAFT,
-              OrderStatus.CONFIRMED,
-              OrderStatus.PLANNED,
-              OrderStatus.IN_PRODUCTION,
-            ],
-          },
-        },
-      },
-      select: {
-        quantityKg: true,
-        producedKg: true,
-      },
-    }),
-    db.order.count({
-      where: {
-        status: {
-          in: [
-            OrderStatus.DRAFT,
-            OrderStatus.CONFIRMED,
-            OrderStatus.PLANNED,
-            OrderStatus.IN_PRODUCTION,
-          ],
-        },
-        deliveryDate: {
-          gte: now,
-          lte: weekFromNow,
-        },
-      },
-    }),
-    db.order.count({
-      where: {
-        status: {
-          in: [
-            OrderStatus.DRAFT,
-            OrderStatus.CONFIRMED,
-            OrderStatus.PLANNED,
-            OrderStatus.IN_PRODUCTION,
-          ],
-        },
-        deliveryDate: {
-          lt: now,
-        },
-      },
+      where: { order: { status: { in: activeStatuses } } },
+      select: { quantityKg: true, producedKg: true },
     }),
   ]);
+
+  let dueThisWeekCount = 0;
+  let overdueCount = 0;
+  for (const o of activeOrders) {
+    if (!o.deliveryDate) continue;
+    const d = o.deliveryDate;
+    if (d < now) overdueCount += 1;
+    else if (d <= weekFromNow) dueThisWeekCount += 1;
+  }
 
   let totalPendingKg = 0;
   for (const item of allActiveItems) {
@@ -287,7 +255,7 @@ export async function getOrderSummaryStats() {
   }
 
   return {
-    openOrdersCount: openCount,
+    openOrdersCount: activeOrders.length,
     totalPendingKg,
     ordersDueThisWeek: dueThisWeekCount,
     overdueOrdersCount: overdueCount,
@@ -295,49 +263,51 @@ export async function getOrderSummaryStats() {
 }
 
 export async function getOrderById(id: string) {
-  const order = await db.order.findUnique({
-    where: { id },
-    include: {
-      client: true,
-      createdBy: { select: { id: true, name: true, role: true } },
-      items: {
-        orderBy: { widthInch: "desc" },
-        include: {
-          patternCuts: {
-            include: {
-              cuttingPattern: {
-                include: {
-                  productionRun: {
-                    include: { machine: true },
+  // The order graph and its audit timeline are independent queries — run them
+  // concurrently instead of sequentially.
+  const [order, auditLogs] = await Promise.all([
+    db.order.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        createdBy: { select: { id: true, name: true, role: true } },
+        items: {
+          orderBy: { widthInch: "desc" },
+          include: {
+            patternCuts: {
+              include: {
+                cuttingPattern: {
+                  include: {
+                    productionRun: {
+                      include: { machine: true },
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-      loadAssignments: {
-        include: {
-          loadBatch: {
-            include: { truck: true, transporter: true },
+        loadAssignments: {
+          include: {
+            loadBatch: {
+              include: { truck: true, transporter: true },
+            },
           },
         },
       },
-    },
-  });
+    }),
+    db.auditLog.findMany({
+      where: {
+        entityType: "Order",
+        entityId: id,
+      },
+      orderBy: { createdAt: "desc" },
+      include: { user: { select: { name: true, role: true } } },
+      take: 50,
+    }),
+  ]);
 
   if (!order) return null;
-
-  // Retrieve timeline audit logs for this order
-  const auditLogs = await db.auditLog.findMany({
-    where: {
-      entityType: "Order",
-      entityId: id,
-    },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { name: true, role: true } } },
-    take: 50,
-  });
 
   return {
     ...order,
@@ -346,34 +316,8 @@ export async function getOrderById(id: string) {
 }
 
 export async function getActiveMachineConstraints() {
-  const machines = await db.machine.findMany({
-    where: { deletedAt: null, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      maxDeckleInch: true,
-      minDeckleInch: true,
-      minGsm: true,
-      maxGsm: true,
-    },
-    orderBy: { maxDeckleInch: "desc" },
-  });
-
-  const maxDeckle = machines.length > 0 ? Math.max(...machines.map((m) => Number(m.maxDeckleInch))) : 0;
-  const minGsm = machines.length > 0 ? Math.min(...machines.map((m) => m.minGsm)) : 0;
-  const maxGsm = machines.length > 0 ? Math.max(...machines.map((m) => m.maxGsm)) : 0;
-
-  return {
-    machines: machines.map((m) => ({
-      ...m,
-      maxDeckleInch: Number(m.maxDeckleInch),
-      minDeckleInch: Number(m.minDeckleInch),
-    })),
-    maxDeckle,
-    minGsm,
-    maxGsm,
-  };
+  // Delegates to the cached machine lookup (invalidated on machine mutations).
+  return getMachineConstraints();
 }
 
 // -----------------------------------------------------------------------------
@@ -457,6 +401,7 @@ export async function createOrder(data: OrderFormInput) {
   });
 
   revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
   return order;
 }
 
@@ -535,6 +480,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
 
   revalidatePath(`/orders/${id}`);
   revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
   return updated;
 }
 
@@ -586,6 +532,7 @@ export async function transitionOrderStatus(input: StatusTransitionInput) {
 
   revalidatePath(`/orders/${validated.orderId}`);
   revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
   return updated;
 }
 

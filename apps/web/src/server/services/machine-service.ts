@@ -10,7 +10,8 @@ import {
   buildPaginatedResponse,
 } from "./base-service";
 import { machineSchema, MachineFormInput } from "@/lib/schemas/machine";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { LOOKUP_TAGS } from "./cache-tags";
 
 export async function getMachines(params: QueryParams) {
   const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
@@ -97,6 +98,7 @@ export async function createMachine(data: MachineFormInput) {
 
   revalidatePath("/masters/machines");
   revalidatePath("/");
+  revalidateTag(LOOKUP_TAGS.machines);
   return machine;
 }
 
@@ -162,6 +164,7 @@ export async function updateMachine(id: string, data: MachineFormInput) {
 
   revalidatePath("/masters/machines");
   revalidatePath("/");
+  revalidateTag(LOOKUP_TAGS.machines);
   return updated;
 }
 
@@ -215,5 +218,6 @@ export async function deleteMachine(id: string) {
 
   revalidatePath("/masters/machines");
   revalidatePath("/");
+  revalidateTag(LOOKUP_TAGS.machines);
   return deleted;
 }

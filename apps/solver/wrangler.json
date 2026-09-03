@@ -4,5 +4,11 @@
   "account_id": "1b189b0a1970e13bd394d3d4584a83e4",
   "main": "src/index.ts",
   "compatibility_date": "2025-09-01",
-  "workers_dev": true
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "vars": {
+    "WEB_APP_URL": "https://paper-mill-platform.thewalkingjumbo.workers.dev"
+  }
 }

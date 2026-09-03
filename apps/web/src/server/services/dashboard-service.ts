@@ -1,9 +1,11 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
-import { Role, OrderStatus, RunStatus, LoadStatus, NotificationStatus } from "@/generated/prisma/browser";
+import { OrderStatus, RunStatus, LoadStatus, NotificationStatus } from "@/generated/prisma/browser";
+import { DASHBOARD_TAG } from "./cache-tags";
 
-export async function getDashboardData(days: number = 30) {
+async function computeDashboardData(days: number) {
   const now = new Date();
   const startDate = new Date();
   startDate.setDate(startDate.getDate() - days);
@@ -21,8 +23,17 @@ export async function getDashboardData(days: number = 30) {
   const endOfToday = new Date(now);
   endOfToday.setHours(23, 59, 59, 999);
 
+  const activeNotDone = {
+    notIn: [OrderStatus.PRODUCED, OrderStatus.DISPATCHED, OrderStatus.CANCELLED],
+  };
+
   // ---------------------------------------------------------------------------
-  // 1. KPI STRIP QUERIES
+  // Everything the dashboard needs, fetched in ONE parallel wave.
+  //
+  // Previously wave 1 was 9 parallel queries followed by 5 more sequential
+  // `await`s (order funnel, top-clients dispatch graph, overdue list, today's
+  // runs, today's batches). On D1 each round trip is ~100-200ms, so the tail
+  // alone cost ~1s. They are all independent — run them together.
   // ---------------------------------------------------------------------------
   const [
     openOrdersRes,
@@ -34,6 +45,11 @@ export async function getDashboardData(days: number = 30) {
     invoicedThisMonthRes,
     failedNotificationsCount,
     overdueBatchesCount,
+    statusGroups,
+    dispatchesWithClients,
+    overdueOrdersList,
+    todayRuns,
+    todayBatches,
   ] = await Promise.all([
     // Open orders & pending kg
     db.order.findMany({
@@ -47,7 +63,7 @@ export async function getDashboardData(days: number = 30) {
     db.order.count({
       where: {
         deliveryDate: { gte: startOfWeek, lte: endOfWeek },
-        status: { notIn: [OrderStatus.PRODUCED, OrderStatus.DISPATCHED, OrderStatus.CANCELLED] },
+        status: activeNotDone,
       },
     }),
 
@@ -55,7 +71,7 @@ export async function getDashboardData(days: number = 30) {
     db.order.count({
       where: {
         deliveryDate: { lt: startOfToday },
-        status: { notIn: [OrderStatus.PRODUCED, OrderStatus.DISPATCHED, OrderStatus.CANCELLED] },
+        status: activeNotDone,
       },
     }),
 
@@ -106,6 +122,59 @@ export async function getDashboardData(days: number = 30) {
         status: { in: [LoadStatus.PLANNED, LoadStatus.LOADING] },
       },
     }),
+
+    // Order status funnel — counts per status in a single GROUP BY instead of
+    // loading every order + all its items.
+    db.order.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+    }),
+
+    // Top 10 clients by dispatched kg (last `days`)
+    db.dispatch.findMany({
+      where: { dispatchedAt: { gte: startDate } },
+      include: {
+        loadBatch: {
+          include: {
+            orders: {
+              include: {
+                order: {
+                  select: {
+                    client: { select: { name: true } },
+                    items: { select: { quantityKg: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    // Overdue orders list
+    db.order.findMany({
+      where: {
+        deliveryDate: { lt: startOfToday },
+        status: activeNotDone,
+      },
+      take: 5,
+      include: { client: { select: { name: true } } },
+      orderBy: { deliveryDate: "asc" },
+    }),
+
+    // Today's scheduled runs
+    db.productionRun.findMany({
+      where: { createdAt: { gte: startOfToday, lte: endOfToday } },
+      include: { machine: true },
+      orderBy: { createdAt: "desc" },
+    }),
+
+    // Today's planned dispatches
+    db.loadBatch.findMany({
+      where: { plannedDispatchDate: { gte: startOfToday, lte: endOfToday } },
+      include: { truck: true },
+      orderBy: { plannedDispatchDate: "asc" },
+    }),
   ]);
 
   // Compute open pending kg
@@ -126,7 +195,7 @@ export async function getDashboardData(days: number = 30) {
   const invoicedThisMonth = Number(invoicedThisMonthRes._sum.totalAmount || 0);
 
   // ---------------------------------------------------------------------------
-  // 2. CHARTS DATA AGGREGATION
+  // CHARTS
   // ---------------------------------------------------------------------------
 
   // Chart 1: Trim % Trend (Daily)
@@ -163,52 +232,20 @@ export async function getDashboardData(days: number = 30) {
   }));
 
   // Chart 3: Order Status Funnel
-  const allOrders = await db.order.findMany({
-    select: {
-      status: true,
-      items: { select: { quantityKg: true } },
-    },
-  });
-
-  const statusMap = new Map<string, { count: number; totalKg: number }>();
-  allOrders.forEach((o) => {
-    const orderKg = o.items.reduce((acc, it) => acc + Number(it.quantityKg || 0), 0);
-    const prev = statusMap.get(o.status) || { count: 0, totalKg: 0 };
-    statusMap.set(o.status, {
-      count: prev.count + 1,
-      totalKg: prev.totalKg + orderKg,
-    });
+  const statusCount = new Map<string, number>();
+  statusGroups.forEach((g) => {
+    statusCount.set(g.status, g._count._all);
   });
 
   const orderStatusFunnel = [
-    { status: "CONFIRMED", label: "Confirmed", count: statusMap.get(OrderStatus.CONFIRMED)?.count || 0 },
-    { status: "PLANNED", label: "Deckle Planned", count: statusMap.get(OrderStatus.PLANNED)?.count || 0 },
-    { status: "IN_PRODUCTION", label: "In Production", count: statusMap.get(OrderStatus.IN_PRODUCTION)?.count || 0 },
-    { status: "PRODUCED", label: "Produced (Ready)", count: statusMap.get(OrderStatus.PRODUCED)?.count || 0 },
-    { status: "DISPATCHED", label: "Dispatched", count: statusMap.get(OrderStatus.DISPATCHED)?.count || 0 },
+    { status: "CONFIRMED", label: "Confirmed", count: statusCount.get(OrderStatus.CONFIRMED) || 0 },
+    { status: "PLANNED", label: "Deckle Planned", count: statusCount.get(OrderStatus.PLANNED) || 0 },
+    { status: "IN_PRODUCTION", label: "In Production", count: statusCount.get(OrderStatus.IN_PRODUCTION) || 0 },
+    { status: "PRODUCED", label: "Produced (Ready)", count: statusCount.get(OrderStatus.PRODUCED) || 0 },
+    { status: "DISPATCHED", label: "Dispatched", count: statusCount.get(OrderStatus.DISPATCHED) || 0 },
   ];
 
   // Chart 4: Top 10 Clients by Dispatched kg
-  const dispatchesWithClients = await db.dispatch.findMany({
-    where: { dispatchedAt: { gte: startDate } },
-    include: {
-      loadBatch: {
-        include: {
-          orders: {
-            include: {
-              order: {
-                select: {
-                  client: { select: { name: true } },
-                  items: { select: { quantityKg: true } },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
   const clientKgMap = new Map<string, number>();
   dispatchesWithClients.forEach((d) => {
     d.loadBatch.orders.forEach((lo) => {
@@ -227,42 +264,13 @@ export async function getDashboardData(days: number = 30) {
     }));
 
   // ---------------------------------------------------------------------------
-  // 3. ACTION LISTS ("NEEDS ATTENTION" & "TODAY'S SCHEDULE")
+  // ACTION LISTS
   // ---------------------------------------------------------------------------
 
-  // Overdue Orders list
-  const overdueOrdersList = await db.order.findMany({
-    where: {
-      deliveryDate: { lt: startOfToday },
-      status: { notIn: [OrderStatus.PRODUCED, OrderStatus.DISPATCHED, OrderStatus.CANCELLED] },
-    },
-    take: 5,
-    include: { client: { select: { name: true } } },
-    orderBy: { deliveryDate: "asc" },
-  });
-
-  // High Trim Runs (> 6%)
+  // High Trim Runs (> 6%) — derived from runs30d, no extra query
   const highTrimRuns = runs30d
     .filter((r) => Number(r.totalTrimPercent || 0) > 6.0)
     .slice(0, 5);
-
-  // Today's Scheduled Runs
-  const todayRuns = await db.productionRun.findMany({
-    where: {
-      createdAt: { gte: startOfToday, lte: endOfToday },
-    },
-    include: { machine: true },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // Today's Planned Dispatches
-  const todayBatches = await db.loadBatch.findMany({
-    where: {
-      plannedDispatchDate: { gte: startOfToday, lte: endOfToday },
-    },
-    include: { truck: true },
-    orderBy: { plannedDispatchDate: "asc" },
-  });
 
   return {
     kpis: {
@@ -319,4 +327,19 @@ export async function getDashboardData(days: number = 30) {
       })),
     },
   };
+}
+
+/**
+ * Executive dashboard payload. Cached in the KV incremental cache for 60s and on
+ * the `DASHBOARD_TAG` tag — repeat navigations (and every user after the first)
+ * are served from cache instead of re-running ~14 D1 queries. Mutations that
+ * change the numbers call `revalidateTag(DASHBOARD_TAG)`.
+ */
+export async function getDashboardData(days: number = 30) {
+  const cached = unstable_cache(
+    () => computeDashboardData(days),
+    ["dashboard-data", String(days)],
+    { tags: [DASHBOARD_TAG], revalidate: 60 }
+  );
+  return cached();
 }

@@ -1,8 +1,8 @@
 import { auth } from "@/lib/auth";
 import { getLoadBatches } from "@/server/services/load-batch-service";
+import { getTruckOptions, getTransporterOptions } from "@/server/services/lookup-service";
 import { LoadList } from "@/components/loads/load-list";
 import { Role } from "@/generated/prisma/browser";
-import { db } from "@/lib/db";
 
 export const metadata = {
   title: "Load Planning | PaperMill ERP",
@@ -14,16 +14,8 @@ export default async function LoadsPage() {
 
   const [batchesRes, trucks, transporters] = await Promise.all([
     getLoadBatches({ page: 1, pageSize: 20 }),
-    db.truck.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { id: true, registrationNumber: true, capacityKg: true },
-      orderBy: { registrationNumber: "asc" },
-    }),
-    db.transporter.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
+    getTruckOptions(),
+    getTransporterOptions(),
   ]);
 
   return (

@@ -16,7 +16,8 @@ import {
   parsePaginationParams,
   buildPaginatedResponse,
 } from "./base-service";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // DISPATCH NUMBER GENERATOR (DSP-YYMM-0001)
@@ -361,6 +362,7 @@ export async function confirmDispatch(input: ConfirmDispatchInput) {
   });
 
   revalidatePath("/dispatch");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath(`/dispatch/${input.loadBatchId}`);
   revalidatePath("/dispatch/history");
   revalidatePath("/orders");
@@ -527,5 +529,6 @@ export async function markDispatchDelivered(dispatchId: string) {
 
   revalidatePath("/dispatch/history");
   revalidatePath("/dispatch");
+  revalidateTag(DASHBOARD_TAG);
   return updated;
 }

@@ -10,6 +10,13 @@ workers_dev = true
 directory = ".open-next/assets"
 binding = "ASSETS"
 
+# Self-reference so OpenNext can revalidate `unstable_cache` / ISR entries in the
+# background (stale-while-revalidate) instead of blocking the request that finds
+# a stale entry. Service name must match `name` above.
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "paper-mill-platform"
+
 # Cloudflare D1 Database Binding (5 GB Free Relational SQL)
 [[d1_databases]]
 binding = "DB"
@@ -24,6 +31,12 @@ bucket_name = "hra-documents"
 # Cloudflare Workers KV (1 GB Free In-Memory Cache)
 [[kv_namespaces]]
 binding = "ERP_KV"
+id = "5cea5db459f94b3b80dbcc8124d25ac9"
+
+# OpenNext incremental cache (Next.js unstable_cache / ISR) — backed by the same
+# KV namespace, entries are namespaced under the `incremental-cache` prefix.
+[[kv_namespaces]]
+binding = "NEXT_INC_CACHE_KV"
 id = "5cea5db459f94b3b80dbcc8124d25ac9"
 
 [vars]

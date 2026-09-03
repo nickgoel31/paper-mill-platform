@@ -9,7 +9,8 @@ import {
   parsePaginationParams,
   buildPaginatedResponse,
 } from "./base-service";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // QUERY RUNS & KPIS
@@ -262,6 +263,7 @@ export async function releaseRunToFloor(id: string) {
 
   revalidatePath(`/production/${id}`);
   revalidatePath("/production");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/operator");
   return updated;
 }
@@ -339,6 +341,7 @@ export async function startProductionRun(id: string, actionId?: string) {
 
   revalidatePath(`/production/${id}`);
   revalidatePath("/production");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/operator");
   return updated;
 }
@@ -551,6 +554,7 @@ export async function completeProductionRun(input: {
 
   revalidatePath(`/production/${input.runId}`);
   revalidatePath("/production");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/operator");
   revalidatePath("/orders");
   return completed;
@@ -625,6 +629,7 @@ export async function cancelProductionRun(id: string, reason?: string) {
 
   revalidatePath(`/production/${id}`);
   revalidatePath("/production");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return cancelled;
 }

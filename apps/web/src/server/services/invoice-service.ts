@@ -9,7 +9,8 @@ import {
   parsePaginationParams,
   buildPaginatedResponse,
 } from "./base-service";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // FINANCIAL YEAR INVOICE NUMBER GENERATOR (INV-2526-0001)
@@ -317,6 +318,7 @@ export async function createInvoicesFromDispatch(dispatchId: string) {
   });
 
   revalidatePath("/invoices");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath("/dispatch/history");
   return createdInvoices;
 }
@@ -359,6 +361,7 @@ export async function cancelInvoice(invoiceId: string, reason: string) {
   });
 
   revalidatePath("/invoices");
+  revalidateTag(DASHBOARD_TAG);
   revalidatePath(`/invoices/${invoiceId}`);
   return updated;
 }

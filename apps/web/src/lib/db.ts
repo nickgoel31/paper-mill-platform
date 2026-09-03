@@ -22,8 +22,19 @@ declare global {
  */
 
 function clientFromD1(d1: unknown): PrismaClient {
+  // D1 read replication only takes effect through the Sessions API. Wrapping the
+  // binding in a session routes reads to the nearest replica while keeping reads
+  // sequentially consistent with this session's own writes (writes still go to
+  // the primary). `withSession` is guarded so the app keeps working on runtimes
+  // / local adapters that don't expose it.
+  const binding = d1 as { withSession?: (constraint: string) => unknown };
+  const client =
+    typeof binding?.withSession === "function"
+      ? binding.withSession("first-unconstrained")
+      : d1;
+
   return new PrismaClient({
-    adapter: new PrismaD1(d1 as never),
+    adapter: new PrismaD1(client as never),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }

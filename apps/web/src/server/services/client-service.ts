@@ -10,7 +10,8 @@ import {
   buildPaginatedResponse,
 } from "./base-service";
 import { clientSchema, ClientFormInput } from "@/lib/schemas/client";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { LOOKUP_TAGS } from "./cache-tags";
 
 export async function getClients(params: QueryParams) {
   const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
@@ -101,6 +102,7 @@ export async function createClient(data: ClientFormInput) {
   });
 
   revalidatePath("/masters/clients");
+  revalidateTag(LOOKUP_TAGS.clients);
   return client;
 }
 
@@ -159,6 +161,7 @@ export async function updateClient(id: string, data: ClientFormInput) {
   });
 
   revalidatePath("/masters/clients");
+  revalidateTag(LOOKUP_TAGS.clients);
   return updated;
 }
 
@@ -216,5 +219,6 @@ export async function deleteClient(id: string) {
   });
 
   revalidatePath("/masters/clients");
+  revalidateTag(LOOKUP_TAGS.clients);
   return deleted;
 }

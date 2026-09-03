@@ -5,6 +5,7 @@ import {
   getWastageLogs,
   getWastageAnalytics,
 } from "@/server/services/wastage-service";
+import { getMachineOptions } from "@/server/services/lookup-service";
 import { WastagePageContainer } from "@/components/wastage/wastage-page-container";
 
 export const metadata = {
@@ -23,11 +24,7 @@ export default async function WastagePage() {
   const [initialLogs, analytics, machines, runs] = await Promise.all([
     getWastageLogs({ page: 1, pageSize: 20 }),
     getWastageAnalytics(30),
-    db.machine.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { id: true, name: true, code: true },
-      orderBy: { name: "asc" },
-    }),
+    getMachineOptions(),
     db.productionRun.findMany({
       orderBy: { createdAt: "desc" },
       take: 25,

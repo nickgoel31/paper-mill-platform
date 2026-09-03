@@ -15,7 +15,8 @@ import {
   TransporterFormInput,
   TruckFormInput,
 } from "@/lib/schemas/truck";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { LOOKUP_TAGS } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // TRANSPORTER ACTIONS
@@ -88,6 +89,8 @@ export async function createTransporter(data: TransporterFormInput) {
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return transporter;
 }
 
@@ -127,6 +130,8 @@ export async function updateTransporter(id: string, data: TransporterFormInput) 
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return updated;
 }
 
@@ -179,6 +184,8 @@ export async function deleteTransporter(id: string) {
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return deleted;
 }
 
@@ -265,6 +272,8 @@ export async function createTruck(data: TruckFormInput) {
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return truck;
 }
 
@@ -316,6 +325,8 @@ export async function updateTruck(id: string, data: TruckFormInput) {
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return updated;
 }
 
@@ -368,5 +379,7 @@ export async function deleteTruck(id: string) {
   });
 
   revalidatePath("/masters/trucks");
+  revalidateTag(LOOKUP_TAGS.trucks);
+  revalidateTag(LOOKUP_TAGS.transporters);
   return deleted;
 }

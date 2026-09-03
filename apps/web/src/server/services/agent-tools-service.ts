@@ -11,7 +11,8 @@ import {
   InvoiceStatus,
   Prisma,
 } from "@/generated/prisma/browser";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG, LOOKUP_TAGS } from "./cache-tags";
 
 export interface AgentToolResult {
   success: boolean;
@@ -158,6 +159,7 @@ export async function agentCreateOrder(input: {
     });
 
     revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
     revalidatePath("/deckle");
     revalidatePath("/");
 
@@ -209,6 +211,7 @@ export async function agentUpdateOrder(input: {
     });
 
     revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
     revalidatePath(`/orders/${order.id}`);
 
     const totalKg = updated.items.reduce((s, i) => s + Number(i.quantityKg), 0);
@@ -259,6 +262,7 @@ export async function agentUpdateOrderStatus(input: {
     });
 
     revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
     revalidatePath(`/orders/${order.id}`);
 
     return {
@@ -288,6 +292,7 @@ export async function agentDeleteOrder(input: { orderNumberOrId: string }) {
     await db.order.delete({ where: { id: order.id } });
 
     revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
     revalidatePath("/deckle");
 
     return {
@@ -375,6 +380,7 @@ export async function agentCreateClient(input: {
     });
 
     revalidatePath("/masters/clients");
+    revalidateTag(LOOKUP_TAGS.clients);
     return {
       success: true,
       message: `Created client '${client.name}' (${client.code}).`,
@@ -416,6 +422,7 @@ export async function agentUpdateClient(input: {
     });
 
     revalidatePath("/masters/clients");
+    revalidateTag(LOOKUP_TAGS.clients);
     return {
       success: true,
       message: `Updated client '${updated.name}' (${updated.code}).`,
@@ -440,6 +447,7 @@ export async function agentDeleteClient(input: { idOrCode: string }) {
     });
 
     revalidatePath("/masters/clients");
+    revalidateTag(LOOKUP_TAGS.clients);
     return {
       success: true,
       message: `Deactivated client '${client.name}'.`,
@@ -901,6 +909,7 @@ export async function agentCreateMachine(input: {
     });
 
     revalidatePath("/masters/machines");
+    revalidateTag(LOOKUP_TAGS.machines);
     return {
       success: true,
       message: `Created machine '${machine.name}' (${machine.code}) with max deckle ${machine.maxDeckleInch}".`,
@@ -936,6 +945,7 @@ export async function agentUpdateMachine(input: {
     });
 
     revalidatePath("/masters/machines");
+    revalidateTag(LOOKUP_TAGS.machines);
     return {
       success: true,
       message: `Updated machine '${updated.name}' (${updated.code}).`,

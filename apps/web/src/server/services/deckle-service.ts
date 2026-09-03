@@ -9,7 +9,8 @@ import {
   SolverRequestPayload,
   OptimizeResponse,
 } from "@/lib/solver-client";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { DASHBOARD_TAG } from "./cache-tags";
 
 // -----------------------------------------------------------------------------
 // RUN NUMBER GENERATOR (Monthly Reset: PR-YYMM-0001)
@@ -313,5 +314,6 @@ export async function commitProductionRuns(input: CommitRunsInput) {
   revalidatePath("/production");
   revalidatePath("/deckle");
   revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
   return createdRuns;
 }
