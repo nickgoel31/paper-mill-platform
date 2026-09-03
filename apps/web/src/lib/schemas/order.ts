@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
+import { OrderPriority, OrderStatus, PaperType } from "@/generated/prisma/browser";
 
 export const orderItemSchema = z.object({
   id: z.string().optional(),
@@ -12,6 +12,19 @@ export const orderItemSchema = z.object({
     .int("GSM must be an integer")
     .min(40, "GSM must be at least 40")
     .max(600, "GSM cannot exceed 600"),
+  paperType: z.nativeEnum(PaperType).default(PaperType.BROWN),
+  paperColour: z
+    .string()
+    .max(60, "Colour name too long")
+    .trim()
+    .optional()
+    .nullable(),
+  remark: z
+    .string()
+    .max(500, "Remark cannot exceed 500 characters")
+    .trim()
+    .optional()
+    .nullable(),
   quantityKg: z.coerce
     .number()
     .positive("Quantity must be greater than 0")
@@ -35,6 +48,11 @@ export const orderFormSchema = z
     deliveryDate: z.coerce.date().optional().nullable(),
     priority: z.nativeEnum(OrderPriority).default(OrderPriority.NORMAL),
     notes: z.string().optional().nullable(),
+    otherNotes: z
+      .string()
+      .max(1000, "Other notes cannot exceed 1000 characters")
+      .optional()
+      .nullable(),
     items: z
       .array(orderItemSchema)
       .min(1, "An order must contain at least one line item"),

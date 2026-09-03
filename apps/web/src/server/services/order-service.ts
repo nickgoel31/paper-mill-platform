@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, OrderStatus, OrderPriority, Prisma } from "@/generated/prisma/browser";
+import { Role, OrderStatus, OrderPriority, PaperType, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -364,11 +364,18 @@ export async function createOrder(data: OrderFormInput) {
         priority: validated.priority,
         status: OrderStatus.DRAFT,
         notes: validated.notes?.trim() || null,
+        otherNotes: validated.otherNotes?.trim() || null,
         createdById: userId,
         items: {
           create: validated.items.map((item) => ({
             widthInch: new Prisma.Decimal(item.widthInch.toFixed(2)),
             gsm: item.gsm,
+            paperType: item.paperType,
+            paperColour:
+              item.paperType === PaperType.COLOURED
+                ? item.paperColour?.trim() || null
+                : null,
+            remark: item.remark?.trim() || null,
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),
             tolerancePercent: new Prisma.Decimal(item.tolerancePercent.toFixed(2)),
             ratePerKg: item.ratePerKg ? new Prisma.Decimal(item.ratePerKg.toFixed(2)) : null,
@@ -450,10 +457,17 @@ export async function updateOrder(id: string, data: OrderFormInput) {
         deliveryDate: validated.deliveryDate || null,
         priority: validated.priority,
         notes: validated.notes?.trim() || null,
+        otherNotes: validated.otherNotes?.trim() || null,
         items: {
           create: validated.items.map((item) => ({
             widthInch: new Prisma.Decimal(item.widthInch.toFixed(2)),
             gsm: item.gsm,
+            paperType: item.paperType,
+            paperColour:
+              item.paperType === PaperType.COLOURED
+                ? item.paperColour?.trim() || null
+                : null,
+            remark: item.remark?.trim() || null,
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),
             tolerancePercent: new Prisma.Decimal(item.tolerancePercent.toFixed(2)),
             ratePerKg: item.ratePerKg ? new Prisma.Decimal(item.ratePerKg.toFixed(2)) : null,

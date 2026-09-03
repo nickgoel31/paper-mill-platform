@@ -36,6 +36,12 @@ enum OrderPriority {
   STOCK
 }
 
+enum PaperType {
+  WHITE
+  BROWN
+  COLOURED
+}
+
 enum RunStatus {
   PLANNED
   RELEASED
@@ -207,6 +213,7 @@ model Order {
   priority     OrderPriority @default(NORMAL)
   status       OrderStatus   @default(DRAFT)
   notes        String?
+  otherNotes   String?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   createdById  String?
@@ -229,6 +236,9 @@ model OrderItem {
   orderId          String
   widthInch        Decimal
   gsm              Int
+  paperType        PaperType @default(BROWN)
+  paperColour      String?
+  remark           String?
   quantityKg       Decimal
   tolerancePercent Decimal @default(5.00)
   ratePerKg        Decimal?

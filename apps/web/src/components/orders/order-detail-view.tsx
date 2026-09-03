@@ -415,6 +415,13 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
               <p className="text-[11px] leading-relaxed">{order.notes}</p>
             </div>
           )}
+
+          {order.otherNotes && (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-600 space-y-1">
+              <strong className="text-slate-900 font-bold block text-[11px]">Other Notes:</strong>
+              <p className="text-[11px] leading-relaxed whitespace-pre-wrap">{order.otherNotes}</p>
+            </div>
+          )}
         </div>
 
         {/* Right 1 Col: Delivery Schedule */}
@@ -477,12 +484,14 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
           </span>
         </div>
 
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader className="bg-slate-50/70">
             <TableRow>
               <TableHead className="w-12 text-center text-[10px] font-bold font-mono">#</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches)</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Quality (GSM)</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Paper Type</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Ordered Qty</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Produced</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Dispatched</TableHead>
@@ -507,11 +516,23 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
                   </TableCell>
                   <TableCell className="font-mono font-black text-slate-900 text-sm">
                     {formatWidthInch(it.widthInch)}
+                    {it.remark && (
+                      <span className="block font-sans font-normal text-[10px] text-slate-400 mt-0.5 max-w-[180px] truncate" title={it.remark}>
+                        {it.remark}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-mono font-bold text-[10px]">
                       {it.gsm} GSM
                     </span>
+                  </TableCell>
+                  <TableCell className="text-[11px] font-semibold text-slate-700">
+                    {it.paperType === "COLOURED"
+                      ? `Coloured${it.paperColour ? ` (${it.paperColour})` : ""}`
+                      : it.paperType === "WHITE"
+                      ? "White"
+                      : "Brown (Kraft)"}
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-slate-900">
                     {formatWeightKg(reqKg)}
@@ -538,6 +559,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
             })}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* 5. CANCELLATION MODAL */}

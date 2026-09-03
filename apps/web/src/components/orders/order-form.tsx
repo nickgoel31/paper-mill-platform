@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
+import { OrderPriority, OrderStatus, PaperType } from "@/generated/prisma/browser";
 import {
   orderFormSchema,
   OrderFormInput,
@@ -15,6 +15,24 @@ import { createOrder, updateOrder } from "@/server/services/order-service";
 import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+const PAPER_TYPE_LABELS: Record<PaperType, string> = {
+  [PaperType.WHITE]: "White",
+  [PaperType.BROWN]: "Brown (Kraft)",
+  [PaperType.COLOURED]: "Coloured",
+};
+
+const NEW_ITEM_DEFAULTS = {
+  widthInch: 45.0,
+  gsm: 120,
+  paperType: PaperType.BROWN,
+  paperColour: "",
+  remark: "",
+  quantityKg: 3000,
+  tolerancePercent: 5.0,
+  ratePerKg: 34.0,
+};
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Select,
@@ -100,18 +118,13 @@ export function OrderForm({
     id: it.id,
     widthInch: Number(it.widthInch),
     gsm: Number(it.gsm),
+    paperType: (it.paperType as PaperType) || PaperType.BROWN,
+    paperColour: it.paperColour || "",
+    remark: it.remark || "",
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent || 5.0),
     ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
-  })) || [
-    {
-      widthInch: 45.0,
-      gsm: 120,
-      quantityKg: 5000,
-      tolerancePercent: 5.0,
-      ratePerKg: 35.0,
-    },
-  ];
+  })) || [{ ...NEW_ITEM_DEFAULTS, quantityKg: 5000, ratePerKg: 35.0 }];
 
   const form = useForm<any>({
     resolver: zodResolver(orderFormSchema),
@@ -128,9 +141,13 @@ export function OrderForm({
       priority: initialOrder?.priority || OrderPriority.NORMAL,
       status: initialOrder?.status || OrderStatus.CONFIRMED,
       notes: initialOrder?.notes || "",
+      otherNotes: initialOrder?.otherNotes || "",
       items: defaultItems,
     },
   });
+
+  // How many identical rows the "Add Reel Size" button inserts at once.
+  const [addQty, setAddQty] = React.useState(1);
 
   const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
@@ -174,7 +191,8 @@ export function OrderForm({
     const dupes: string[] = [];
     (watchedItems || []).forEach((it: any) => {
       if (!it || !it.widthInch || !it.gsm) return;
-      const key = `${Number(it.widthInch).toFixed(2)}" @ ${it.gsm} GSM`;
+      const type = PAPER_TYPE_LABELS[it.paperType as PaperType] || it.paperType;
+      const key = `${Number(it.widthInch).toFixed(2)}" @ ${it.gsm} GSM • ${type}`;
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     counts.forEach((count, key) => {
@@ -188,12 +206,13 @@ export function OrderForm({
     const mergedMap = new Map<string, any>();
     (watchedItems || []).forEach((it: any) => {
       if (!it) return;
-      const key = `${Number(it.widthInch).toFixed(2)}@${Number(it.gsm)}`;
+      const key = `${Number(it.widthInch).toFixed(2)}@${Number(it.gsm)}@${it.paperType}@${(it.paperColour || "").trim().toLowerCase()}`;
       if (!mergedMap.has(key)) {
         mergedMap.set(key, { ...it });
       } else {
         const existing = mergedMap.get(key);
         existing.quantityKg = (Number(existing.quantityKg) || 0) + (Number(it.quantityKg) || 0);
+        if (it.remark && !existing.remark) existing.remark = it.remark;
       }
     });
     replace(Array.from(mergedMap.values()));
@@ -403,6 +422,27 @@ export function OrderForm({
                 )}
               />
             </div>
+
+            {/* Other / extra notes */}
+            <FormField
+              control={form.control}
+              name="otherNotes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs font-bold text-slate-700">Other Notes</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Any other notes for this order (packing, marking, payment terms, etc.)"
+                      value={field.value || ""}
+                      onChange={(e) => field.onChange(e.target.value)}
+                      rows={2}
+                      className="text-xs rounded-xl bg-slate-50/70 border-slate-200 resize-y"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
 
           {/* 3. REEL DEMAND LINE ITEMS */}
@@ -430,36 +470,47 @@ export function OrderForm({
                   </Button>
                 )}
 
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() =>
-                    append({
-                      widthInch: 45.0,
-                      gsm: distinctGsms[0] || 120,
-                      quantityKg: 3000,
-                      tolerancePercent: 5.0,
-                      ratePerKg: 34.0,
-                    })
-                  }
-                  className="h-8 text-xs font-bold bg-sky-400 hover:bg-sky-500 text-white rounded-xl shadow-xs gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5 stroke-[2.5]" /> Add Reel Size
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Qty</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={addQty}
+                    onChange={(e) =>
+                      setAddQty(Math.min(50, Math.max(1, Math.floor(Number(e.target.value) || 1))))
+                    }
+                    className="h-8 w-14 text-xs rounded-xl font-mono text-center bg-slate-50/70 border-slate-200"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => {
+                      const row = { ...NEW_ITEM_DEFAULTS, gsm: distinctGsms[0] || 120 };
+                      append(Array.from({ length: addQty }, () => ({ ...row })));
+                    }}
+                    className="h-8 text-xs font-bold bg-sky-400 hover:bg-sky-500 text-white rounded-xl shadow-xs gap-1.5"
+                  >
+                    <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
+                    {addQty > 1 ? `Add ${addQty} Reel Sizes` : "Add Reel Size"}
+                  </Button>
+                </div>
               </div>
             </div>
 
             {/* Line Items Table */}
-            <div className="rounded-xl border border-slate-100 overflow-hidden">
+            <div className="rounded-xl border border-slate-100 overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/70">
                   <TableRow>
                     <TableHead className="w-12 text-center text-[10px] font-bold font-mono">#</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches) *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">GSM *</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[150px]">Paper Type *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Tolerance (%)</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Rate / KG (₹)</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[160px]">Remark</TableHead>
                     <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Line Total (₹)</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
@@ -532,6 +583,57 @@ export function OrderForm({
                               </FormItem>
                             )}
                           />
+                        </TableCell>
+
+                        {/* Paper Type */}
+                        <TableCell>
+                          <div className="space-y-1.5">
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.paperType`}
+                              render={({ field: itField }) => (
+                                <FormItem>
+                                  <Select
+                                    onValueChange={itField.onChange}
+                                    value={itField.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200">
+                                        <SelectValue placeholder="Type" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent className="rounded-xl">
+                                      {Object.values(PaperType).map((pt) => (
+                                        <SelectItem key={pt} value={pt} className="text-xs">
+                                          {PAPER_TYPE_LABELS[pt]}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            {watchedItems?.[idx]?.paperType === PaperType.COLOURED && (
+                              <FormField
+                                control={form.control}
+                                name={`items.${idx}.paperColour`}
+                                render={({ field: itField }) => (
+                                  <FormItem>
+                                    <FormControl>
+                                      <Input
+                                        placeholder="Colour name"
+                                        value={itField.value ?? ""}
+                                        onChange={(e) => itField.onChange(e.target.value)}
+                                        className="h-8 text-xs rounded-xl bg-amber-50 border-amber-200"
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+                          </div>
                         </TableCell>
 
                         {/* Quantity (KG) */}
@@ -610,6 +712,27 @@ export function OrderForm({
                                       ₹/kg
                                     </span>
                                   </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </TableCell>
+
+                        {/* Remark */}
+                        <TableCell>
+                          <FormField
+                            control={form.control}
+                            name={`items.${idx}.remark`}
+                            render={({ field: itField }) => (
+                              <FormItem>
+                                <FormControl>
+                                  <Input
+                                    placeholder="e.g. jointless, tight winding"
+                                    value={itField.value ?? ""}
+                                    onChange={(e) => itField.onChange(e.target.value)}
+                                    className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200"
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
