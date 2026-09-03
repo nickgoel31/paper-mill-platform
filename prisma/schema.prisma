@@ -5,6 +5,7 @@ datasource db {
 generator client {
   provider = "prisma-client"
   output   = "../apps/web/src/generated/prisma"
+  runtime  = "workerd"
 }
 
 // -----------------------------------------------------------------------------

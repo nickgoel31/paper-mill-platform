@@ -9,8 +9,18 @@ import {
   releaseRunToFloor,
   cancelProductionRun,
 } from "@/server/services/production-service";
-import { generateRunCardPDF } from "@/lib/pdf/generate-run-card-pdf";
+import dynamic from "next/dynamic";
 import { PatternBar } from "@/components/deckle/pattern-bar";
+
+// jsPDF (~350 KB) stays out of the server bundle: client-only, no SSR.
+const RunCardPdfButton = dynamic(() => import("./run-card-pdf-button"), {
+  ssr: false,
+  loading: () => (
+    <Button variant="outline" size="sm" disabled className="gap-1.5 text-xs font-bold">
+      Download Run Card (A4 PDF)
+    </Button>
+  ),
+});
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,7 +68,6 @@ interface RunDetailViewProps {
 export function RunDetailView({ run, userRole }: RunDetailViewProps) {
   const router = useRouter();
   const [isTransitioning, setIsTransitioning] = React.useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState("");
 
@@ -96,51 +105,6 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
     }
   };
 
-  const handleDownloadPdf = () => {
-    setIsGeneratingPdf(true);
-    try {
-      const patternsFormatted = run.patterns.map((pat: any) => ({
-        sequence: pat.sequence,
-        repetitions: pat.repetitions,
-        usedWidthInch: Number(pat.usedWidthInch),
-        trimWidthInch: Number(pat.trimWidthInch),
-        trimPercent: Number(pat.trimPercent),
-        estimatedKg: Number(pat.estimatedKg),
-        isManuallyEdited: pat.isManuallyEdited,
-        cuts: pat.cuts.map((c: any) => {
-          const item = (run.orderItems || []).find((it: any) => it.id === c.orderItemId);
-          const isStockPreset = !item && (!!c.stockPresetId || !c.orderItemId);
-          return {
-            orderItemId: c.orderItemId,
-            orderNumber: item?.order?.orderNumber || (isStockPreset ? "STOCK" : undefined),
-            clientName: item?.order?.client?.name || c.stockPreset?.name,
-            widthInch: Number(c.widthInch),
-            count: c.count,
-            isStockPreset,
-          };
-        }),
-      }));
-
-      generateRunCardPDF({
-        runNumber: run.runNumber,
-        machineName: run.machine.name,
-        maxDeckleInch: Number(run.machine.maxDeckleInch),
-        gsm: run.gsm,
-        status: run.status,
-        totalPlannedKg: Number(run.totalPlannedKg),
-        totalActualKg: Number(run.totalActualKg || 0),
-        totalTrimPercent: Number(run.totalTrimPercent),
-        createdAt: run.createdAt,
-        patterns: patternsFormatted,
-        orderItems: run.orderItems || [],
-      });
-      toast.success(`Run Card PDF generated for #${run.runNumber}`);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to generate PDF");
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
 
   // Order colors mapping
   const orderColorMap = React.useMemo(() => {
@@ -204,21 +168,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isGeneratingPdf}
-            onClick={handleDownloadPdf}
-            className="gap-1.5 text-xs font-bold shadow-sm bg-white hover:bg-slate-50 border-slate-200 text-slate-900"
-          >
-            {isGeneratingPdf ? (
-              <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
-            ) : (
-              <Download className="h-4 w-4 text-sky-600" />
-            )}
-            Download Run Card (A4 PDF)
-          </Button>
+          <RunCardPdfButton run={run} />
 
           {run.status === RunStatus.PLANNED && canManage && (
             <Button
