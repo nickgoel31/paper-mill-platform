@@ -17,6 +17,13 @@ binding = "ASSETS"
 binding = "WORKER_SELF_REFERENCE"
 service = "paper-mill-platform"
 
+# Cutting-stock solver. A plain `fetch()` from this Worker to the solver's
+# workers.dev URL is blocked by Cloudflare (error 1042 — Worker-to-Worker on the
+# same workers.dev subdomain), so it must be called through a service binding.
+[[services]]
+binding = "SOLVER"
+service = "hra-solver-worker"
+
 # Cloudflare D1 Database Binding (5 GB Free Relational SQL)
 [[d1_databases]]
 binding = "DB"

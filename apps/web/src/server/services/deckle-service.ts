@@ -8,9 +8,31 @@ import {
   callDeckleSolver,
   SolverRequestPayload,
   OptimizeResponse,
+  type SolverFetch,
 } from "@/lib/solver-client";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG } from "./cache-tags";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
+/**
+ * The `SOLVER` service binding's fetch, when running on Cloudflare. Worker-to-
+ * Worker calls to the solver's public URL fail with CF error 1042, so we route
+ * through the binding instead. Returns `undefined` off-Worker (local dev), where
+ * `callDeckleSolver` falls back to a plain `fetch` of `SOLVER_SERVICE_URL`.
+ */
+function getSolverFetch(): SolverFetch | undefined {
+  try {
+    const binding = (
+      getCloudflareContext() as unknown as {
+        env?: { SOLVER?: { fetch: SolverFetch } };
+      }
+    ).env?.SOLVER;
+    if (binding?.fetch) return (input, init) => binding.fetch(input, init);
+  } catch {
+    // not on a Worker
+  }
+  return undefined;
+}
 
 // -----------------------------------------------------------------------------
 // RUN NUMBER GENERATOR (Monthly Reset: PR-YYMM-0001)
@@ -148,7 +170,7 @@ export async function runSolverOptimization(
     }
   }
 
-  return callDeckleSolver(payload);
+  return callDeckleSolver(payload, 35000, getSolverFetch());
 }
 
 // -----------------------------------------------------------------------------

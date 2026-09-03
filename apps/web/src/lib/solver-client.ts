@@ -99,10 +99,20 @@ export class SolverError extends Error {
   }
 }
 
+export type SolverFetch = (input: string, init?: RequestInit) => Promise<Response>;
+
 export async function callDeckleSolver(
   payload: SolverRequestPayload,
-  timeoutMs: number = 35000
+  timeoutMs: number = 35000,
+  /**
+   * Optional fetch implementation. On Cloudflare this is the `SOLVER` service
+   * binding's `fetch` (a direct Worker-to-Worker call), since a normal `fetch()`
+   * to the solver's workers.dev URL is rejected with error 1042. Falls back to
+   * global `fetch` (local dev / preview).
+   */
+  fetcher?: SolverFetch
 ): Promise<OptimizeResponse> {
+  const doFetch: SolverFetch = fetcher ?? ((input, init) => fetch(input, init));
   const solverUrl = process.env.SOLVER_SERVICE_URL || "http://localhost:8000";
   const url = `${solverUrl.replace(/\/$/, "")}/optimize`;
 
@@ -115,7 +125,7 @@ export async function callDeckleSolver(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(url, {
+      const res = await doFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
