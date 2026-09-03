@@ -21,6 +21,9 @@ declare global {
  * the Worker — is resolved on first use, not at module load.
  */
 
+/** PrismaClients backed by the D1 adapter (no interactive-transaction support). */
+const d1Clients = new WeakSet<PrismaClient>();
+
 function clientFromD1(d1: unknown): PrismaClient {
   // D1 read replication only takes effect through the Sessions API. Wrapping the
   // binding in a session routes reads to the nearest replica while keeping reads
@@ -33,10 +36,12 @@ function clientFromD1(d1: unknown): PrismaClient {
       ? binding.withSession("first-unconstrained")
       : d1;
 
-  return new PrismaClient({
+  const prisma = new PrismaClient({
     adapter: new PrismaD1(client as never),
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
+  d1Clients.add(prisma);
+  return prisma;
 }
 
 function localClient(): PrismaClient {
@@ -69,9 +74,36 @@ function resolveClient(): PrismaClient {
   return localClient();
 }
 
+/**
+ * Cloudflare D1 has no interactive transactions — `$transaction(async (tx) => …)`
+ * is rejected outright by the Prisma D1 adapter. Our services use that form in
+ * ~40 places (often a read-then-write, e.g. generating the next order number,
+ * which can't be expressed as a static `$transaction([...])` batch).
+ *
+ * On a D1-backed client this shim runs the interactive callback against the
+ * base client directly: statements execute sequentially with D1 auto-committing
+ * each, so we lose all-or-nothing rollback (which D1 cannot provide for
+ * interleaved JS anyway). The local better-sqlite3 client and the array form
+ * `$transaction([...])` are untouched and keep real atomic transactions.
+ */
+function txShim(client: PrismaClient) {
+  const native = client.$transaction.bind(client) as (...a: unknown[]) => Promise<unknown>;
+  return (...args: unknown[]) => {
+    // Only interactive `$transaction(async (tx) => …)` on a D1 client needs the
+    // fallback. The array form `$transaction([...])` and the local
+    // better-sqlite3 client run natively (real atomic transactions).
+    if (typeof args[0] === "function" && d1Clients.has(client)) {
+      const callback = args[0] as (tx: PrismaClient) => Promise<unknown>;
+      return Promise.resolve(callback(client));
+    }
+    return native(...args);
+  };
+}
+
 export const db: PrismaClient = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {
     const client = resolveClient();
+    if (prop === "$transaction") return txShim(client);
     const value = Reflect.get(client as object, prop, receiver);
     return typeof value === "function" ? value.bind(client) : value;
   },
