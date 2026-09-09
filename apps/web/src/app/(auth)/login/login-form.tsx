@@ -19,7 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Factory, Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
+import { Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -32,14 +32,12 @@ export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = async (values: LoginFormValues) => {
@@ -58,25 +56,20 @@ export function LoginForm() {
         toast.error("Authentication failed: Invalid credentials");
         setIsLoading(false);
       } else {
-        toast.success("Login successful!");
+        toast.success("Signed in");
         const callbackUrl = searchParams.get("callbackUrl") || "/";
         router.push(callbackUrl);
         router.refresh();
       }
-    } catch (err) {
+    } catch {
       setErrorMessage("An unexpected error occurred during login.");
       toast.error("Login failed. Please try again.");
       setIsLoading(false);
     }
   };
 
-  const handleQuickLogin = (email: string) => {
-    form.setValue("email", email);
-    form.setValue("password", "password123");
-  };
-
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="space-y-5">
       {errorMessage && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -91,16 +84,17 @@ export function LoginForm() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs font-semibold uppercase text-slate-700">
-                  Email Address
+                <FormLabel className="text-[13px] font-bold text-slate-800">
+                  Email address
                 </FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
-                      placeholder="e.g. admin@papermill.local"
-                      className="pl-9"
+                      placeholder="you@company.com"
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50/70 pl-10 text-sm"
                       disabled={isLoading}
+                      autoComplete="email"
                       {...field}
                     />
                   </div>
@@ -115,17 +109,18 @@ export function LoginForm() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-xs font-semibold uppercase text-slate-700">
+                <FormLabel className="text-[13px] font-bold text-slate-800">
                   Password
                 </FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
                       type="password"
                       placeholder="••••••••••••"
-                      className="pl-9"
+                      className="h-11 rounded-xl border-slate-200 bg-slate-50/70 pl-10 text-sm"
                       disabled={isLoading}
+                      autoComplete="current-password"
                       {...field}
                     />
                   </div>
@@ -135,77 +130,35 @@ export function LoginForm() {
             )}
           />
 
+          <label className="flex cursor-pointer select-none items-center gap-2 pt-0.5 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900"
+            />
+            Remember me
+          </label>
+
           <Button
             type="submit"
-            className="w-full h-11 text-base font-semibold shadow-sm mt-2"
+            className="h-11 w-full rounded-xl bg-slate-900 text-sm font-bold hover:bg-slate-800"
             disabled={isLoading}
           >
             {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…
               </>
             ) : (
-              "Sign in to Factory Portal"
+              "Sign in"
             )}
           </Button>
         </form>
       </Form>
 
-      {/* Quick Demo Credentials Panel */}
-      <div className="pt-4 border-t border-slate-200">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-          Demo Accounts (Password: password123)
-        </p>
-        <div className="grid grid-cols-2 gap-1.5 text-xs">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start text-xs h-8 font-mono"
-            onClick={() => handleQuickLogin("admin@papermill.local")}
-          >
-            <span className="font-bold text-purple-700 mr-1.5">ADMIN</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start text-xs h-8 font-mono"
-            onClick={() => handleQuickLogin("planner@papermill.local")}
-          >
-            <span className="font-bold text-blue-700 mr-1.5">PLANNER</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start text-xs h-8 font-mono"
-            onClick={() => handleQuickLogin("sales@papermill.local")}
-          >
-            <span className="font-bold text-emerald-700 mr-1.5">SALES</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start text-xs h-8 font-mono"
-            onClick={() => handleQuickLogin("operator@papermill.local")}
-          >
-            <span className="font-bold text-amber-700 mr-1.5">OPERATOR</span>
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start text-xs h-8 font-mono col-span-2"
-            onClick={() => handleQuickLogin("dispatch@papermill.local")}
-          >
-            <span className="font-bold text-sky-700 mr-1.5">DISPATCH</span>
-            <span className="text-muted-foreground ml-auto">dispatch@papermill.local</span>
-          </Button>
-        </div>
-      </div>
+      <p className="text-sm text-slate-400">
+        Forgot your password? Ask your mill administrator to reset it.
+      </p>
     </div>
   );
 }
