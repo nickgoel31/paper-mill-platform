@@ -697,22 +697,26 @@ export async function POST(req: NextRequest) {
 
 
 // ---------------------------------------------------------------------------
-// PaperMill AI — Anthropic Claude agentic loop
+// PaperMill AI — OpenAI Responses API agentic loop
 // ---------------------------------------------------------------------------
 
-const ANTHROPIC_MODEL = "claude-opus-5";
+// gpt-4.1: strong at instruction-following, tool use, and reading PO/invoice
+// PDFs + images, at roughly a third of gpt-4o's price. Swap to "gpt-4.1-mini"
+// for ~5x cheaper still (small accuracy tradeoff on messy scans).
+const OPENAI_MODEL = "gpt-4.1";
 const MAX_AGENT_STEPS = 10;
 
-// Convert the OpenAI-style tool defs to Anthropic's { name, description, input_schema } shape.
-const ANTHROPIC_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
+// The Responses API wants FLAT function tools: { type, name, description, parameters }.
+const RESPONSES_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
+  type: "function",
   name: t.function.name,
   description: t.function.description,
-  input_schema: t.function.parameters ?? { type: "object", properties: {} },
+  parameters: t.function.parameters ?? { type: "object", properties: {} },
 }));
 
 function buildSystemPrompt(userName: string, userRole: string): string {
   return [
-    "You are **PaperMill AI**, the operations assistant embedded in this kraft paper mill's ERP.",
+    "You are PaperMill AI, the operations assistant embedded in this kraft paper mill's ERP.",
     "",
     "You act on the mill's real data through tools. You can read and write across every module:",
     "sales orders, clients, warehouse stock & buffer presets, production runs & machines,",
@@ -722,12 +726,12 @@ function buildSystemPrompt(userName: string, userRole: string): string {
     "## Purchase orders / invoices attached as files",
     "When a PO, invoice, or order document (PDF or image) is attached:",
     "1. Read it end to end. Extract: the buyer/customer name, every reel line (width in inches,",
-    "   GSM, quantity in kg, rate per kg if given), the delivery date, PO number, and any special instructions.",
+    "   GSM, quantity in kg, rate per kg if given), the delivery date, PO number, special instructions.",
     "2. Call getClients to match the buyer to an existing client. If none matches, tell the user and",
     "   create the client with createClient only if they asked you to proceed / 'just do it'.",
     "3. Call createOrder with the extracted client and line items (pass the PO number as orderNumber if",
     "   present; put the PO reference + instructions in notes).",
-    "4. Confirm back exactly what you created — client, order number, each line, total kg.",
+    "4. Confirm back exactly what you created: client, order number, each line, total kg.",
     "If a value is genuinely unreadable, say which one and ask; never guess quantities or GSM.",
     "",
     "## Working rules",
@@ -742,26 +746,34 @@ function buildSystemPrompt(userName: string, userRole: string): string {
   ].join("\n");
 }
 
-interface AnthropicBlock {
-  type: string;
-  [k: string]: any;
-}
+type ResponsesOutput = {
+  id: string;
+  status?: string;
+  output_text?: string;
+  output?: Array<{
+    type: string;
+    role?: string;
+    name?: string;
+    call_id?: string;
+    arguments?: string;
+    content?: Array<{ type: string; text?: string }>;
+  }>;
+};
 
-async function callClaude(apiKey: string, requestBody: Record<string, unknown>) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function callOpenAI(apiKey: string, requestBody: Record<string, unknown>) {
+  const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
+      authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(requestBody),
   });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 500)}`);
+    throw new Error(`OpenAI API ${res.status}: ${text.slice(0, 600)}`);
   }
-  return JSON.parse(text) as { content: AnthropicBlock[]; stop_reason: string };
+  return JSON.parse(text) as ResponsesOutput;
 }
 
 async function handleAgentPost(req: NextRequest, sessionUser: any) {
@@ -781,42 +793,42 @@ async function handleAgentPost(req: NextRequest, sessionUser: any) {
 
   const { messages = [], userMessage = "", files = [] } = body;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
       reply:
-        "PaperMill AI is not configured yet. An administrator needs to set the ANTHROPIC_API_KEY secret on the deployment (npx wrangler secret put ANTHROPIC_API_KEY).",
+        "PaperMill AI is not configured yet. An administrator needs to set the OPENAI_API_KEY secret on the deployment (npx wrangler secret put OPENAI_API_KEY).",
       toolResults: [],
     });
   }
 
-  // Current user turn: documents / images first, then the text.
-  const userContent: AnthropicBlock[] = [];
+  // Current user turn: files first (PDF / image), then the text.
+  const userContent: any[] = [];
   for (const f of files || []) {
     if (f.base64 && f.type?.startsWith("image/")) {
       userContent.push({
-        type: "image",
-        source: { type: "base64", media_type: f.type, data: f.base64 },
+        type: "input_image",
+        image_url: `data:${f.type};base64,${f.base64}`,
       });
     } else if (
       f.base64 &&
       (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"))
     ) {
       userContent.push({
-        type: "document",
-        title: f.name,
-        source: { type: "base64", media_type: "application/pdf", data: f.base64 },
+        type: "input_file",
+        filename: f.name || "document.pdf",
+        file_data: `data:application/pdf;base64,${f.base64}`,
       });
     } else if (f.text) {
-      userContent.push({ type: "text", text: `[Attached file: ${f.name}]\n${f.text}` });
+      userContent.push({ type: "input_text", text: `[Attached file: ${f.name}]\n${f.text}` });
     }
   }
   userContent.push({
-    type: "text",
+    type: "input_text",
     text: userMessage || "Please review the attached document and take the requested action.",
   });
 
-  // Conversation history (text only; prior attachments are not re-sent).
+  // Prior conversation (text only; earlier attachments are not re-sent).
   const history = (messages || [])
     .slice(0, -1)
     .slice(-8)
@@ -827,55 +839,62 @@ async function handleAgentPost(req: NextRequest, sessionUser: any) {
         (typeof m.content === "string" ? m.content : JSON.stringify(m.content)) || "(no text)",
     }));
 
-  const anthropicMessages: Array<{ role: string; content: any }> = [
-    ...history,
-    { role: "user", content: userContent },
-  ];
-
   const system = buildSystemPrompt(userName, userRole);
   const toolResults: any[] = [];
 
+  let input: any[] = [...history, { role: "user", content: userContent }];
+  let previousResponseId: string | null = null;
+
   try {
     for (let step = 0; step < MAX_AGENT_STEPS; step++) {
-      const resp = await callClaude(apiKey, {
-        model: ANTHROPIC_MODEL,
-        max_tokens: 8000,
-        system,
-        tools: ANTHROPIC_TOOLS,
-        messages: anthropicMessages,
+      const resp = await callOpenAI(apiKey, {
+        model: OPENAI_MODEL,
+        instructions: system,
+        tools: RESPONSES_TOOLS,
+        tool_choice: "auto",
+        parallel_tool_calls: true,
+        input,
+        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
       });
+      previousResponseId = resp.id;
 
-      // Echo the full assistant content back (preserves thinking blocks for the loop).
-      anthropicMessages.push({ role: "assistant", content: resp.content });
+      const calls = (resp.output || []).filter((o) => o.type === "function_call");
 
-      if (resp.stop_reason !== "tool_use") {
-        const reply = resp.content
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("\n")
-          .trim();
-        return NextResponse.json({ reply: reply || "Done.", toolResults });
+      if (calls.length === 0) {
+        const text =
+          resp.output_text?.trim() ||
+          (resp.output || [])
+            .filter((o) => o.type === "message")
+            .flatMap((m) => m.content || [])
+            .filter((c) => c.type === "output_text")
+            .map((c) => c.text || "")
+            .join("")
+            .trim();
+        return NextResponse.json({ reply: text || "Done.", toolResults });
       }
 
-      // Execute every requested tool; return all results in one user message.
-      const toolUses = resp.content.filter((b) => b.type === "tool_use");
-      const resultBlocks: AnthropicBlock[] = [];
-      for (const tu of toolUses) {
+      // Execute every requested tool; feed all outputs back next turn.
+      input = [];
+      for (const call of calls) {
+        let args: any = {};
+        try {
+          args = JSON.parse(call.arguments || "{}");
+        } catch {
+          args = {};
+        }
         let out: any;
         try {
-          out = await executeAgentTool(tu.name, tu.input || {});
+          out = await executeAgentTool(call.name || "", args);
         } catch (e: any) {
           out = { success: false, message: "Tool crashed", error: e?.message || String(e) };
         }
         toolResults.push(out);
-        resultBlocks.push({
-          type: "tool_result",
-          tool_use_id: tu.id,
-          content: JSON.stringify(out).slice(0, 16000),
-          is_error: out?.success === false,
+        input.push({
+          type: "function_call_output",
+          call_id: call.call_id,
+          output: JSON.stringify(out).slice(0, 16000),
         });
       }
-      anthropicMessages.push({ role: "user", content: resultBlocks });
     }
 
     return NextResponse.json({
@@ -887,8 +906,8 @@ async function handleAgentPost(req: NextRequest, sessionUser: any) {
     console.error("[PaperMill AI]", error);
     const msg = String(error?.message || "");
     return NextResponse.json({
-      reply: msg.includes("Anthropic API 401")
-        ? "The configured ANTHROPIC_API_KEY is invalid."
+      reply: msg.includes("OpenAI API 401")
+        ? "The configured OPENAI_API_KEY is invalid."
         : `Something went wrong: ${msg || "unknown error"}`,
       toolResults,
     });
