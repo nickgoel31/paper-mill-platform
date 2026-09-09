@@ -174,11 +174,23 @@ export async function agentCreateOrder(input: {
       message: `Successfully created Sales Order #${order.orderNumber} with ${order.items.length} sizes totaling ${totalWeight.toLocaleString("en-IN")} kg for ${client.name}.`,
       actionTaken: "CREATE_ORDER",
       data: {
+        id: order.id,
         orderId: order.id,
         orderNumber: order.orderNumber,
         client: order.client.name,
+        city: order.client.city,
+        status: order.status,
+        priority: order.priority,
+        totalKg: totalWeight,
         totalItems: order.items.length,
         totalWeightKg: totalWeight,
+        deliveryDate: order.deliveryDate,
+        items: order.items.map((it) => ({
+          widthInch: Number(it.widthInch),
+          gsm: it.gsm,
+          quantityKg: Number(it.quantityKg),
+          ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
+        })),
       },
     };
   } catch (err: any) {

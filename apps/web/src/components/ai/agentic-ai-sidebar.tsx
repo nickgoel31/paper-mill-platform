@@ -23,6 +23,7 @@ import {
   AgentOrdersCard,
   AgentStockCard,
   AgentProductionRunsCard,
+  AgentCardBoundary,
 } from "@/components/ai/agent-data-cards";
 
 interface AttachedFile {
@@ -495,25 +496,28 @@ export function AgenticAiSidebar() {
 
                       {/* Rich React UI Cards for ERP Objects */}
                       {msg.toolResults && msg.toolResults.length > 0 && (
-                        <div className="pt-2 space-y-2">
-                          {msg.toolResults.map((tr, tIdx) => {
-                            if (!tr.success || !tr.data) return null;
+                        <AgentCardBoundary>
+                          <div className="pt-2 space-y-2">
+                            {msg.toolResults.map((tr, tIdx) => {
+                              if (!tr || !tr.success || !tr.data) return null;
+                              const d = tr.data;
 
-                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].orderNumber) {
-                              return <AgentOrdersCard key={tIdx} orders={tr.data} />;
-                            }
-                            if (tr.data.orderNumber) {
-                              return <AgentOrdersCard key={tIdx} orders={[tr.data]} />;
-                            }
-                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].widthInch && tr.data[0].location) {
-                              return <AgentStockCard key={tIdx} items={tr.data} />;
-                            }
-                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].runNumber) {
-                              return <AgentProductionRunsCard key={tIdx} runs={tr.data} />;
-                            }
-                            return null;
-                          })}
-                        </div>
+                              if (Array.isArray(d) && d.length > 0 && d[0]?.orderNumber && d[0]?.totalKg != null) {
+                                return <AgentOrdersCard key={tIdx} orders={d} />;
+                              }
+                              if (!Array.isArray(d) && d.orderNumber && d.totalKg != null) {
+                                return <AgentOrdersCard key={tIdx} orders={[d]} />;
+                              }
+                              if (Array.isArray(d) && d.length > 0 && d[0]?.widthInch != null && d[0]?.location) {
+                                return <AgentStockCard key={tIdx} items={d} />;
+                              }
+                              if (Array.isArray(d) && d.length > 0 && d[0]?.runNumber && d[0]?.machine) {
+                                return <AgentProductionRunsCard key={tIdx} runs={d} />;
+                              }
+                              return null;
+                            })}
+                          </div>
+                        </AgentCardBoundary>
                       )}
                     </div>
 

@@ -20,6 +20,33 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatWeightKg, formatWidthInch, formatTrimPercent } from "@/lib/utils";
 
+/** Coerce anything to a finite number; never throws on undefined/null/NaN. */
+const num = (v: unknown): number => {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+/**
+ * Error boundary for agent result cards. The AI assistant is mounted in the
+ * dashboard layout, so a bad card must never take down the whole page — it
+ * renders nothing instead.
+ */
+export class AgentCardBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err: unknown) {
+    console.warn("[AgentCardBoundary] card render failed", err);
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 1. ORDERS CARD COMPONENT
 // -----------------------------------------------------------------------------
@@ -103,10 +130,10 @@ export function AgentOrdersCard({ orders }: { orders: OrderCardData[] }) {
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block font-medium">TOTAL WEIGHT</span>
                   <span className="font-mono font-black text-xs text-slate-900">
-                    {(order.totalKg / 1000).toFixed(3)} MT
+                    {(num(order.totalKg) / 1000).toFixed(3)} MT
                   </span>
                   <span className="text-[10px] text-slate-500 block font-mono">
-                    ({order.totalKg.toLocaleString("en-IN")} kg)
+                    ({num(order.totalKg).toLocaleString("en-IN")} kg)
                   </span>
                 </div>
               </div>
@@ -205,7 +232,7 @@ export function AgentStockCard({ items }: { items: StockCardData[] }) {
                   </td>
                   <td className="p-2 font-mono text-slate-600">{item.gsm} GSM</td>
                   <td className="p-2 text-right font-mono font-bold text-slate-900">
-                    {item.quantityKg.toFixed(1)} kg
+                    {num(item.quantityKg).toFixed(1)} kg
                   </td>
                   <td className="p-2">
                     <span
@@ -305,7 +332,7 @@ export function AgentProductionRunsCard({ runs }: { runs: ProductionRunCardData[
               <div className="text-right">
                 <span className="text-[10px] text-slate-400 block font-medium">OUTPUT</span>
                 <span className="font-mono font-bold text-slate-900">
-                  {(r.plannedKg / 1000).toFixed(2)} MT
+                  {(num(r.plannedKg) / 1000).toFixed(2)} MT
                 </span>
               </div>
             </div>
