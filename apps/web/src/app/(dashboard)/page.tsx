@@ -16,7 +16,19 @@ export default async function DashboardPage() {
     Role.OPERATOR
   );
 
-  const data = await getDashboardData(tenantId!, 30);
+  let resolvedTenantId = tenantId;
+  if (!resolvedTenantId) {
+    const { db } = await import("@/lib/db");
+    const activeTenant = await db.tenant.findFirst({ where: { isActive: true } });
+    resolvedTenantId = activeTenant?.id || null;
+  }
 
-  return <ExecutiveDashboardView data={JSON.parse(JSON.stringify(data))} userRole={role} />;
+  const data = resolvedTenantId ? await getDashboardData(resolvedTenantId, 30) : null;
+
+  return (
+    <ExecutiveDashboardView
+      data={data ? JSON.parse(JSON.stringify(data)) : ({} as any)}
+      userRole={role}
+    />
+  );
 }
