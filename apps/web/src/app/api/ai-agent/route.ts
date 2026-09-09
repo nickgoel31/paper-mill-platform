@@ -700,11 +700,22 @@ export async function POST(req: NextRequest) {
 // PaperMill AI — OpenAI Responses API agentic loop
 // ---------------------------------------------------------------------------
 
-// gpt-4.1: strong at instruction-following, tool use, and reading PO/invoice
-// PDFs + images, at roughly a third of gpt-4o's price. Swap to "gpt-4.1-mini"
-// for ~5x cheaper still (small accuracy tradeoff on messy scans).
-const OPENAI_MODEL = "gpt-4.1";
+// Model tiering, decided once per request:
+//  - a turn with a PDF / image attached (PO, invoice, scan) -> the stronger
+//    model, where extraction accuracy matters most.
+//  - everything else (chat, queries, CRUD, edits) -> the cheap model.
+const OPENAI_MODEL_DOC = "gpt-4.1";
+const OPENAI_MODEL_CHAT = "gpt-4.1-mini";
 const MAX_AGENT_STEPS = 10;
+
+function isVisualDoc(f: { type?: string; name?: string; base64?: string }): boolean {
+  if (!f?.base64) return false;
+  return (
+    !!f.type?.startsWith("image/") ||
+    f.type === "application/pdf" ||
+    !!f.name?.toLowerCase().endsWith(".pdf")
+  );
+}
 
 // The Responses API wants FLAT function tools: { type, name, description, parameters }.
 const RESPONSES_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
@@ -842,13 +853,16 @@ async function handleAgentPost(req: NextRequest, sessionUser: any) {
   const system = buildSystemPrompt(userName, userRole);
   const toolResults: any[] = [];
 
+  // One model for the whole loop: doc model if this turn has a PO/invoice/image.
+  const model = (files || []).some(isVisualDoc) ? OPENAI_MODEL_DOC : OPENAI_MODEL_CHAT;
+
   let input: any[] = [...history, { role: "user", content: userContent }];
   let previousResponseId: string | null = null;
 
   try {
     for (let step = 0; step < MAX_AGENT_STEPS; step++) {
       const resp = await callOpenAI(apiKey, {
-        model: OPENAI_MODEL,
+        model,
         instructions: system,
         tools: RESPONSES_TOOLS,
         tool_choice: "auto",
