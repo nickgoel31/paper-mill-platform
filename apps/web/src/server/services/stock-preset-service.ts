@@ -99,7 +99,7 @@ export async function createStockPreset(input: {
   if (input.standardWeightKg <= 0) throw new Error("Standard weight must be greater than 0.");
 
   const created = await db.$transaction(async (tx) => {
-    const existing = await tx.stockPreset.findUnique({
+    const existing = await tx.stockPreset.findFirst({
       where: { code: input.code.trim().toUpperCase() },
     });
     if (existing && !existing.deletedAt) {
@@ -159,7 +159,7 @@ export async function updateStockPreset(
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
   const updated = await db.$transaction(async (tx) => {
-    const existing = await tx.stockPreset.findUnique({ where: { id } });
+    const existing = await tx.stockPreset.findFirst({ where: { id } });
     if (!existing) throw new Error("Preset not found.");
 
     const preset = await tx.stockPreset.update({
@@ -208,7 +208,7 @@ export async function deleteStockPreset(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
   await db.$transaction(async (tx) => {
-    const existing = await tx.stockPreset.findUnique({ where: { id } });
+    const existing = await tx.stockPreset.findFirst({ where: { id } });
     if (!existing) throw new Error("Preset not found.");
 
     await tx.stockPreset.update({

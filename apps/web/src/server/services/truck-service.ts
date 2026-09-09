@@ -98,7 +98,7 @@ export async function updateTransporter(id: string, data: TransporterFormInput) 
   const { userId } = await requireRole(Role.ADMIN);
   const validated = transporterSchema.parse(data);
 
-  const existing = await db.transporter.findUnique({ where: { id } });
+  const existing = await db.transporter.findFirst({ where: { id } });
   if (!existing || existing.deletedAt) {
     throw new Error("Transporter not found.");
   }
@@ -138,7 +138,7 @@ export async function updateTransporter(id: string, data: TransporterFormInput) 
 export async function deleteTransporter(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
-  const existing = await db.transporter.findUnique({
+  const existing = await db.transporter.findFirst({
     where: { id },
     include: {
       loadBatches: {
@@ -236,7 +236,7 @@ export async function createTruck(data: TruckFormInput) {
   const validated = truckSchema.parse(data);
 
   // Check unique registration number
-  const existing = await db.truck.findUnique({
+  const existing = await db.truck.findFirst({
     where: { registrationNumber: validated.registrationNumber },
   });
   if (existing && !existing.deletedAt) {
@@ -281,13 +281,13 @@ export async function updateTruck(id: string, data: TruckFormInput) {
   const { userId } = await requireRole(Role.ADMIN);
   const validated = truckSchema.parse(data);
 
-  const existing = await db.truck.findUnique({ where: { id } });
+  const existing = await db.truck.findFirst({ where: { id } });
   if (!existing || existing.deletedAt) {
     throw new Error("Truck not found.");
   }
 
   if (existing.registrationNumber !== validated.registrationNumber) {
-    const duplicate = await db.truck.findUnique({
+    const duplicate = await db.truck.findFirst({
       where: { registrationNumber: validated.registrationNumber },
     });
     if (duplicate && duplicate.id !== id && !duplicate.deletedAt) {
@@ -333,7 +333,7 @@ export async function updateTruck(id: string, data: TruckFormInput) {
 export async function deleteTruck(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
-  const existing = await db.truck.findUnique({
+  const existing = await db.truck.findFirst({
     where: { id },
     include: {
       loadBatches: {

@@ -123,7 +123,7 @@ export async function getProductionSummaryStats() {
 }
 
 export async function getProductionRunById(id: string) {
-  const run = await db.productionRun.findUnique({
+  const run = await db.productionRun.findFirst({
     where: { id },
     include: {
       machine: true,
@@ -227,7 +227,7 @@ export async function getOperatorMachineQueue(machineId: string) {
 export async function releaseRunToFloor(id: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  const existing = await db.productionRun.findUnique({
+  const existing = await db.productionRun.findFirst({
     where: { id },
   });
 
@@ -271,7 +271,7 @@ export async function releaseRunToFloor(id: string) {
 export async function startProductionRun(id: string, actionId?: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
 
-  const existing = await db.productionRun.findUnique({
+  const existing = await db.productionRun.findFirst({
     where: { id },
     include: { machine: true },
   });
@@ -355,7 +355,7 @@ export async function updatePatternProgress(
 ) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
 
-  const pattern = await db.cuttingPattern.findUnique({
+  const pattern = await db.cuttingPattern.findFirst({
     where: { id: patternId },
   });
 
@@ -385,7 +385,7 @@ export async function completeProductionRun(input: {
 }) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
 
-  const run = await db.productionRun.findUnique({
+  const run = await db.productionRun.findFirst({
     where: { id: input.runId },
     include: {
       machine: true,
@@ -563,7 +563,7 @@ export async function completeProductionRun(input: {
 export async function cancelProductionRun(id: string, reason?: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  const existing = await db.productionRun.findUnique({
+  const existing = await db.productionRun.findFirst({
     where: { id },
     include: {
       patterns: {

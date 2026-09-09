@@ -9,11 +9,11 @@ export const metadata = {
 };
 
 export default async function NewOrderPage() {
-  await requireRole(Role.ADMIN, Role.SALES);
+  const { tenantId } = await requireRole(Role.ADMIN, Role.SALES);
 
   const [clients, machineConstraints] = await Promise.all([
-    getClientOptions(),
-    getActiveMachineConstraints(),
+    getClientOptions(tenantId!),
+    getActiveMachineConstraints(tenantId!),
   ]);
 
   return (

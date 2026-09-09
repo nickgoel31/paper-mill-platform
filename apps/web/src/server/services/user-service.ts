@@ -19,14 +19,16 @@ import {
   ResetPasswordInput,
 } from "@/lib/schemas/user";
 import { revalidatePath } from "next/cache";
+import { isPlatformEmail } from "@/lib/platform";
 
 export async function getUsers(params: QueryParams) {
-  // Only ADMIN can access user list
-  await requireRole(Role.ADMIN);
+  // Only a mill ADMIN can access their mill's user list
+  const { tenantId } = await requireRole(Role.ADMIN);
 
   const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
 
   const where: Prisma.UserWhereInput = {
+    tenantId: tenantId!,
     ...(search
       ? {
           OR: [
@@ -61,13 +63,16 @@ export async function getUsers(params: QueryParams) {
 }
 
 export async function createUser(data: CreateUserInput) {
-  const { userId } = await requireRole(Role.ADMIN);
+  const { userId, tenantId } = await requireRole(Role.ADMIN);
   const validated = createUserSchema.parse(data);
+  const email = validated.email.toLowerCase().trim();
 
-  // Check unique email
-  const existing = await db.user.findUnique({
-    where: { email: validated.email.toLowerCase().trim() },
-  });
+  if (isPlatformEmail(email)) {
+    throw new Error("This e-mail domain is reserved for platform staff.");
+  }
+
+  // Check unique email (email is globally unique across all mills)
+  const existing = await db.user.findUnique({ where: { email } });
   if (existing) {
     throw new Error(`User with email "${validated.email}" already exists.`);
   }
@@ -77,8 +82,9 @@ export async function createUser(data: CreateUserInput) {
   const user = await db.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
+        tenantId: tenantId!,
         name: validated.name.trim(),
-        email: validated.email.toLowerCase().trim(),
+        email,
         passwordHash,
         role: validated.role,
         isActive: validated.isActive,
@@ -113,10 +119,10 @@ export async function createUser(data: CreateUserInput) {
 }
 
 export async function updateUser(id: string, data: UpdateUserInput) {
-  const { userId } = await requireRole(Role.ADMIN);
+  const { userId, tenantId } = await requireRole(Role.ADMIN);
   const validated = updateUserSchema.parse(data);
 
-  const existing = await db.user.findUnique({ where: { id } });
+  const existing = await db.user.findFirst({ where: { id, tenantId: tenantId! } });
   if (!existing) {
     throw new Error("User not found.");
   }
@@ -143,7 +149,7 @@ export async function updateUser(id: string, data: UpdateUserInput) {
 
   const updated = await db.$transaction(async (tx) => {
     const res = await tx.user.update({
-      where: { id },
+      where: { id, tenantId: tenantId! },
       data: {
         name: validated.name.trim(),
         email: validated.email.toLowerCase().trim(),
@@ -181,10 +187,12 @@ export async function updateUser(id: string, data: UpdateUserInput) {
 }
 
 export async function resetUserPassword(data: ResetPasswordInput) {
-  const { userId } = await requireRole(Role.ADMIN);
+  const { userId, tenantId } = await requireRole(Role.ADMIN);
   const validated = resetPasswordSchema.parse(data);
 
-  const existing = await db.user.findUnique({ where: { id: validated.userId } });
+  const existing = await db.user.findFirst({
+    where: { id: validated.userId, tenantId: tenantId! },
+  });
   if (!existing) {
     throw new Error("User not found.");
   }
@@ -193,7 +201,7 @@ export async function resetUserPassword(data: ResetPasswordInput) {
 
   await db.$transaction(async (tx) => {
     await tx.user.update({
-      where: { id: validated.userId },
+      where: { id: validated.userId, tenantId: tenantId! },
       data: { passwordHash: newHash },
     });
 

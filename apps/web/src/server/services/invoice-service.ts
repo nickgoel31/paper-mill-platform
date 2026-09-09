@@ -150,7 +150,7 @@ export async function getInvoiceSummaryStats() {
 }
 
 export async function getInvoiceById(id: string) {
-  const invoice = await db.invoice.findUnique({
+  const invoice = await db.invoice.findFirst({
     where: { id },
     include: {
       client: true,
@@ -182,7 +182,7 @@ export async function getInvoiceById(id: string) {
 export async function createInvoicesFromDispatch(dispatchId: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
-  const dispatch = await db.dispatch.findUnique({
+  const dispatch = await db.dispatch.findFirst({
     where: { id: dispatchId },
     include: {
       loadBatch: {
@@ -330,7 +330,7 @@ export async function cancelInvoice(invoiceId: string, reason: string) {
     throw new Error("Mandatory cancellation reason is required to cancel an invoice.");
   }
 
-  const existing = await db.invoice.findUnique({
+  const existing = await db.invoice.findFirst({
     where: { id: invoiceId },
   });
 

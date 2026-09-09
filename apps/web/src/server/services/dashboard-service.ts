@@ -4,6 +4,7 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { OrderStatus, RunStatus, LoadStatus, NotificationStatus } from "@/generated/prisma/browser";
 import { DASHBOARD_TAG } from "./cache-tags";
+import { runWithTenantContext } from "@/lib/tenant-context";
 
 async function computeDashboardData(days: number) {
   const now = new Date();
@@ -335,10 +336,16 @@ async function computeDashboardData(days: number) {
  * are served from cache instead of re-running ~14 D1 queries. Mutations that
  * change the numbers call `revalidateTag(DASHBOARD_TAG)`.
  */
-export async function getDashboardData(days: number = 30) {
+export async function getDashboardData(tenantId: string, days: number = 30) {
   const cached = unstable_cache(
-    () => computeDashboardData(days),
-    ["dashboard-data", String(days)],
+    // `headers()` isn't available inside a cache body, so the tenant scope is
+    // carried explicitly through AsyncLocalStorage for the Prisma extension.
+    () =>
+      runWithTenantContext(
+        { tenantId, isPlatform: false },
+        () => computeDashboardData(days)
+      ),
+    ["dashboard-data", tenantId, String(days)],
     { tags: [DASHBOARD_TAG], revalidate: 60 }
   );
   return cached();

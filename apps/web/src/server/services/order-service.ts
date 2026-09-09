@@ -266,7 +266,7 @@ export async function getOrderById(id: string) {
   // The order graph and its audit timeline are independent queries — run them
   // concurrently instead of sequentially.
   const [order, auditLogs] = await Promise.all([
-    db.order.findUnique({
+    db.order.findFirst({
       where: { id },
       include: {
         client: true,
@@ -315,9 +315,9 @@ export async function getOrderById(id: string) {
   };
 }
 
-export async function getActiveMachineConstraints() {
+export async function getActiveMachineConstraints(tenantId: string) {
   // Delegates to the cached machine lookup (invalidated on machine mutations).
-  return getMachineConstraints();
+  return getMachineConstraints(tenantId);
 }
 
 // -----------------------------------------------------------------------------
@@ -325,11 +325,11 @@ export async function getActiveMachineConstraints() {
 // -----------------------------------------------------------------------------
 
 export async function createOrder(data: OrderFormInput) {
-  const { userId } = await requireRole(Role.ADMIN, Role.SALES);
+  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const validated = orderFormSchema.parse(data);
 
   // Validate line items against active machines
-  const { machines, maxDeckle } = await getActiveMachineConstraints();
+  const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
   if (machines.length === 0) {
     throw new Error("No active machines configured. Please add a machine before creating orders.");
   }
@@ -417,10 +417,10 @@ export async function createOrder(data: OrderFormInput) {
 }
 
 export async function updateOrder(id: string, data: OrderFormInput) {
-  const { userId } = await requireRole(Role.ADMIN, Role.SALES);
+  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const validated = orderFormSchema.parse(data);
 
-  const existing = await db.order.findUnique({
+  const existing = await db.order.findFirst({
     where: { id },
     include: { items: true },
   });
@@ -440,7 +440,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
   }
 
   // Validate items against machine constraints
-  const { machines, maxDeckle } = await getActiveMachineConstraints();
+  const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
   for (const item of validated.items) {
     if (item.widthInch > maxDeckle) {
       throw new Error(
@@ -516,7 +516,7 @@ export async function transitionOrderStatus(input: StatusTransitionInput) {
   );
   const validated = statusTransitionSchema.parse(input);
 
-  const existing = await db.order.findUnique({
+  const existing = await db.order.findFirst({
     where: { id: validated.orderId },
   });
 

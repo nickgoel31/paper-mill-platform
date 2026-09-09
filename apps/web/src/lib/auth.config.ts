@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import type { Role } from "@/generated/prisma/browser";
+import { isPlatformEmail } from "@/lib/platform";
 
 export const authConfig = {
   pages: {
@@ -7,40 +8,17 @@ export const authConfig = {
     error: "/login",
   },
   callbacks: {
-    authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user;
-      const isAuthRoute = nextUrl.pathname === "/login";
-      const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-      const isAiAgentRoute = nextUrl.pathname.startsWith("/api/ai-agent");
-      const isHealthRoute = nextUrl.pathname === "/api/health";
-      const isPublicAsset = nextUrl.pathname.startsWith("/_next") ||
-                            nextUrl.pathname.startsWith("/favicon.ico") ||
-                            nextUrl.pathname.startsWith("/static");
-
-      if (isApiAuthRoute || isAiAgentRoute || isHealthRoute || isPublicAsset) {
-        return true;
-      }
-
-      if (isAuthRoute) {
-        if (isLoggedIn) {
-          return Response.redirect(new URL("/", nextUrl));
-        }
-        return true;
-      }
-
-      // Protect all dashboard routes
-      if (!isLoggedIn) {
-        return false;
-      }
-
-      return true;
-    },
+    // Route protection + tenant/platform routing + request-scoped headers are all
+    // handled in `middleware.ts` (it needs `NextResponse.next({ request })` to
+    // inject headers, which `authorized` cannot return).
     jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = (user as any).role;
         token.email = user.email;
         token.name = user.name;
+        token.tenantId = (user as any).tenantId ?? null;
+        token.isPlatform = isPlatformEmail(user.email);
       }
       return token;
     },
@@ -48,6 +26,8 @@ export const authConfig = {
       if (token && session.user) {
         session.user.id = token.id as string;
         (session.user as any).role = token.role as Role;
+        (session.user as any).tenantId = (token.tenantId as string | null) ?? null;
+        (session.user as any).isPlatform = !!token.isPlatform;
       }
       return session;
     },

@@ -51,14 +51,14 @@ export async function createMachine(data: MachineFormInput) {
   const validated = machineSchema.parse(data);
 
   // Check unique code & name
-  const existingCode = await db.machine.findUnique({
+  const existingCode = await db.machine.findFirst({
     where: { code: validated.code.toUpperCase() },
   });
   if (existingCode && !existingCode.deletedAt) {
     throw new Error(`Machine code "${validated.code}" is already in use.`);
   }
 
-  const existingName = await db.machine.findUnique({
+  const existingName = await db.machine.findFirst({
     where: { name: validated.name.trim() },
   });
   if (existingName && !existingName.deletedAt) {
@@ -106,14 +106,14 @@ export async function updateMachine(id: string, data: MachineFormInput) {
   const { userId } = await requireRole(Role.ADMIN);
   const validated = machineSchema.parse(data);
 
-  const existing = await db.machine.findUnique({ where: { id } });
+  const existing = await db.machine.findFirst({ where: { id } });
   if (!existing || existing.deletedAt) {
     throw new Error("Machine not found.");
   }
 
   // Check uniqueness if changed
   if (existing.code !== validated.code.toUpperCase()) {
-    const duplicateCode = await db.machine.findUnique({
+    const duplicateCode = await db.machine.findFirst({
       where: { code: validated.code.toUpperCase() },
     });
     if (duplicateCode && duplicateCode.id !== id && !duplicateCode.deletedAt) {
@@ -122,7 +122,7 @@ export async function updateMachine(id: string, data: MachineFormInput) {
   }
 
   if (existing.name !== validated.name.trim()) {
-    const duplicateName = await db.machine.findUnique({
+    const duplicateName = await db.machine.findFirst({
       where: { name: validated.name.trim() },
     });
     if (duplicateName && duplicateName.id !== id && !duplicateName.deletedAt) {
@@ -171,7 +171,7 @@ export async function updateMachine(id: string, data: MachineFormInput) {
 export async function deleteMachine(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
-  const existing = await db.machine.findUnique({
+  const existing = await db.machine.findFirst({
     where: { id },
     include: {
       productionRuns: {

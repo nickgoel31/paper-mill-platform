@@ -8,7 +8,7 @@ export const metadata = {
 };
 
 export default async function DashboardPage() {
-  const { role } = await requireRole(
+  const { role, tenantId } = await requireRole(
     Role.ADMIN,
     Role.PLANNER,
     Role.SALES,
@@ -16,7 +16,7 @@ export default async function DashboardPage() {
     Role.OPERATOR
   );
 
-  const data = await getDashboardData(30);
+  const data = await getDashboardData(tenantId!, 30);
 
   return <ExecutiveDashboardView data={JSON.parse(JSON.stringify(data))} userRole={role} />;
 }

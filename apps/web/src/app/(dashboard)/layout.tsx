@@ -16,12 +16,17 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
+  // Platform staff belong in the platform console, not a mill's ERP.
+  if ((session.user as any).isPlatform === true || !(session.user as any).tenantId) {
+    redirect("/platform");
+  }
+
   const userRole = ((session.user as any).role as Role) || Role.SALES;
   const userName = session.user.name || "Factory Staff";
   const userEmail = session.user.email || "";
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50">
+    <div className="flex min-h-screen bg-[#F7F7F5]">
       <Sidebar
         userRole={userRole}
         userName={userName}

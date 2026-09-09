@@ -1,10 +1,72 @@
 import NextAuth from "next-auth";
+import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
 
-export default NextAuth(authConfig).auth;
+const { auth } = NextAuth(authConfig);
+
+/**
+ * Single choke point for:
+ *  - authentication gate (redirect anonymous users to /login)
+ *  - platform vs mill routing (@twjlabs.com staff -> /platform, mill users -> /)
+ *  - injecting the request-scoped tenant headers the Prisma isolation layer reads
+ *    (`x-tenant-id`, `x-user-id`, `x-is-platform`)
+ */
+export default auth((req) => {
+  const { nextUrl } = req;
+  const p = nextUrl.pathname;
+  const session = req.auth;
+
+  const isPublic =
+    p.startsWith("/api/auth") ||
+    p.startsWith("/api/ai-agent") ||
+    p.startsWith("/api/cron") ||
+    p === "/api/health" ||
+    p.startsWith("/_next") ||
+    p === "/favicon.ico" ||
+    p.startsWith("/static") ||
+    p.startsWith("/images") ||
+    p === "/manifest.json";
+  if (isPublic) return NextResponse.next();
+
+  const user = session?.user as
+    | { id?: string; isPlatform?: boolean; tenantId?: string | null }
+    | undefined;
+  const loggedIn = !!user;
+
+  if (p === "/login") {
+    if (loggedIn) {
+      return NextResponse.redirect(new URL(user!.isPlatform ? "/platform" : "/", nextUrl));
+    }
+    return NextResponse.next();
+  }
+
+  if (!loggedIn) {
+    const url = new URL("/login", nextUrl);
+    url.searchParams.set("callbackUrl", p);
+    return NextResponse.redirect(url);
+  }
+
+  const isPlatform = user!.isPlatform === true;
+  const tenantId = user!.tenantId ?? null;
+  const onPlatform = p === "/platform" || p.startsWith("/platform/");
+
+  if (isPlatform && !onPlatform && !p.startsWith("/api/")) {
+    return NextResponse.redirect(new URL("/platform", nextUrl));
+  }
+  if (!isPlatform && onPlatform) {
+    return NextResponse.redirect(new URL("/", nextUrl));
+  }
+
+  const headers = new Headers(req.headers);
+  headers.set("x-user-id", String(user!.id ?? ""));
+  headers.set("x-is-platform", isPlatform ? "1" : "0");
+  if (tenantId) headers.set("x-tenant-id", tenantId);
+  else headers.delete("x-tenant-id");
+
+  return NextResponse.next({ request: { headers } });
+});
 
 export const config = {
-  // Protect all dashboard and api routes except auth endpoints, static assets, and images
   matcher: [
     "/((?!api/auth|_next/static|_next/image|favicon.ico|images|manifest.json).*)",
   ],

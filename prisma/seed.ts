@@ -26,9 +26,27 @@ async function main() {
   await prisma.machine.deleteMany();
   await prisma.client.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.systemSetting.deleteMany();
+  await prisma.tenant.deleteMany();
+
+  // 1b. The mill that owns all seeded data + the TWJ-Labs platform admin.
+  const tenant = await prisma.tenant.create({
+    data: { name: 'HRA Paper Mill', slug: 'hra', code: 'HRA', isActive: true },
+  });
+  const TENANT_ID = tenant.id;
 
   // 2. Hash default password
   const defaultPasswordHash = await bcrypt.hash('password123', 10);
+
+  await prisma.user.create({
+    data: {
+      name: 'TWJ Labs Admin',
+      email: 'admin@twjlabs.com',
+      passwordHash: await bcrypt.hash('twjadmin2026', 10),
+      role: Role.ADMIN,
+      tenantId: null,
+    },
+  });
 
   // 3. Seed Users (5 users, 1 for each role)
   console.log('👤 Seeding Users...');
@@ -67,7 +85,7 @@ async function main() {
 
   const createdUsers: Record<Role, any> = {} as any;
   for (const u of users) {
-    const user = await prisma.user.create({ data: u });
+    const user = await prisma.user.create({ data: { ...u, tenantId: TENANT_ID } });
     createdUsers[u.role] = user;
   }
 
@@ -103,7 +121,7 @@ async function main() {
   ];
 
   for (const m of machines) {
-    await prisma.machine.create({ data: m });
+    await prisma.machine.create({ data: { ...m, tenantId: TENANT_ID } });
   }
 
   // 5. Seed Clients (8 realistic Indian clients)
@@ -232,13 +250,14 @@ async function main() {
   ];
 
   for (const c of clientsData) {
-    await prisma.client.create({ data: c });
+    await prisma.client.create({ data: { ...c, tenantId: TENANT_ID } });
   }
 
   // 6. Seed Transporters & Trucks
   console.log('🚚 Seeding Transporters and Trucks...');
   const transporter1 = await prisma.transporter.create({
     data: {
+      tenantId: TENANT_ID,
       name: 'Shree Ganesh Roadlines',
       phone: '+91 98251 00001',
       gstin: '24AABCS1111A1Z9',
@@ -248,6 +267,7 @@ async function main() {
 
   const transporter2 = await prisma.transporter.create({
     data: {
+      tenantId: TENANT_ID,
       name: 'VRL Express Logistics',
       phone: '+91 98251 00002',
       gstin: '29AABCV2222B1Z8',
@@ -257,6 +277,7 @@ async function main() {
 
   const transporter3 = await prisma.transporter.create({
     data: {
+      tenantId: TENANT_ID,
       name: 'SafeX Freight Carriers',
       phone: '+91 98251 00003',
       gstin: '27AABCS3333C1Z7',
@@ -298,7 +319,7 @@ async function main() {
   ];
 
   for (const t of trucksData) {
-    await prisma.truck.create({ data: t });
+    await prisma.truck.create({ data: { ...t, tenantId: TENANT_ID } });
   }
 
   console.log('✅ Seed completed successfully!');

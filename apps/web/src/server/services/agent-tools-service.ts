@@ -556,7 +556,7 @@ export async function agentUpdateStockReel(input: {
   quantityKg?: number;
 }) {
   try {
-    const reel = await db.stockItem.findUnique({ where: { id: input.id } });
+    const reel = await db.stockItem.findFirst({ where: { id: input.id } });
     if (!reel) return { success: false, message: `Stock reel '${input.id}' not found.` };
 
     const updated = await db.stockItem.update({

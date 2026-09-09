@@ -9,11 +9,11 @@ export const metadata = {
 };
 
 export default async function DecklePlanningPage() {
-  const { role } = await requireRole(Role.ADMIN, Role.PLANNER);
+  const { role, tenantId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
   const [demandItems, machineOptions] = await Promise.all([
     getPendingDemandItems(),
-    getMachineOptions(),
+    getMachineOptions(tenantId!),
   ]);
 
   const formattedMachines = [...machineOptions]

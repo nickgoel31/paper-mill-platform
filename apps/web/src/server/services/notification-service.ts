@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
 import { Role, NotificationStatus, Prisma } from "@/generated/prisma/browser";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/client";
+import { runWithTenantContext } from "@/lib/tenant-context";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -101,7 +102,32 @@ export async function getNotificationSummaryStats() {
 // QUEUE PROCESSOR WITH RETRY BACKOFF & RATE LIMITING
 // -----------------------------------------------------------------------------
 
+/**
+ * Cron entry: drains the WhatsApp queue for every active mill. Each mill's batch
+ * runs inside its own tenant scope so the isolation layer stays satisfied and
+ * one mill's queue can't touch another's.
+ */
 export async function processNotificationQueue(batchSize: number = 25) {
+  const tenants = await db.tenant.findMany({ where: { isActive: true }, select: { id: true } });
+  const all = [];
+  for (const t of tenants) {
+    const res = await runWithTenantContext(
+      { tenantId: t.id, isPlatform: false },
+      () => processTenantNotificationQueue(batchSize)
+    );
+    all.push({ tenantId: t.id, ...res });
+  }
+  return {
+    tenants: all.length,
+    processedCount: all.reduce((s, r) => s + r.processedCount, 0),
+    successCount: all.reduce((s, r) => s + r.successCount, 0),
+    failedCount: all.reduce((s, r) => s + r.failedCount, 0),
+    details: all.flatMap((r) => r.details),
+    perTenant: all,
+  };
+}
+
+async function processTenantNotificationQueue(batchSize: number = 25) {
   // 1. Fetch pending queued notifications or failed with attempts < 3
   const pending = await db.whatsAppNotification.findMany({
     where: {
@@ -120,7 +146,7 @@ export async function processNotificationQueue(batchSize: number = 25) {
   for (const notif of pending) {
     try {
       // 2. Perform idempotency check inside transaction
-      const claim = await db.whatsAppNotification.findUnique({
+      const claim = await db.whatsAppNotification.findFirst({
         where: { id: notif.id },
       });
 
@@ -188,7 +214,7 @@ export async function processNotificationQueue(batchSize: number = 25) {
 export async function retryNotification(notificationId: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
-  const notif = await db.whatsAppNotification.findUnique({
+  const notif = await db.whatsAppNotification.findFirst({
     where: { id: notificationId },
   });
 

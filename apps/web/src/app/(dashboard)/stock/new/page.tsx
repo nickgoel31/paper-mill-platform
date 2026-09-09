@@ -10,10 +10,10 @@ export const metadata = {
 };
 
 export default async function NewStockPage() {
-  await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH, Role.OPERATOR);
+  const { tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH, Role.OPERATOR);
 
   const [activeMachines, confirmedOrders, stockPresets] = await Promise.all([
-    getMachineOptions(),
+    getMachineOptions(tenantId!),
     db.order.findMany({
       where: {
         status: { in: ["CONFIRMED", "PLANNED", "IN_PRODUCTION"] },

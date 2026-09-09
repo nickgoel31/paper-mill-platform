@@ -163,7 +163,7 @@ export async function getUnassignedConfirmedOrders() {
 }
 
 export async function getLoadBatchById(id: string) {
-  const batch = await db.loadBatch.findUnique({
+  const batch = await db.loadBatch.findFirst({
     where: { id },
     include: {
       truck: true,
@@ -250,7 +250,7 @@ export async function createLoadBatch(data: LoadBatchInput) {
 
   // Verify truck capacity if selected
   if (validated.truckId) {
-    const truck = await db.truck.findUnique({ where: { id: validated.truckId } });
+    const truck = await db.truck.findFirst({ where: { id: validated.truckId } });
     if (truck && totalKg > truck.capacityKg) {
       const overBy = totalKg - truck.capacityKg;
       throw new Error(
@@ -320,7 +320,7 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
   const validated = loadBatchSchema.parse(data);
 
-  const existing = await db.loadBatch.findUnique({
+  const existing = await db.loadBatch.findFirst({
     where: { id },
     include: { orders: true },
   });
@@ -353,7 +353,7 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
 
   // Check truck capacity
   if (validated.truckId) {
-    const truck = await db.truck.findUnique({ where: { id: validated.truckId } });
+    const truck = await db.truck.findFirst({ where: { id: validated.truckId } });
     if (truck && totalKg > truck.capacityKg) {
       const overBy = totalKg - truck.capacityKg;
       throw new Error(
@@ -414,7 +414,7 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
 export async function markBatchPlanned(id: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  const existing = await db.loadBatch.findUnique({
+  const existing = await db.loadBatch.findFirst({
     where: { id },
     include: {
       orders: { select: { orderId: true } },
@@ -470,7 +470,7 @@ export async function markBatchPlanned(id: string) {
 export async function revertBatchToDraft(id: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  const existing = await db.loadBatch.findUnique({
+  const existing = await db.loadBatch.findFirst({
     where: { id },
     include: {
       orders: { select: { orderId: true } },
@@ -526,7 +526,7 @@ export async function revertBatchToDraft(id: string) {
 export async function cancelLoadBatch(id: string, reason?: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  const existing = await db.loadBatch.findUnique({
+  const existing = await db.loadBatch.findFirst({
     where: { id },
     include: {
       orders: { select: { orderId: true } },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { runWithTenantContext } from "@/lib/tenant-context";
 import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import {
   agentGetOrders,
@@ -624,10 +625,29 @@ async function executeAgentTool(name: string, args: any) {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await auth();
+  const u = session?.user as any;
+  if (!u) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (u.isPlatform || !u.tenantId) {
+    return NextResponse.json(
+      { error: "The AI assistant is only available for mill accounts." },
+      { status: 403 }
+    );
+  }
+  // This route is in the middleware public-list, so it carries no tenant headers.
+  // Establish the tenant scope explicitly for the isolation layer.
+  return runWithTenantContext(
+    { tenantId: u.tenantId, isPlatform: false, userId: u.id },
+    () => handleAgentPost(req, u)
+  );
+}
+
+async function handleAgentPost(req: NextRequest, sessionUser: any) {
   try {
-    const session = await auth();
-    const userRole = (session?.user as any)?.role || "ADMIN";
-    const userName = session?.user?.name || "Staff Member";
+    const userRole = sessionUser?.role || "ADMIN";
+    const userName = sessionUser?.name || "Staff Member";
 
     const body = await req.json();
     const { messages, userMessage, files } = body as {

@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { authConfig } from "@/lib/auth.config";
+import { isPlatformEmail } from "@/lib/platform";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -35,6 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await db.user.findUnique({
           where: { email: email.toLowerCase() },
+          include: { tenant: true },
         });
 
         if (!user || !user.isActive) {
@@ -47,12 +49,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        const platform = isPlatformEmail(user.email);
+
+        // Mill users must belong to an active mill. Platform staff have no mill.
+        if (!platform) {
+          if (!user.tenantId || !user.tenant) return null;
+          if (!user.tenant.isActive) return null;
+        }
+
         return {
           id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
-        };
+          tenantId: user.tenantId ?? null,
+        } as any;
       },
     }),
   ],

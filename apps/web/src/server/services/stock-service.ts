@@ -275,7 +275,7 @@ export async function adjustStockQuantity(
     throw new Error("Mandatory adjustment reason is required for manual stock edits.");
   }
 
-  const existing = await db.stockItem.findUnique({
+  const existing = await db.stockItem.findFirst({
     where: { id: stockItemId },
   });
 
@@ -330,8 +330,8 @@ export async function allocateStockToOrderItem(
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
 
   const [stock, orderItem] = await Promise.all([
-    db.stockItem.findUnique({ where: { id: stockItemId } }),
-    db.orderItem.findUnique({
+    db.stockItem.findFirst({ where: { id: stockItemId } }),
+    db.orderItem.findFirst({
       where: { id: orderItemId },
       include: { order: true },
     }),
@@ -430,7 +430,7 @@ export async function allocateStockToOrderItem(
 export async function deallocateStock(stockItemId: string, reason?: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
 
-  const stock = await db.stockItem.findUnique({
+  const stock = await db.stockItem.findFirst({
     where: { id: stockItemId },
     include: {
       orderItem: { include: { order: true } },
@@ -457,7 +457,7 @@ export async function deallocateStock(stockItemId: string, reason?: string) {
     });
 
     // 2. Decrement OrderItem.producedKg (ensure never negative)
-    const currentItem = await tx.orderItem.findUnique({
+    const currentItem = await tx.orderItem.findFirst({
       where: { id: orderItemId },
     });
     const currentProd = Number(currentItem?.producedKg || 0);

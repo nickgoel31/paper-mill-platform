@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 export default async function ProductionRunsPage() {
-  const { role } = await requireRole(
+  const { role, tenantId } = await requireRole(
     Role.ADMIN,
     Role.PLANNER,
     Role.OPERATOR,
@@ -23,7 +23,7 @@ export default async function ProductionRunsPage() {
   const [initialData, stats, machines] = await Promise.all([
     getProductionRuns({ page: 1, pageSize: 20 }),
     getProductionSummaryStats(),
-    getMachineOptions(),
+    getMachineOptions(tenantId!),
   ]);
 
   return (

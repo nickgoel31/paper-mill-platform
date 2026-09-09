@@ -60,7 +60,7 @@ export async function createClient(data: ClientFormInput) {
   const validated = clientSchema.parse(data);
 
   // Check unique code
-  const existing = await db.client.findUnique({
+  const existing = await db.client.findFirst({
     where: { code: validated.code },
   });
   if (existing) {
@@ -110,14 +110,14 @@ export async function updateClient(id: string, data: ClientFormInput) {
   const { userId } = await requireRole(Role.ADMIN);
   const validated = clientSchema.parse(data);
 
-  const existing = await db.client.findUnique({ where: { id } });
+  const existing = await db.client.findFirst({ where: { id } });
   if (!existing || existing.deletedAt) {
     throw new Error("Client not found or has been deleted.");
   }
 
   // Check unique code if changed
   if (existing.code !== validated.code) {
-    const duplicate = await db.client.findUnique({
+    const duplicate = await db.client.findFirst({
       where: { code: validated.code },
     });
     if (duplicate && duplicate.id !== id) {
@@ -168,7 +168,7 @@ export async function updateClient(id: string, data: ClientFormInput) {
 export async function deleteClient(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
-  const existing = await db.client.findUnique({
+  const existing = await db.client.findFirst({
     where: { id },
     include: {
       orders: {

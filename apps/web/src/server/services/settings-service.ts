@@ -53,18 +53,20 @@ export async function getSystemSettings(): Promise<SystemSettingsMap> {
 }
 
 export async function updateSystemSettings(settings: Partial<SystemSettingsMap>) {
-  await requireRole(Role.ADMIN);
+  const { tenantId } = await requireRole(Role.ADMIN);
 
-  const updates = Object.entries(settings).map(([key, val]) => {
-    const valStr = String(val);
-    return db.systemSetting.upsert({
-      where: { key },
-      create: { key, value: valStr },
-      update: { value: valStr },
+  // SystemSetting is unique on (tenantId, key); do an explicit update-or-insert
+  // per key rather than an upsert with a compound-unique selector.
+  for (const [key, val] of Object.entries(settings)) {
+    const value = String(val);
+    const res = await db.systemSetting.updateMany({
+      where: { tenantId: tenantId!, key },
+      data: { value },
     });
-  });
-
-  await db.$transaction(updates);
+    if (res.count === 0) {
+      await db.systemSetting.create({ data: { tenantId: tenantId!, key, value } });
+    }
+  }
 
   revalidatePath("/settings");
   revalidatePath("/dashboard");

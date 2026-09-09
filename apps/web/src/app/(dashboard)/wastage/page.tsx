@@ -13,7 +13,7 @@ export const metadata = {
 };
 
 export default async function WastagePage() {
-  const { role } = await requireRole(
+  const { role, tenantId } = await requireRole(
     Role.ADMIN,
     Role.PLANNER,
     Role.DISPATCH,
@@ -24,7 +24,7 @@ export default async function WastagePage() {
   const [initialLogs, analytics, machines, runs] = await Promise.all([
     getWastageLogs({ page: 1, pageSize: 20 }),
     getWastageAnalytics(30),
-    getMachineOptions(),
+    getMachineOptions(tenantId!),
     db.productionRun.findMany({
       orderBy: { createdAt: "desc" },
       take: 25,

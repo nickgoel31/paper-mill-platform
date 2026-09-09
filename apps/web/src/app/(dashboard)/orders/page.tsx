@@ -11,11 +11,12 @@ export const metadata = {
 export default async function OrdersPage() {
   const session = await auth();
   const userRole = ((session?.user as any)?.role as Role) || Role.SALES;
+  const tenantId = (session?.user as any)?.tenantId as string;
 
   const [ordersRes, stats, clients] = await Promise.all([
     getOrders({ page: 1, pageSize: 20 }),
     getOrderSummaryStats(),
-    getClientOptions(),
+    getClientOptions(tenantId),
   ]);
 
   return (

@@ -9,12 +9,12 @@ export const metadata = {
 };
 
 export default async function NewLoadBatchPage() {
-  await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
+  const { tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
 
   const [unassignedOrders, trucks, transporters] = await Promise.all([
     getUnassignedConfirmedOrders(),
-    getTruckOptions(),
-    getTransporterOptions(),
+    getTruckOptions(tenantId!),
+    getTransporterOptions(tenantId!),
   ]);
 
   return (

@@ -1,27 +1,34 @@
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { LOOKUP_TAGS } from "./cache-tags";
+import { runWithTenantContext } from "@/lib/tenant-context";
 
 export { LOOKUP_TAGS };
 
 /**
- * Cached master-data lookups (clients, machines, trucks, transporters).
- *
- * These lists change rarely but are read on almost every dashboard page as
- * dropdown/reference data. Each was previously a fresh D1 round trip per
- * navigation. They are now served from the KV-backed incremental cache and only
- * re-queried when the underlying master data is mutated (see `revalidateTag`
- * calls in the corresponding `*-service.ts` files) or after `revalidate`
- * seconds, whichever comes first.
+ * Cached master-data lookups (clients, machines, trucks, transporters) for one
+ * mill. Each takes the caller's `tenantId` — it goes into the cache key (so mills
+ * never share an entry) and into the query `where` (explicit tenant scope).
  *
  * All Prisma `Decimal` columns are converted to `number` before returning so the
  * cached payload is plain JSON.
  */
 
-// Master data changes rarely; a mutation calls `revalidateTag` for an immediate
-// refresh where a tag cache is configured, and this TTL bounds staleness
-// otherwise.
 const LOOKUP_REVALIDATE_SECONDS = 120;
+
+/** Cache one mill's lookup list — keyed and tenant-scoped by `tenantId`. */
+function cachedLookup<T>(
+  keyBase: string,
+  tag: string,
+  tenantId: string,
+  run: () => Promise<T>
+): Promise<T> {
+  return unstable_cache(
+    () => runWithTenantContext({ tenantId, isPlatform: false }, run),
+    [keyBase, tenantId],
+    { tags: [tag], revalidate: LOOKUP_REVALIDATE_SECONDS }
+  )();
+}
 
 export type ClientOption = {
   id: string;
@@ -31,17 +38,15 @@ export type ClientOption = {
   state: string;
 };
 
-export const getClientOptions = unstable_cache(
-  async (): Promise<ClientOption[]> => {
-    return db.client.findMany({
-      where: { deletedAt: null, isActive: true },
+export function getClientOptions(tenantId: string): Promise<ClientOption[]> {
+  return cachedLookup("lookup-client-options", LOOKUP_TAGS.clients, tenantId, () =>
+    db.client.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
       select: { id: true, name: true, code: true, city: true, state: true },
       orderBy: { name: "asc" },
-    });
-  },
-  ["lookup-client-options"],
-  { tags: [LOOKUP_TAGS.clients], revalidate: LOOKUP_REVALIDATE_SECONDS }
-);
+    })
+  );
+}
 
 export type MachineOption = {
   id: string;
@@ -55,10 +60,10 @@ export type MachineOption = {
   maxGsm: number;
 };
 
-export const getMachineOptions = unstable_cache(
-  async (): Promise<MachineOption[]> => {
+export function getMachineOptions(tenantId: string): Promise<MachineOption[]> {
+  return cachedLookup("lookup-machine-options", LOOKUP_TAGS.machines, tenantId, async () => {
     const rows = await db.machine.findMany({
-      where: { deletedAt: null, isActive: true },
+      where: { tenantId, deletedAt: null, isActive: true },
       select: {
         id: true,
         name: true,
@@ -79,17 +84,15 @@ export const getMachineOptions = unstable_cache(
       minTrimInch: Number(m.minTrimInch),
       maxTrimInch: Number(m.maxTrimInch),
     }));
-  },
-  ["lookup-machine-options"],
-  { tags: [LOOKUP_TAGS.machines], revalidate: LOOKUP_REVALIDATE_SECONDS }
-);
+  });
+}
 
 /**
  * Machine deckle/GSM envelope used to validate order line items. Derived from
  * the cached machine options so it shares the same invalidation.
  */
-export async function getMachineConstraints() {
-  const machines = await getMachineOptions();
+export async function getMachineConstraints(tenantId: string) {
+  const machines = await getMachineOptions(tenantId);
   const maxDeckle = machines.length > 0 ? Math.max(...machines.map((m) => m.maxDeckleInch)) : 0;
   const minGsm = machines.length > 0 ? Math.min(...machines.map((m) => m.minGsm)) : 0;
   const maxGsm = machines.length > 0 ? Math.max(...machines.map((m) => m.maxGsm)) : 0;
@@ -103,10 +106,10 @@ export type TruckOption = {
   transporterId: string | null;
 };
 
-export const getTruckOptions = unstable_cache(
-  async (): Promise<TruckOption[]> => {
-    return db.truck.findMany({
-      where: { deletedAt: null, isActive: true },
+export function getTruckOptions(tenantId: string): Promise<TruckOption[]> {
+  return cachedLookup("lookup-truck-options", LOOKUP_TAGS.trucks, tenantId, () =>
+    db.truck.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
       select: {
         id: true,
         registrationNumber: true,
@@ -114,11 +117,9 @@ export const getTruckOptions = unstable_cache(
         transporterId: true,
       },
       orderBy: { registrationNumber: "asc" },
-    });
-  },
-  ["lookup-truck-options"],
-  { tags: [LOOKUP_TAGS.trucks], revalidate: LOOKUP_REVALIDATE_SECONDS }
-);
+    })
+  );
+}
 
 export type TransporterOption = {
   id: string;
@@ -126,14 +127,12 @@ export type TransporterOption = {
   phone: string;
 };
 
-export const getTransporterOptions = unstable_cache(
-  async (): Promise<TransporterOption[]> => {
-    return db.transporter.findMany({
-      where: { deletedAt: null, isActive: true },
+export function getTransporterOptions(tenantId: string): Promise<TransporterOption[]> {
+  return cachedLookup("lookup-transporter-options", LOOKUP_TAGS.transporters, tenantId, () =>
+    db.transporter.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
       select: { id: true, name: true, phone: true },
       orderBy: { name: "asc" },
-    });
-  },
-  ["lookup-transporter-options"],
-  { tags: [LOOKUP_TAGS.transporters], revalidate: LOOKUP_REVALIDATE_SECONDS }
-);
+    })
+  );
+}

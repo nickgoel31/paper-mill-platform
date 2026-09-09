@@ -11,11 +11,12 @@ export const metadata = {
 export default async function LoadsPage() {
   const session = await auth();
   const userRole = ((session?.user as any)?.role as Role) || Role.SALES;
+  const tenantId = (session?.user as any)?.tenantId as string;
 
   const [batchesRes, trucks, transporters] = await Promise.all([
     getLoadBatches({ page: 1, pageSize: 20 }),
-    getTruckOptions(),
-    getTransporterOptions(),
+    getTruckOptions(tenantId),
+    getTransporterOptions(tenantId),
   ]);
 
   return (

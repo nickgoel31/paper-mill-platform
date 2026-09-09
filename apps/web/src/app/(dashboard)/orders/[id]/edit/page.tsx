@@ -18,13 +18,13 @@ export default async function EditOrderPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireRole(Role.ADMIN, Role.SALES);
+  const { tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const { id } = await params;
 
   const [order, clients, machineConstraints] = await Promise.all([
     getOrderById(id),
-    getClientOptions(),
-    getActiveMachineConstraints(),
+    getClientOptions(tenantId!),
+    getActiveMachineConstraints(tenantId!),
   ]);
 
   if (!order) {

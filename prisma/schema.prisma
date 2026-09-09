@@ -81,6 +81,44 @@ enum NotificationStatus {
 // MODELS
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+// TENANT (Paper Mill) — every business row below belongs to exactly one Tenant.
+// Platform staff (TWJ Labs) are Users with tenantId = null.
+// -----------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  code      String   @unique
+  gstin     String?
+  address   String?
+  city      String?
+  state     String?
+  phone     String?
+  email     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  clients       Client[]
+  machines      Machine[]
+  transporters  Transporter[]
+  trucks        Truck[]
+  stockPresets  StockPreset[]
+  orders        Order[]
+  productionRuns ProductionRun[]
+  loadBatches   LoadBatch[]
+  dispatches    Dispatch[]
+  invoices      Invoice[]
+  stockItems    StockItem[]
+  wastageLogs   WastageLog[]
+  notifications WhatsAppNotification[]
+  auditLogs     AuditLog[]
+  settings      SystemSetting[]
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -88,8 +126,11 @@ model User {
   passwordHash String
   role         Role
   isActive     Boolean  @default(true)
+  tenantId     String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   // Audit and creator relations
   createdClients      Client[]
@@ -107,12 +148,14 @@ model User {
 
   @@index([role])
   @@index([email])
+  @@index([tenantId])
 }
 
 model Client {
   id             String    @id @default(cuid())
+  tenantId       String?
   name           String
-  code           String    @unique
+  code           String
   gstin          String?
   addressLine1   String
   addressLine2   String?
@@ -129,11 +172,14 @@ model Client {
   updatedAt      DateTime  @updatedAt
   createdById    String?
 
+  tenant        Tenant?                 @relation(fields: [tenantId], references: [id])
   createdBy     User?                  @relation(fields: [createdById], references: [id])
   orders        Order[]
   invoices      Invoice[]
   notifications WhatsAppNotification[]
 
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@index([code])
   @@index([deletedAt])
   @@index([city, state])
@@ -142,8 +188,9 @@ model Client {
 
 model Machine {
   id            String    @id @default(cuid())
-  name          String    @unique
-  code          String    @unique
+  tenantId      String?
+  name          String
+  code          String
   maxDeckleInch Decimal // e.g. 196.00
   minDeckleInch Decimal // minimum usable width for a run
   minTrimInch   Decimal // mandatory edge trim, e.g. 0.50
@@ -157,9 +204,13 @@ model Machine {
   updatedAt     DateTime  @updatedAt
   createdById   String?
 
+  tenant         Tenant?          @relation(fields: [tenantId], references: [id])
   createdBy      User?           @relation(fields: [createdById], references: [id])
   productionRuns ProductionRun[]
 
+  @@unique([tenantId, name])
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@index([deletedAt])
   @@index([isActive])
   @@index([createdById])
@@ -167,6 +218,7 @@ model Machine {
 
 model Transporter {
   id          String    @id @default(cuid())
+  tenantId    String?
   name        String
   phone       String
   gstin       String?
@@ -176,17 +228,20 @@ model Transporter {
   updatedAt   DateTime  @updatedAt
   createdById String?
 
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
   createdBy   User?       @relation(fields: [createdById], references: [id])
   trucks      Truck[]
   loadBatches LoadBatch[]
 
+  @@index([tenantId])
   @@index([deletedAt])
   @@index([createdById])
 }
 
 model Truck {
   id                 String    @id @default(cuid())
-  registrationNumber String    @unique
+  tenantId           String?
+  registrationNumber String
   capacityKg         Int
   transporterId      String?
   isActive           Boolean   @default(true)
@@ -195,10 +250,13 @@ model Truck {
   updatedAt          DateTime  @updatedAt
   createdById        String?
 
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
   transporter User?       @relation(fields: [createdById], references: [id])
   owner       Transporter? @relation(fields: [transporterId], references: [id])
   loadBatches LoadBatch[]
 
+  @@unique([tenantId, registrationNumber])
+  @@index([tenantId])
   @@index([transporterId])
   @@index([deletedAt])
   @@index([createdById])
@@ -206,7 +264,8 @@ model Truck {
 
 model Order {
   id           String        @id @default(cuid())
-  orderNumber  String        @unique
+  tenantId     String?
+  orderNumber  String
   clientId     String
   orderDate    DateTime      @default(now())
   deliveryDate DateTime?
@@ -218,11 +277,14 @@ model Order {
   updatedAt    DateTime      @updatedAt
   createdById  String?
 
+  tenant          Tenant?           @relation(fields: [tenantId], references: [id])
   client          Client           @relation(fields: [clientId], references: [id])
   createdBy       User?            @relation(fields: [createdById], references: [id])
   items           OrderItem[]
   loadAssignments LoadBatchOrder[]
 
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
   @@index([clientId])
   @@index([status])
   @@index([priority])
@@ -259,7 +321,8 @@ model OrderItem {
 
 model LoadBatch {
   id                  String     @id @default(cuid())
-  batchNumber         String     @unique
+  tenantId            String?
+  batchNumber         String
   truckId             String?
   transporterId       String?
   driverName          String?
@@ -274,6 +337,7 @@ model LoadBatch {
   updatedAt           DateTime   @updatedAt
   createdById         String?
 
+  tenant        Tenant?                 @relation(fields: [tenantId], references: [id])
   truck         Truck?                 @relation(fields: [truckId], references: [id])
   transporter   Transporter?           @relation(fields: [transporterId], references: [id])
   createdBy     User?                  @relation(fields: [createdById], references: [id])
@@ -282,6 +346,8 @@ model LoadBatch {
   notifications WhatsAppNotification[]
   dispatch      Dispatch?
 
+  @@unique([tenantId, batchNumber])
+  @@index([tenantId])
   @@index([truckId])
   @@index([transporterId])
   @@index([status])
@@ -305,7 +371,8 @@ model LoadBatchOrder {
 
 model ProductionRun {
   id               String    @id @default(cuid())
-  runNumber        String    @unique
+  tenantId         String?
+  runNumber        String
   machineId        String
   gsm              Int
   status           RunStatus @default(PLANNED)
@@ -322,12 +389,15 @@ model ProductionRun {
   updatedAt        DateTime  @updatedAt
   createdById      String?
 
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id])
   machine     Machine          @relation(fields: [machineId], references: [id])
   createdBy   User?            @relation(fields: [createdById], references: [id])
   patterns    CuttingPattern[]
   stockItems  StockItem[]
   wastageLogs WastageLog[]
 
+  @@unique([tenantId, runNumber])
+  @@index([tenantId])
   @@index([machineId])
   @@index([gsm])
   @@index([status])
@@ -380,6 +450,7 @@ model PatternCut {
 
 model StockItem {
   id              String      @id @default(cuid())
+  tenantId        String?
   orderItemId     String?
   productionRunId String?
   widthInch       Decimal
@@ -390,9 +461,11 @@ model StockItem {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id])
   orderItem     OrderItem?     @relation(fields: [orderItemId], references: [id], onDelete: SetNull)
   productionRun ProductionRun? @relation(fields: [productionRunId], references: [id], onDelete: SetNull)
 
+  @@index([tenantId])
   @@index([status])
   @@index([gsm, widthInch])
   @@index([orderItemId])
@@ -401,6 +474,7 @@ model StockItem {
 
 model WastageLog {
   id               String   @id @default(cuid())
+  tenantId         String?
   productionRunId  String?
   cuttingPatternId String?
   wastageKg        Decimal
@@ -411,10 +485,12 @@ model WastageLog {
   updatedAt        DateTime @updatedAt
   createdById      String?
 
+  tenant         Tenant?          @relation(fields: [tenantId], references: [id])
   productionRun  ProductionRun?  @relation(fields: [productionRunId], references: [id], onDelete: SetNull)
   cuttingPattern CuttingPattern? @relation(fields: [cuttingPatternId], references: [id], onDelete: SetNull)
   createdBy      User?           @relation(fields: [createdById], references: [id])
 
+  @@index([tenantId])
   @@index([productionRunId])
   @@index([cuttingPatternId])
   @@index([recordedAt])
@@ -424,7 +500,8 @@ model WastageLog {
 
 model Dispatch {
   id                String   @id @default(cuid())
-  dispatchNumber    String   @unique
+  tenantId          String?
+  dispatchNumber    String
   loadBatchId       String   @unique
   dispatchedAt      DateTime @default(now())
   gatePassNumber    String?
@@ -437,17 +514,21 @@ model Dispatch {
   updatedAt         DateTime @updatedAt
   createdById       String?
 
+  tenant    Tenant?    @relation(fields: [tenantId], references: [id])
   loadBatch LoadBatch @relation(fields: [loadBatchId], references: [id])
   createdBy User?     @relation(fields: [createdById], references: [id])
   invoices  Invoice[]
 
+  @@unique([tenantId, dispatchNumber])
+  @@index([tenantId])
   @@index([dispatchedAt])
   @@index([createdById])
 }
 
 model Invoice {
   id            String        @id @default(cuid())
-  invoiceNumber String        @unique
+  tenantId      String?
+  invoiceNumber String
   clientId      String
   loadBatchId   String?       @unique
   dispatchId    String?
@@ -463,12 +544,15 @@ model Invoice {
   updatedAt     DateTime      @updatedAt
   createdById   String?
 
+  tenant      Tenant?        @relation(fields: [tenantId], references: [id])
   client      Client        @relation(fields: [clientId], references: [id])
   loadBatch   LoadBatch?    @relation(fields: [loadBatchId], references: [id])
   dispatch    Dispatch?     @relation(fields: [dispatchId], references: [id])
   createdBy   User?         @relation(fields: [createdById], references: [id])
   lines       InvoiceLine[]
 
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId])
   @@index([clientId])
   @@index([invoiceDate])
   @@index([status])
@@ -496,6 +580,7 @@ model InvoiceLine {
 
 model WhatsAppNotification {
   id                String             @id @default(cuid())
+  tenantId          String?
   loadBatchId       String?
   clientId          String
   phoneNumber       String
@@ -509,9 +594,11 @@ model WhatsAppNotification {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
+  tenant    Tenant?     @relation(fields: [tenantId], references: [id])
   loadBatch LoadBatch? @relation(fields: [loadBatchId], references: [id], onDelete: SetNull)
   client    Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
+  @@index([tenantId])
   @@index([status])
   @@index([clientId])
   @@index([loadBatchId])
@@ -520,6 +607,7 @@ model WhatsAppNotification {
 
 model AuditLog {
   id         String   @id @default(cuid())
+  tenantId   String?
   userId     String?
   entityType String
   entityId   String
@@ -528,8 +616,10 @@ model AuditLog {
   after      Json?
   createdAt  DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  @@index([tenantId])
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
@@ -537,16 +627,23 @@ model AuditLog {
 
 model SystemSetting {
   id          String   @id @default(cuid())
-  key         String   @unique
+  tenantId    String?
+  key         String
   value       String
   description String?
   updatedAt   DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
 }
 
 model StockPreset {
   id               String    @id @default(cuid())
+  tenantId         String?
   name             String
-  code             String    @unique
+  code             String
   widthInch        Decimal
   gsm              Int
   standardWeightKg Decimal
@@ -561,9 +658,12 @@ model StockPreset {
   updatedAt        DateTime  @updatedAt
   createdById      String?
 
+  tenant           Tenant?        @relation(fields: [tenantId], references: [id])
   createdBy        User?         @relation(fields: [createdById], references: [id])
   patternCuts      PatternCut[]
 
+  @@unique([tenantId, code])
+  @@index([tenantId])
   @@index([gsm, widthInch])
   @@index([isActive])
   @@index([deletedAt])

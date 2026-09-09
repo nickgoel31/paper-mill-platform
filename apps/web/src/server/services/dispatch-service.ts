@@ -159,7 +159,7 @@ export async function getPendingDispatchLoadBatches() {
 }
 
 export async function getLoadBatchLoadingSheetData(loadBatchId: string) {
-  const batch = await db.loadBatch.findUnique({
+  const batch = await db.loadBatch.findFirst({
     where: { id: loadBatchId },
     include: {
       truck: true,
@@ -211,7 +211,7 @@ export interface ConfirmDispatchInput {
 export async function confirmDispatch(input: ConfirmDispatchInput) {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
-  const batch = await db.loadBatch.findUnique({
+  const batch = await db.loadBatch.findFirst({
     where: { id: input.loadBatchId },
     include: {
       truck: true,
@@ -453,7 +453,7 @@ export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
 export async function markDispatchDelivered(dispatchId: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
-  const dispatch = await db.dispatch.findUnique({
+  const dispatch = await db.dispatch.findFirst({
     where: { id: dispatchId },
     include: {
       loadBatch: {
