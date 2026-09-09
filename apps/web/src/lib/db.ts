@@ -129,7 +129,11 @@ function withTenantScope(client: PrismaClient): PrismaClient {
 
           if (isDirect) {
             if (READ_OPS.has(operation) || WRITE_WHERE_OPS.has(operation)) {
-              a.where = mergeWhere(a.where, { tenantId });
+              // `tenantId` is a scalar column, so add it as a top-level sibling
+              // (implicit AND). Critically, `update` / `delete` / `upsert` take a
+              // WhereUniqueInput — wrapping in `AND` there removes `id` from the
+              // top level and Prisma rejects it.
+              a.where = { ...(a.where ?? {}), tenantId };
             }
             if (operation === "create") {
               a.data = { ...(a.data ?? {}), tenantId };
