@@ -13,6 +13,12 @@ import {
 } from "@/generated/prisma/browser";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG, LOOKUP_TAGS } from "./cache-tags";
+import { getTenantContextSync } from "@/lib/tenant-context";
+import { getOrderSummaryStats } from "./order-service";
+import { getProductionSummaryStats } from "./production-service";
+import { getPendingDemandItems, runSolverOptimization } from "./deckle-service";
+import { getPendingDispatchLoadBatches } from "./dispatch-service";
+import { getActiveMachineConstraints } from "./order-service";
 
 export interface AgentToolResult {
   success: boolean;
@@ -1181,5 +1187,126 @@ export async function agentGetNotifications(params?: { limit?: number }) {
     };
   } catch (err: any) {
     return { success: false, message: "Failed to get notifications", error: err.message };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 12. CROSS-MODULE OVERVIEW & PLANNING TOOLS
+// -----------------------------------------------------------------------------
+
+export async function agentGetDashboardSummary() {
+  try {
+    const [orders, production] = await Promise.all([
+      getOrderSummaryStats(),
+      getProductionSummaryStats(),
+    ]);
+    return {
+      success: true,
+      message: "Current mill KPIs.",
+      data: {
+        openOrders: orders.openOrdersCount,
+        pendingKg: Math.round(orders.totalPendingKg),
+        ordersDueThisWeek: orders.ordersDueThisWeek,
+        overdueOrders: orders.overdueOrdersCount,
+        productionRunsToday: production.runsToday,
+        runningNow: production.runningNow,
+        avgTrimPercentWeek: production.avgTrimWeek,
+        kgProducedThisWeek: Math.round(production.totalKgProducedWeek),
+      },
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to load dashboard summary", error: err.message };
+  }
+}
+
+export async function agentGetDeckleDemand() {
+  try {
+    const items = await getPendingDemandItems();
+    return {
+      success: true,
+      message: `${items.length} order line(s) awaiting deckle planning.`,
+      data: items.map((it: any) => ({
+        orderNumber: it.orderNumber,
+        client: it.clientName,
+        widthInch: it.widthInch,
+        gsm: it.gsm,
+        quantityKg: it.quantityKg,
+        priority: it.priority,
+        deliveryDate: it.deliveryDate,
+      })),
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to load deckle demand", error: err.message };
+  }
+}
+
+export async function agentRunDeckleOptimization(params?: { objective?: "MIN_TRIM" | "MIN_PATTERNS" | "BALANCED" }) {
+  try {
+    const ctx = getTenantContextSync();
+    if (!ctx?.tenantId) return { success: false, message: "No tenant context." };
+
+    const [demand, constraints] = await Promise.all([
+      getPendingDemandItems(),
+      getActiveMachineConstraints(ctx.tenantId),
+    ]);
+    if (demand.length === 0) {
+      return { success: true, message: "No pending demand to optimize.", data: { runs: [] } };
+    }
+    const result = await runSolverOptimization({
+      machines: constraints.machines.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        max_deckle_inch: m.maxDeckleInch,
+        min_deckle_inch: m.minDeckleInch,
+        min_trim_inch: m.minTrimInch,
+        max_trim_inch: m.maxTrimInch,
+        min_gsm: m.minGsm,
+        max_gsm: m.maxGsm,
+      })),
+      items: demand.map((it: any) => ({
+        order_item_id: it.id,
+        order_number: it.orderNumber,
+        width_inch: it.widthInch,
+        gsm: it.gsm,
+        quantity_kg: it.quantityKg,
+        tolerance_percent: it.tolerancePercent ?? 5,
+        priority: it.priority,
+        delivery_date: it.deliveryDate ? new Date(it.deliveryDate).toISOString() : null,
+      })),
+      options: { objective: params?.objective || "MIN_TRIM" } as any,
+    });
+    return {
+      success: true,
+      message: `Solver produced ${result.runs.length} run(s) at ${result.summary.total_trim_percent}% avg trim. This is a plan only — commit it from the Deckle Planning screen.`,
+      data: {
+        avgTrimPercent: result.summary.total_trim_percent,
+        totalKg: result.summary.total_kg,
+        runsCreated: result.summary.runs_created,
+        machinesUsed: result.summary.machines_used,
+        unassigned: result.unassigned_items?.length ?? 0,
+      },
+    };
+  } catch (err: any) {
+    return { success: false, message: "Deckle optimization failed", error: err.message };
+  }
+}
+
+export async function agentGetPendingDispatches() {
+  try {
+    const batches = await getPendingDispatchLoadBatches();
+    return {
+      success: true,
+      message: `${batches.length} load batch(es) ready for dispatch.`,
+      data: batches.map((b: any) => ({
+        batchNumber: b.batchNumber,
+        truck: b.truck?.registrationNumber ?? "Unassigned",
+        plannedDispatchDate: b.plannedDispatchDate,
+        status: b.status,
+        orders: b.orders?.length ?? 0,
+        totalPlannedKg: Number(b.totalPlannedKg ?? 0),
+      })),
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to load pending dispatches", error: err.message };
   }
 }

@@ -2,37 +2,28 @@
 
 import * as React from "react";
 import {
-  Sparkles,
-  Bot,
+  Menu,
   X,
-  Send,
+  CornerDownRight,
+  ListFilter,
+  SlidersHorizontal,
+  ArrowUp,
+  ChevronDown,
   Paperclip,
-  Image as ImageIcon,
-  FileText,
   Loader2,
-  Trash2,
   RotateCcw,
-  Scissors,
-  CheckCircle2,
-  ArrowRight,
-  Minimize2,
-  Maximize2,
-  ExternalLink,
-  ChevronRight,
-  Layers,
-  Database,
-  Truck,
   Plus,
+  FileText,
+  PanelRight,
+  Copy,
+  Check,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   AgentOrdersCard,
   AgentStockCard,
   AgentProductionRunsCard,
 } from "@/components/ai/agent-data-cards";
-import Link from "next/link";
 
 interface AttachedFile {
   name: string;
@@ -51,46 +42,108 @@ interface ChatMessage {
   toolResults?: any[];
 }
 
-const INITIAL_MESSAGES: ChatMessage[] = [
+// PaperMill AI mark — 4-pointed spark on the app's gradient
+function PaperMillAiIcon({ className = "w-5 h-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none">
+      <defs>
+        <linearGradient id="papermill-ai-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#1a73e8" />
+          <stop offset="45%" stopColor="#7c3aed" />
+          <stop offset="85%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#ec4899" />
+        </linearGradient>
+      </defs>
+      <path
+        fill="url(#papermill-ai-gradient)"
+        d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"
+      />
+    </svg>
+  );
+}
+
+// ERP-only prompt suggestions
+const PRIMARY_SUGGESTIONS = [
   {
-    id: "m-1",
-    role: "assistant",
-    content: `👋 **Welcome to PaperMill Agentic AI!**
-
-I have direct access to your entire ERP system. I can read, create, edit, delete, and optimize records in real-time.
-
-**What you can do:**
-1. **📄 Upload Purchase Orders (PDF / Images)**: Drop or attach a customer PO to parse and create sales orders with 1 click.
-2. **✂️ Deckle Optimizer**: Tell me to run cutting optimization across active machines.
-3. **📦 Warehouse & Stock**: Ask me to add new warehouse reels or check inventory.
-4. **📊 ERP CRUD**: Request creation or updates across clients, machines, trucks, stock presets, and invoices.`,
-    timestamp: "Just now",
+    label: "Create a sales order from the attached PO",
+    prompt:
+      "Read the attached purchase order, match the buyer to a client, and create the sales order with every reel line. Show me exactly what you created.",
+  },
+  {
+    label: "Give me today's mill summary",
+    prompt:
+      "Show me the dashboard summary: open orders, pending kg, orders due this week, overdue orders, and today's production.",
+  },
+  {
+    label: "What's pending deckle planning right now?",
+    prompt: "List all confirmed order lines still waiting for deckle planning, grouped by GSM.",
   },
 ];
 
-const SUGGESTED_PROMPTS = [
-  "Create sales order for Shittla Papers with 28\", 26\", 49\" 140 GSM",
-  "Show warehouse inventory reels & allocated stock",
-  "Check current machine deckles and production runs",
-  "What is our active fleet and truck capacity?",
+const ALL_SUGGESTIONS = [
+  ...PRIMARY_SUGGESTIONS,
+  {
+    label: "Run the deckle optimizer on all pending demand",
+    prompt:
+      "Run the cutting-stock optimizer over all pending demand and tell me the proposed runs and average trim %.",
+  },
+  {
+    label: "Show orders for 140 GSM vs available stock reels",
+    prompt:
+      "Show confirmed/planned orders needing 140 GSM and compare against available reels in the warehouse.",
+  },
+  {
+    label: "Which load batches are ready to dispatch?",
+    prompt: "List load batches that are planned or loading and ready for weighbridge and gate pass.",
+  },
+  {
+    label: "Change an order's delivery date or priority",
+    prompt: "Update sales order SO-… — set its delivery date and priority. Ask me for the details.",
+  },
+  {
+    label: "Add a new client and its first order",
+    prompt: "Register a new client, then create a sales order for them. Ask me for the details.",
+  },
+];
+
+const HEADLINE_ROTATIONS = [
+  "Create an order from a customer PO",
+  "Plan the deckle, cut the trim loss",
+  "Query orders, stock and production",
+  "Run every module by chat",
 ];
 
 export function AgenticAiSidebar() {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(false);
-  const [messages, setMessages] = React.useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [attachedFiles, setAttachedFiles] = React.useState<AttachedFile[]>([]);
+  const [showAllSuggestions, setShowAllSuggestions] = React.useState(false);
+  const [showMenu, setShowMenu] = React.useState(false);
+  const [showToolOptions, setShowToolOptions] = React.useState(false);
+  const [headlineIndex, setHeadlineIndex] = React.useState(0);
+  const [copiedId, setCopiedId] = React.useState<string | null>(null);
+
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const chatBottomRef = React.useRef<HTMLDivElement | null>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement | null>(null);
 
-  // Auto-scroll chat to bottom
+  // Auto-scroll chat to bottom when active
   React.useEffect(() => {
-    if (isOpen) {
+    if (isOpen && messages.length > 0) {
       chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isOpen, isLoading]);
+
+  // Adjust textarea height dynamically
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [inputValue]);
 
   // Handle file uploads (Images, PDFs, Text)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -100,7 +153,6 @@ export function AgenticAiSidebar() {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
-      const isImage = file.type.startsWith("image/");
       const isText = file.type.startsWith("text/") || file.name.endsWith(".csv") || file.name.endsWith(".txt");
 
       const reader = new FileReader();
@@ -127,8 +179,8 @@ export function AgenticAiSidebar() {
               name: file.name,
               type: file.type || (isPdf ? "application/pdf" : "image/png"),
               size: file.size,
+              // Raw bytes: PaperMill AI reads PDFs and images natively — no OCR placeholder.
               base64,
-              text: isPdf ? `[PDF File: ${file.name}, size ${(file.size / 1024).toFixed(1)} KB]` : undefined,
             },
           ]);
         };
@@ -136,7 +188,7 @@ export function AgenticAiSidebar() {
       }
     }
 
-    toast.success(`${files.length} file(s) attached.`);
+    toast.success(`${files.length} file(s) attached to context.`);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -160,6 +212,7 @@ export function AgenticAiSidebar() {
     setInputValue("");
     setAttachedFiles([]);
     setIsLoading(true);
+    setShowAllSuggestions(false);
 
     try {
       const res = await fetch("/api/ai-agent", {
@@ -181,18 +234,18 @@ export function AgenticAiSidebar() {
       const assistantMsg: ChatMessage = {
         id: `ast-${Date.now()}`,
         role: "assistant",
-        content: data.reply || "Operation completed.",
+        content: data.reply || "Operation completed successfully.",
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         toolResults: data.toolResults,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
-      toast.error(err.message || "Failed to communicate with Agentic AI");
+      toast.error(err.message || "Failed to reach PaperMill AI");
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         role: "assistant",
-        content: `❌ **Error**: ${err.message || "Could not reach backend AI engine. Please verify the server is running."}`,
+        content: `❌ **Error**: ${err.message || "Could not reach AI backend. Please verify your connection."}`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -208,286 +261,332 @@ export function AgenticAiSidebar() {
     }
   };
 
+  const handleCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+    toast.success("Copied to clipboard");
+  };
+
+  const currentSuggestions = showAllSuggestions ? ALL_SUGGESTIONS : PRIMARY_SUGGESTIONS;
+
   return (
     <>
       {/* ------------------------------------------------------------------- */}
-      {/* 1. FLOATING AGENTIC AI BUTTON (Bottom-Right Corner)                 */}
+      {/* 1. FLOATING LAUNCHER BUTTON (Bottom-Right Corner)            */}
       {/* ------------------------------------------------------------------- */}
-      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 flex items-center gap-3">
-        {!isOpen && (
-          <div className="hidden md:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900/90 text-white text-xs font-semibold shadow-lg backdrop-blur border border-slate-700/50 animate-bounce">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>PaperMill AI Ready</span>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={`relative group h-12 w-12 sm:h-14 sm:w-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-xl ${
-            isOpen
-              ? "bg-slate-900 text-white rotate-90 scale-95"
-              : "bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 text-white hover:scale-105 hover:shadow-indigo-500/30 ring-4 ring-white/80"
-          }`}
-          aria-label="Toggle Agentic AI Assistant"
-        >
-          {isOpen ? (
-            <X className="h-5 w-5 sm:h-6 sm:w-6" />
-          ) : (
-            <>
-              <Bot className="h-6 w-6 sm:h-7 sm:w-7 text-white animate-pulse" />
-              <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-amber-500 border-2 border-white items-center justify-center text-[9px] font-black text-white">
-                  ✦
-                </span>
-              </span>
-            </>
-          )}
-        </button>
-      </div>
+      {!isOpen && (
+        <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50">
+          <button
+            type="button"
+            onClick={() => setIsOpen(true)}
+            className="group flex items-center gap-2.5 h-12 sm:h-13 px-5 rounded-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.12)] transition-all duration-200 cursor-pointer active:scale-95"
+            aria-label="Open PaperMill AI"
+          >
+            <PaperMillAiIcon className="w-5 h-5 transition-transform group-hover:rotate-12 duration-300" />
+            <span className="text-sm font-medium tracking-tight text-slate-900">Ask PaperMill AI</span>
+          </button>
+        </div>
+      )}
 
       {/* ------------------------------------------------------------------- */}
       {/* 2. BACKDROP OVERLAY (Mobile)                                        */}
       {/* ------------------------------------------------------------------- */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm z-40 transition-opacity md:hidden"
+          className="fixed inset-0 bg-slate-900/20 backdrop-blur-xs z-40 transition-opacity md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* 3. AGENTIC AI RIGHT SIDEBAR DRAWER                                  */}
+      {/* 3. SIDEBAR DRAWER PANEL                               */}
       {/* ------------------------------------------------------------------- */}
       <aside
-        className={`fixed top-0 right-0 h-full bg-white z-50 border-l border-slate-200/80 shadow-2xl flex flex-col transition-all duration-300 ease-in-out font-sans ${
+        className={`fixed top-0 right-0 h-full bg-white z-50 border-l border-slate-200/90 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out font-sans select-text ${
           isOpen ? "translate-x-0" : "translate-x-full pointer-events-none"
-        } ${isExpanded ? "w-full md:w-[720px]" : "w-full sm:w-[460px]"}`}
+        } ${isExpanded ? "w-full md:w-[680px]" : "w-full sm:w-[420px] md:w-[440px]"}`}
       >
-        {/* TOP HEADER */}
-        <div className="h-16 px-5 border-b border-slate-100 flex items-center justify-between bg-slate-900 text-white shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-sky-400 to-indigo-500 flex items-center justify-center text-white shadow-md">
-              <Sparkles className="h-5 w-5" />
+        {/* TOP BAR */}
+        <div className="h-14 px-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+          {/* Left: menu + title */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowMenu(!showMenu)}
+                className="h-9 w-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-700 hover:text-slate-900 transition-colors"
+                title="PaperMill AI menu"
+                aria-label="Menu"
+              >
+                <Menu className="h-5 w-5 stroke-[2]" />
+              </button>
+
+              {/* Dropdown Menu */}
+              {showMenu && (
+                <div className="absolute left-0 top-10 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-1.5 z-50 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessages([]);
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 font-medium text-left"
+                  >
+                    <Plus className="w-4 h-4 text-slate-500" />
+                    <span>New chat</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessages([]);
+                      setAttachedFiles([]);
+                      setShowMenu(false);
+                      toast.success("Conversation cleared.");
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 font-medium text-left"
+                  >
+                    <RotateCcw className="w-4 h-4 text-slate-500" />
+                    <span>Reset conversation</span>
+                  </button>
+                  <div className="h-px bg-slate-100 my-1" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-slate-700 hover:bg-slate-50 font-medium text-left"
+                  >
+                    <Paperclip className="w-4 h-4 text-slate-500" />
+                    <span>Attach document / PO</span>
+                  </button>
+                </div>
+              )}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-bold text-sm tracking-tight text-white">PaperMill Agentic AI</h2>
-                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 text-[10px] py-0 px-2 font-mono">
-                  ACTIVE
-                </Badge>
-              </div>
-              <p className="text-[11px] text-slate-300">Live Autonomous ERP Controller</p>
-            </div>
+
+            <span className="text-[17px] font-normal text-slate-900 tracking-tight select-none flex items-center gap-2">
+              <PaperMillAiIcon className="w-[18px] h-[18px]" />
+              PaperMill AI
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* Right: Layout Switcher + Close Icon */}
+          <div className="flex items-center gap-1 text-slate-600">
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="hidden md:flex h-8 w-8 items-center justify-center rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-              title={isExpanded ? "Collapse Sidebar" : "Expand Sidebar"}
+              className="h-9 px-2 rounded-lg hover:bg-slate-100 flex items-center gap-0.5 text-slate-600 hover:text-slate-900 transition-colors"
+              title={isExpanded ? "Collapse width" : "Expand width"}
             >
-              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMessages(INITIAL_MESSAGES)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-              title="Reset Conversation"
-            >
-              <RotateCcw className="h-4 w-4" />
+              <PanelRight className="h-4 w-4 stroke-[1.8]" />
+              <ChevronDown className="h-3 w-3 stroke-[2.2]" />
             </button>
 
             <button
               type="button"
               onClick={() => setIsOpen(false)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
-              title="Close Sidebar"
+              className="h-9 w-9 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600 hover:text-slate-900 transition-colors"
+              title="Close"
+              aria-label="Close"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4 stroke-[2]" />
             </button>
           </div>
         </div>
 
-        {/* QUICK CAPABILITIES RIBBON */}
-        <div className="px-4 py-2 bg-sky-50/80 border-b border-sky-100 flex items-center justify-between text-[11px] text-sky-900 font-medium">
-          <div className="flex items-center gap-1.5">
-            <Database className="h-3.5 w-3.5 text-sky-600" />
-            <span>Orders • Inventory • Deckle • Logistics • Invoices</span>
-          </div>
-          <span className="font-mono text-[10px] text-sky-600 bg-sky-100/80 px-2 py-0.5 rounded-full font-bold">
-            All Modules
-          </span>
-        </div>
-
-        {/* CHAT MESSAGE STREAM */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/40">
-          {messages.map((msg) => {
-            const isAssistant = msg.role === "assistant";
-            return (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${isAssistant ? "items-start" : "items-start justify-end"}`}
-              >
-                {isAssistant && (
-                  <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                    <Bot className="h-4 w-4" />
-                  </div>
-                )}
-
-                <div className={`space-y-2 max-w-[85%] ${isAssistant ? "" : "items-end"}`}>
-                  <div
-                    className={`p-3.5 rounded-2xl text-xs leading-relaxed transition-all shadow-sm ${
-                      isAssistant
-                        ? "bg-white text-slate-800 border border-slate-100 rounded-tl-sm"
-                        : "bg-gradient-to-tr from-slate-900 to-slate-800 text-white rounded-tr-sm ml-auto"
-                    }`}
-                  >
-                    {/* Attached files chips inside user message */}
-                    {msg.files && msg.files.length > 0 && (
-                      <div className="mb-2.5 pb-2 border-b border-white/20 flex flex-wrap gap-1.5">
-                        {msg.files.map((f, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1.5 bg-white/10 px-2 py-1 rounded-lg text-[10px] font-mono"
-                          >
-                            {f.type.includes("pdf") ? (
-                              <FileText className="h-3 w-3 text-red-300" />
-                            ) : (
-                              <ImageIcon className="h-3 w-3 text-sky-300" />
-                            )}
-                            <span className="truncate max-w-[120px]">{f.name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Markdown / text content rendering */}
-                    <div
-                      className="prose prose-xs max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-a:text-sky-600 prose-a:underline"
-                      dangerouslySetInnerHTML={{
-                        __html: formatMarkdownToHtml(msg.content),
-                      }}
-                    />
-
-                    {/* Rich React UI Cards for ERP Objects */}
-                    {msg.toolResults && msg.toolResults.length > 0 && (
-                      <div className="pt-2 space-y-2">
-                        {msg.toolResults.map((tr, tIdx) => {
-                          if (!tr.success || !tr.data) return null;
-
-                          // Orders Card
-                          if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].orderNumber) {
-                            return <AgentOrdersCard key={tIdx} orders={tr.data} />;
-                          }
-                          if (tr.data.orderNumber) {
-                            return <AgentOrdersCard key={tIdx} orders={[tr.data]} />;
-                          }
-
-                          // Stock Reels Card
-                          if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].widthInch && tr.data[0].location) {
-                            return <AgentStockCard key={tIdx} items={tr.data} />;
-                          }
-
-                          // Production Runs Card
-                          if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].runNumber) {
-                            return <AgentProductionRunsCard key={tIdx} runs={tr.data} />;
-                          }
-
-                          return null;
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div
-                    className={`text-[10px] font-mono text-slate-400 px-1 ${
-                      isAssistant ? "text-left" : "text-right"
-                    }`}
-                  >
-                    {msg.timestamp}
-                  </div>
-                </div>
+        {/* MAIN BODY VIEW */}
+        <div className="flex-1 overflow-y-auto flex flex-col justify-between p-5 pb-3">
+          {/* CASE A: INITIAL EMPTY STATE */}
+          {messages.length === 0 ? (
+            <div className="flex-1 flex flex-col justify-between">
+              {/* Centered Large Gradient Headline */}
+              <div className="my-auto py-12 px-2 text-center">
+                <h1
+                  onClick={() => setHeadlineIndex((prev) => (prev + 1) % HEADLINE_ROTATIONS.length)}
+                  className="text-2xl sm:text-[27px] font-normal tracking-tight text-center bg-gradient-to-r from-[#1a73e8] via-[#7c3aed] to-[#a855f7] bg-clip-text text-transparent max-w-sm mx-auto select-none leading-snug cursor-pointer transition-all hover:opacity-90"
+                  title="Click to cycle sample goals"
+                >
+                  {HEADLINE_ROTATIONS[headlineIndex]}
+                </h1>
               </div>
-            );
-          })}
 
-          {/* LOADING SPINNER */}
-          {isLoading && (
-            <div className="flex items-center gap-3 text-xs text-slate-500 bg-white p-3.5 rounded-2xl border border-slate-100 w-fit shadow-sm animate-pulse">
-              <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
-              <span className="font-medium">PaperMill AI is executing ERP operations...</span>
+              {/* Suggestions list (Anchored just above the prompt bar) */}
+              <div className="space-y-3.5 mb-5 px-1">
+                {currentSuggestions.map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleSendMessage(item.prompt)}
+                    className="w-full flex items-start gap-3 text-left text-[13.5px] text-slate-700 hover:text-slate-950 transition-colors group cursor-pointer"
+                  >
+                    <CornerDownRight className="w-4 h-4 text-slate-500 group-hover:text-slate-900 shrink-0 mt-0.5 stroke-[2]" />
+                    <span className="leading-snug">{item.label}</span>
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setShowAllSuggestions(!showAllSuggestions)}
+                  className="w-full flex items-center gap-3 text-left text-[13.5px] text-slate-700 hover:text-slate-950 transition-colors group font-medium cursor-pointer pt-1"
+                >
+                  <ListFilter className="w-4 h-4 text-slate-500 group-hover:text-slate-900 shrink-0 stroke-[2]" />
+                  <span>{showAllSuggestions ? "Show fewer suggestions" : "View all suggestions"}</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* CASE B: CONVERSATION STREAM (During Active Chatting) */
+            <div className="flex-1 space-y-5 pb-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-400 font-medium">Active Conversation</span>
+                <button
+                  type="button"
+                  onClick={() => setMessages([])}
+                  className="text-xs text-slate-500 hover:text-slate-900 flex items-center gap-1 font-medium"
+                >
+                  <Plus className="w-3.5 h-3.5" /> New chat
+                </button>
+              </div>
+
+              {messages.map((msg) => {
+                const isAssistant = msg.role === "assistant";
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col gap-1.5 ${isAssistant ? "items-start" : "items-end"}`}
+                  >
+                    {isAssistant && (
+                      <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-0.5">
+                        <PaperMillAiIcon className="w-4 h-4" />
+                        <span>PaperMill AI</span>
+                      </div>
+                    )}
+
+                    <div
+                      className={`text-[13px] leading-relaxed transition-all max-w-[92%] ${
+                        isAssistant
+                          ? "text-slate-800 w-full"
+                          : "bg-slate-100 text-slate-900 px-4 py-2.5 rounded-[20px] rounded-br-sm"
+                      }`}
+                    >
+                      {/* Attached files chips inside user message */}
+                      {msg.files && msg.files.length > 0 && (
+                        <div className="mb-2 pb-1.5 flex flex-wrap gap-1.5 border-b border-slate-200/60">
+                          {msg.files.map((f, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-1.5 bg-white px-2 py-0.5 rounded-lg text-[11px] font-mono border border-slate-200 text-slate-700"
+                            >
+                              <FileText className="h-3 w-3 text-rose-500" />
+                              <span className="truncate max-w-[120px]">{f.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Markdown / text content rendering */}
+                      <div
+                        className="prose prose-xs max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-a:text-[#1a73e8] prose-a:underline"
+                        dangerouslySetInnerHTML={{
+                          __html: formatMarkdownToHtml(msg.content),
+                        }}
+                      />
+
+                      {/* Rich React UI Cards for ERP Objects */}
+                      {msg.toolResults && msg.toolResults.length > 0 && (
+                        <div className="pt-2 space-y-2">
+                          {msg.toolResults.map((tr, tIdx) => {
+                            if (!tr.success || !tr.data) return null;
+
+                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].orderNumber) {
+                              return <AgentOrdersCard key={tIdx} orders={tr.data} />;
+                            }
+                            if (tr.data.orderNumber) {
+                              return <AgentOrdersCard key={tIdx} orders={[tr.data]} />;
+                            }
+                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].widthInch && tr.data[0].location) {
+                              return <AgentStockCard key={tIdx} items={tr.data} />;
+                            }
+                            if (Array.isArray(tr.data) && tr.data.length > 0 && tr.data[0].runNumber) {
+                              return <AgentProductionRunsCard key={tIdx} runs={tr.data} />;
+                            }
+                            return null;
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions Row */}
+                    {isAssistant && (
+                      <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400">
+                        <span>{msg.timestamp}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="hover:text-slate-700 p-0.5 rounded transition-colors"
+                          title="Copy response"
+                        >
+                          {copiedId === msg.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {isLoading && (
+                <div className="flex items-center gap-2.5 text-xs text-slate-500 py-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-[#1a73e8]" />
+                  <span>PaperMill AI is working…</span>
+                </div>
+              )}
+
+              <div ref={chatBottomRef} />
             </div>
           )}
 
-          <div ref={chatBottomRef} />
-        </div>
-
-        {/* PROMPT SUGGESTIONS CHIPS (If only initial message) */}
-        {messages.length <= 2 && !isLoading && (
-          <div className="px-4 py-2.5 bg-white border-t border-slate-100 space-y-1.5">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Suggested Actions
-            </span>
-            <div className="flex flex-wrap gap-1.5">
-              {SUGGESTED_PROMPTS.map((prompt, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleSendMessage(prompt)}
-                  className="text-[11px] text-left px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200 border border-slate-200/60 text-slate-700 transition-all font-medium"
+          {/* ATTACHED FILES CHIPS BAR (Above Prompt Box) */}
+          {attachedFiles.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5 items-center">
+              {attachedFiles.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-full text-xs font-medium text-slate-700 border border-slate-200"
                 >
-                  {prompt}
-                </button>
+                  <FileText className="h-3.5 w-3.5 text-slate-600" />
+                  <span className="truncate max-w-[130px]">{f.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAttachedFile(i)}
+                    className="text-slate-400 hover:text-rose-600 ml-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ATTACHED FILES PREVIEW BAR */}
-        {attachedFiles.length > 0 && (
-          <div className="px-4 py-2 bg-slate-100/80 border-t border-slate-200 flex flex-wrap gap-2 items-center">
-            <span className="text-[10px] font-bold text-slate-500 uppercase">Attached:</span>
-            {attachedFiles.map((f, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg text-xs font-mono border border-slate-200 shadow-sm"
-              >
-                {f.type.includes("pdf") ? (
-                  <FileText className="h-3.5 w-3.5 text-rose-500" />
-                ) : (
-                  <ImageIcon className="h-3.5 w-3.5 text-sky-500" />
-                )}
-                <span className="truncate max-w-[140px] text-slate-700 font-medium">{f.name}</span>
-                <button
-                  type="button"
-                  onClick={() => removeAttachedFile(i)}
-                  className="text-slate-400 hover:text-rose-600 ml-1"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* INPUT COMPOSER AREA */}
-        <div className="p-3.5 bg-white border-t border-slate-200 shrink-0">
-          <div className="relative rounded-2xl border border-slate-200 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/20 bg-slate-50/50 p-2 transition-all">
+          {/* PROMPT BAR */}
+          <div className="rounded-[26px] sm:rounded-[28px] border border-slate-300 focus-within:border-slate-400 focus-within:shadow-[0_2px_12px_rgba(0,0,0,0.06)] bg-white p-3.5 transition-all">
             <textarea
-              rows={2}
+              ref={textareaRef}
+              rows={1}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything or command ERP actions (e.g. 'Create order from PO', 'Query reels in stock')..."
-              className="w-full resize-none bg-transparent border-0 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 leading-relaxed"
+              placeholder="Ask PaperMill AI to do anything in the ERP"
+              className="w-full resize-none bg-transparent border-0 text-[14.5px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-0 leading-relaxed font-normal min-h-[32px] max-h-28"
             />
 
-            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between pt-2">
+              {/* Left Toolbar Controls */}
+              <div className="flex items-center gap-2">
                 {/* Hidden File Input */}
                 <input
                   type="file"
@@ -498,50 +597,72 @@ export function AgenticAiSidebar() {
                   className="hidden"
                 />
 
-                <Button
+                {/* Attach PO / invoice / image */}
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
                   onClick={() => fileInputRef.current?.click()}
-                  className="h-8 px-2.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 text-xs gap-1.5"
-                  title="Upload PO (PDF / Image)"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
+                  title="Attach a PO, invoice or image"
                 >
-                  <Paperclip className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium hidden sm:inline">Attach PO</span>
-                </Button>
+                  <Paperclip className="w-3.5 h-3.5 text-slate-600" />
+                  <span className="text-[11px] font-semibold">
+                    {attachedFiles.length > 0 ? `${attachedFiles.length} file${attachedFiles.length > 1 ? "s" : ""}` : "Attach"}
+                  </span>
+                </button>
 
-                <Button
+                {/* Sliders / Tune Tools Button */}
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setInputValue(
-                      "Create Sales Order for SHITTLA PAPERS: 28\" 140GSM 392kg, 26\" 140GSM 364kg, 49\" 140GSM 686kg, 49\" 120GSM 1372kg"
-                    );
-                  }}
-                  className="h-8 px-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 text-[11px] font-medium hidden sm:inline-flex"
+                  onClick={() => setShowToolOptions(!showToolOptions)}
+                  className="p-1 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Model Controls & Parameters"
                 >
-                  + Sample Order
-                </Button>
+                  <SlidersHorizontal className="w-4 h-4 stroke-[1.8]" />
+                </button>
+
+                {/* Optional Popover for AI Tools */}
+                {showToolOptions && (
+                  <div className="absolute left-6 bottom-20 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 z-50 text-xs space-y-2 w-56">
+                    <span className="font-bold text-slate-800 block text-[11px] uppercase tracking-wider">
+                      Active Tools
+                    </span>
+                    <div className="space-y-1.5 text-slate-600">
+                      {["Deckle cutting-stock solver", "ERP read & write (all modules)", "PDF / PO & invoice reader"].map((t) => (
+                        <div key={t} className="flex items-center justify-between">
+                          <span>{t}</span>
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">ON</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <Button
+              {/* Right Send Circular Button with Up Arrow */}
+              <button
                 type="button"
                 disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
                 onClick={() => handleSendMessage()}
-                className="h-8 w-8 rounded-xl bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center shadow-md disabled:opacity-40 transition-all"
+                className={`h-8 w-8 rounded-full flex items-center justify-center transition-all ${
+                  inputValue.trim() || attachedFiles.length > 0
+                    ? "bg-slate-900 text-white hover:bg-black shadow-xs cursor-pointer active:scale-95"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
+                aria-label="Send message"
               >
                 {isLoading ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <Send className="h-3.5 w-3.5" />
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                 )}
-              </Button>
+              </button>
             </div>
           </div>
-          <div className="mt-1.5 text-center">
-            <span className="text-[10px] text-slate-400">
-              PaperMill AI has full database CRUD authority • Press <kbd className="font-mono bg-slate-100 px-1 py-0.5 rounded text-slate-600">Enter</kbd> to execute
+
+          {/* FOOTER DISCLAIMER */}
+          <div className="text-center pt-2 pb-0.5 select-none">
+            <span className="text-[11px] text-slate-400 font-normal">
+              PaperMill AI acts on live ERP data — review its changes.
             </span>
           </div>
         </div>
@@ -550,11 +671,10 @@ export function AgenticAiSidebar() {
   );
 }
 
-// Helper to format markdown boldly into basic HTML tags
+// Markdown formatter for conversational stream
 function formatMarkdownToHtml(text: string): string {
   if (!text) return "";
 
-  // Check if first line of table is header
   let lines = text.split("\n");
   let inTable = false;
   let tableHtml = "";
@@ -565,11 +685,11 @@ function formatMarkdownToHtml(text: string): string {
     if (line.startsWith("|") && line.endsWith("|")) {
       const cells = line.split("|").slice(1, -1).map((c) => c.trim());
       if (cells.every((c) => c.match(/^:?-+:?$/))) {
-        continue; // separator
+        continue;
       }
       if (!inTable) {
         inTable = true;
-        tableHtml = '<div class="my-2.5 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm"><table class="w-full text-[11px] text-left divide-y divide-slate-100"><thead class="bg-slate-50 text-slate-600 font-bold"><tr>' +
+        tableHtml = '<div class="my-2.5 overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs"><table class="w-full text-[11px] text-left divide-y divide-slate-100"><thead class="bg-slate-50 text-slate-600 font-bold"><tr>' +
           cells.map((c) => `<th class="px-2.5 py-1.5">${c}</th>`).join("") +
           "</tr></thead><tbody class=\"divide-y divide-slate-100\">";
       } else {
@@ -594,26 +714,18 @@ function formatMarkdownToHtml(text: string): string {
   }
 
   let html = formattedLines.join("\n")
-    // Headings
-    .replace(/^### (.+)$/gm, '<h3 class="font-bold text-xs uppercase tracking-wider text-slate-800 mt-2 mb-1 flex items-center gap-1.5">$1</h3>')
+    .replace(/^### (.+)$/gm, '<h3 class="font-bold text-xs uppercase tracking-wider text-slate-800 mt-2 mb-1">$1</h3>')
     .replace(/^#### (.+)$/gm, '<h4 class="font-bold text-xs text-slate-900 mt-2 mb-0.5">$1</h4>')
-    // Status badges
-    .replace(/`CONFIRMED`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-sky-50 text-sky-700 border border-sky-200">CONFIRMED</span>')
+    .replace(/`CONFIRMED`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200">CONFIRMED</span>')
     .replace(/`URGENT`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">URGENT</span>')
     .replace(/`PRODUCED`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">PRODUCED</span>')
     .replace(/`PLANNED`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">PLANNED</span>')
     .replace(/`DISPATCHED`/g, '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-50 text-purple-700 border border-purple-200">DISPATCHED</span>')
-    // Bold
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-slate-900 font-bold">$1</strong>')
-    // Italic
     .replace(/\*(.+?)\*/g, '<em class="text-slate-600">$1</em>')
-    // Code block
-    .replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-sky-700 font-mono px-1.5 py-0.5 rounded text-[11px] font-bold">$1</code>')
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="inline-flex items-center gap-0.5 text-sky-600 hover:text-sky-700 hover:underline font-bold bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100 text-[11px] my-0.5">$1 ↗</a>')
-    // Lists
+    .replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-slate-800 font-mono px-1.5 py-0.5 rounded text-[11px] font-bold">$1</code>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="inline-flex items-center gap-0.5 text-[#1a73e8] hover:underline font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100 text-[11px] my-0.5">$1 ↗</a>')
     .replace(/^- (.+)$/gm, '<li class="ml-3 list-disc text-slate-700 text-xs py-0.5">$1</li>')
-    // Line breaks
     .replace(/\n\n/g, '<div class="h-1.5"></div>')
     .replace(/\n/g, '<br/>');
 

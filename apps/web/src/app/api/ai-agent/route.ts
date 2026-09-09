@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { runWithTenantContext } from "@/lib/tenant-context";
-import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import {
   agentGetOrders,
   agentCreateOrder,
   agentUpdateOrder,
-  agentUpdateOrderStatus,
   agentDeleteOrder,
   agentGetClients,
   agentCreateClient,
@@ -34,6 +32,10 @@ import {
   agentUpdateInvoiceStatus,
   agentGetUsers,
   agentGetNotifications,
+  agentGetDashboardSummary,
+  agentGetDeckleDemand,
+  agentRunDeckleOptimization,
+  agentGetPendingDispatches,
 } from "@/server/services/agent-tools-service";
 
 export const maxDuration = 60;
@@ -535,6 +537,45 @@ const OPENAI_TOOLS = [
       },
     },
   },
+
+  // 11. Overview & planning
+  {
+    type: "function",
+    function: {
+      name: "getDashboardSummary",
+      description: "Get headline mill KPIs: open orders, pending kg, orders due this week, overdue orders, production runs today, avg trim %, kg produced this week.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getDeckleDemand",
+      description: "List confirmed/planned order line items that are still awaiting deckle (cutting) planning.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "runDeckleOptimization",
+      description: "Run the cutting-stock solver over all pending demand and return a proposed set of production runs with trim %. This is a plan only and is NOT committed — tell the user to commit it from the Deckle Planning screen.",
+      parameters: {
+        type: "object",
+        properties: {
+          objective: { type: "string", enum: ["MIN_TRIM", "MIN_PATTERNS", "BALANCED"] },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getPendingDispatches",
+      description: "List load batches that are planned/loading and ready for weighbridge and gate-pass dispatch.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 async function executeAgentTool(name: string, args: any) {
@@ -619,6 +660,16 @@ async function executeAgentTool(name: string, args: any) {
     case "getNotifications":
       return await agentGetNotifications(args);
 
+    // Cross-module overview & planning
+    case "getDashboardSummary":
+      return await agentGetDashboardSummary();
+    case "getDeckleDemand":
+      return await agentGetDeckleDemand();
+    case "runDeckleOptimization":
+      return await agentRunDeckleOptimization(args);
+    case "getPendingDispatches":
+      return await agentGetPendingDispatches();
+
     default:
       return { success: false, message: `Tool '${name}' not recognized.` };
   }
@@ -644,370 +695,202 @@ export async function POST(req: NextRequest) {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// PaperMill AI — Anthropic Claude agentic loop
+// ---------------------------------------------------------------------------
+
+const ANTHROPIC_MODEL = "claude-opus-5";
+const MAX_AGENT_STEPS = 10;
+
+// Convert the OpenAI-style tool defs to Anthropic's { name, description, input_schema } shape.
+const ANTHROPIC_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
+  name: t.function.name,
+  description: t.function.description,
+  input_schema: t.function.parameters ?? { type: "object", properties: {} },
+}));
+
+function buildSystemPrompt(userName: string, userRole: string): string {
+  return [
+    "You are **PaperMill AI**, the operations assistant embedded in this kraft paper mill's ERP.",
+    "",
+    "You act on the mill's real data through tools. You can read and write across every module:",
+    "sales orders, clients, warehouse stock & buffer presets, production runs & machines,",
+    "deckle (cutting) planning, logistics (trucks, transporters, load batches, dispatch),",
+    "GST invoices, wastage logs, users, and WhatsApp notifications.",
+    "",
+    "## Purchase orders / invoices attached as files",
+    "When a PO, invoice, or order document (PDF or image) is attached:",
+    "1. Read it end to end. Extract: the buyer/customer name, every reel line (width in inches,",
+    "   GSM, quantity in kg, rate per kg if given), the delivery date, PO number, and any special instructions.",
+    "2. Call getClients to match the buyer to an existing client. If none matches, tell the user and",
+    "   create the client with createClient only if they asked you to proceed / 'just do it'.",
+    "3. Call createOrder with the extracted client and line items (pass the PO number as orderNumber if",
+    "   present; put the PO reference + instructions in notes).",
+    "4. Confirm back exactly what you created — client, order number, each line, total kg.",
+    "If a value is genuinely unreadable, say which one and ask; never guess quantities or GSM.",
+    "",
+    "## Working rules",
+    "- Always use a tool for any real read or write. Never fabricate orders, stock, or numbers.",
+    "- Chain tools freely to finish a task in one turn (e.g. look up client -> create order -> read it back).",
+    "- Before a destructive action (delete / cancel), state what you will remove, then do it if the",
+    "  user's instruction was explicit.",
+    "- runDeckleOptimization only produces a plan — always tell the user to commit it from the Deckle Planning screen.",
+    "- Keep replies short and factual. Use markdown tables for lists. Use the rupee sign and Indian digit grouping for money.",
+    "",
+    `Current user: ${userName} (${userRole}).`,
+  ].join("\n");
+}
+
+interface AnthropicBlock {
+  type: string;
+  [k: string]: any;
+}
+
+async function callClaude(apiKey: string, requestBody: Record<string, unknown>) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Anthropic API ${res.status}: ${text.slice(0, 500)}`);
+  }
+  return JSON.parse(text) as { content: AnthropicBlock[]; stop_reason: string };
+}
+
 async function handleAgentPost(req: NextRequest, sessionUser: any) {
+  const userRole = sessionUser?.role || "STAFF";
+  const userName = sessionUser?.name || "Staff Member";
+
+  let body: {
+    messages?: Message[];
+    userMessage?: string;
+    files?: Array<{ name: string; type: string; base64?: string; text?: string }>;
+  };
   try {
-    const userRole = sessionUser?.role || "ADMIN";
-    const userName = sessionUser?.name || "Staff Member";
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ reply: "Invalid request.", toolResults: [] }, { status: 400 });
+  }
 
-    const body = await req.json();
-    const { messages, userMessage, files } = body as {
-      messages: Message[];
-      userMessage: string;
-      files?: Array<{ name: string; type: string; base64?: string; text?: string }>;
-    };
+  const { messages = [], userMessage = "", files = [] } = body;
 
-    const systemInstruction = `
-You are "PaperMill AI", the hyper-capable Autonomous Operations AI Assistant for HRA Paper Mills ERP.
-You have direct, real-time tool access to execute actions across ALL ERP modules:
-1. Sales Orders: createOrder, updateOrder (e.g. change delivery date, priority, notes, status), deleteOrder, getOrders
-2. Clients & Customers: getClients, createClient, updateClient, deleteClient
-3. Warehouse Inventory & Reels: getStockInventory, createStockReel, updateStockReel, deleteStockReel
-4. Stock Buffer Presets: getStockPresets, createStockPreset, deleteStockPreset
-5. Production & Deckle Planning: getProductionRuns, updateProductionRunStatus, deleteProductionRun
-6. Wastage Logs: getWastageLogs, createWastageLog
-7. Paper Machines: getMachines, createMachine, updateMachine
-8. Logistics & Fleet: getTrucksAndTransporters, createTruck, createLoadBatch
-9. Financial Invoices: getInvoices, updateInvoiceStatus
-10. Users & WhatsApp Notifications: getUsers, getNotifications
-
-User Role: ${userRole} (${userName})
-
-Guidelines:
-- When the user asks to perform ANY action, update, creation, deletion, or query on any module, select and call the appropriate tool.
-- Provide a crisp, professional confirmation message describing the exact change or data returned.
-`.trim();
-
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-
-    // Build OpenAI user message
-    const userMessageContent: any[] = [];
-    userMessageContent.push({
-      type: "text",
-      text: userMessage || "Please analyze the attached document or perform the requested action.",
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({
+      reply:
+        "PaperMill AI is not configured yet. An administrator needs to set the ANTHROPIC_API_KEY secret on the deployment (npx wrangler secret put ANTHROPIC_API_KEY).",
+      toolResults: [],
     });
+  }
 
-    if (files && files.length > 0) {
-      for (const f of files) {
-        if (f.base64 && f.type.startsWith("image/")) {
-          userMessageContent.push({
-            type: "image_url",
-            image_url: {
-              url: `data:${f.type};base64,${f.base64}`,
-            },
-          });
-        } else if (f.text) {
-          userMessageContent.push({
-            type: "text",
-            text: `\n[ATTACHED FILE: ${f.name} (${f.type})]:\n${f.text}`,
-          });
-        }
-      }
+  // Current user turn: documents / images first, then the text.
+  const userContent: AnthropicBlock[] = [];
+  for (const f of files || []) {
+    if (f.base64 && f.type?.startsWith("image/")) {
+      userContent.push({
+        type: "image",
+        source: { type: "base64", media_type: f.type, data: f.base64 },
+      });
+    } else if (
+      f.base64 &&
+      (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"))
+    ) {
+      userContent.push({
+        type: "document",
+        title: f.name,
+        source: { type: "base64", media_type: "application/pdf", data: f.base64 },
+      });
+    } else if (f.text) {
+      userContent.push({ type: "text", text: `[Attached file: ${f.name}]\n${f.text}` });
     }
+  }
+  userContent.push({
+    type: "text",
+    text: userMessage || "Please review the attached document and take the requested action.",
+  });
 
-    if (openaiApiKey && openaiApiKey.startsWith("sk-")) {
-      try {
-        const conversationHistory = [
-          { role: "system", content: systemInstruction },
-          ...messages.slice(-6).map((m) => ({
-            role: m.role === "user" ? "user" : "assistant",
-            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
-          })),
-          { role: "user", content: userMessageContent },
-        ];
+  // Conversation history (text only; prior attachments are not re-sent).
+  const history = (messages || [])
+    .slice(0, -1)
+    .slice(-8)
+    .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+    .map((m) => ({
+      role: m.role === "assistant" ? "assistant" : "user",
+      content:
+        (typeof m.content === "string" ? m.content : JSON.stringify(m.content)) || "(no text)",
+    }));
 
-        // 1. Initial Model Call with Tools
-        const firstCallRes = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o",
-            messages: conversationHistory,
-            tools: OPENAI_TOOLS,
-            tool_choice: "auto",
-            temperature: 0.1,
-          }),
+  const anthropicMessages: Array<{ role: string; content: any }> = [
+    ...history,
+    { role: "user", content: userContent },
+  ];
+
+  const system = buildSystemPrompt(userName, userRole);
+  const toolResults: any[] = [];
+
+  try {
+    for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+      const resp = await callClaude(apiKey, {
+        model: ANTHROPIC_MODEL,
+        max_tokens: 8000,
+        system,
+        tools: ANTHROPIC_TOOLS,
+        messages: anthropicMessages,
+      });
+
+      // Echo the full assistant content back (preserves thinking blocks for the loop).
+      anthropicMessages.push({ role: "assistant", content: resp.content });
+
+      if (resp.stop_reason !== "tool_use") {
+        const reply = resp.content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text)
+          .join("\n")
+          .trim();
+        return NextResponse.json({ reply: reply || "Done.", toolResults });
+      }
+
+      // Execute every requested tool; return all results in one user message.
+      const toolUses = resp.content.filter((b) => b.type === "tool_use");
+      const resultBlocks: AnthropicBlock[] = [];
+      for (const tu of toolUses) {
+        let out: any;
+        try {
+          out = await executeAgentTool(tu.name, tu.input || {});
+        } catch (e: any) {
+          out = { success: false, message: "Tool crashed", error: e?.message || String(e) };
+        }
+        toolResults.push(out);
+        resultBlocks.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify(out).slice(0, 16000),
+          is_error: out?.success === false,
         });
-
-        if (firstCallRes.ok) {
-          const firstData = await firstCallRes.json();
-          const choice = firstData.choices?.[0];
-          const toolCalls = choice?.message?.tool_calls;
-          const toolResults: any[] = [];
-
-          if (toolCalls && toolCalls.length > 0) {
-            // Execute each tool requested by gpt-4o
-            const toolResponseMessages: any[] = [];
-
-            for (const tc of toolCalls) {
-              const fnName = tc.function.name;
-              let fnArgs: any = {};
-              try {
-                fnArgs = JSON.parse(tc.function.arguments || "{}");
-              } catch (e) {}
-
-              const res = await executeAgentTool(fnName, fnArgs);
-              toolResults.push(res);
-
-              toolResponseMessages.push({
-                role: "tool",
-                tool_call_id: tc.id,
-                name: fnName,
-                content: JSON.stringify(res),
-              });
-            }
-
-            // 2. Second Call to get natural confirmation
-            const secondCallRes = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openaiApiKey}`,
-              },
-              body: JSON.stringify({
-                model: "gpt-4o",
-                messages: [
-                  ...conversationHistory,
-                  choice.message,
-                  ...toolResponseMessages,
-                ],
-                temperature: 0.1,
-              }),
-            });
-
-            if (secondCallRes.ok) {
-              const secondData = await secondCallRes.json();
-              const finalReply = secondData.choices?.[0]?.message?.content || toolResults[0]?.message || "Operation completed successfully.";
-              return NextResponse.json({
-                reply: finalReply,
-                toolResults,
-              });
-            } else {
-              return NextResponse.json({
-                reply: toolResults[0]?.message || "Operation executed.",
-                toolResults,
-              });
-            }
-          } else if (choice?.message?.content) {
-            return NextResponse.json({
-              reply: choice.message.content,
-              toolResults: [],
-            });
-          }
-        } else {
-          const errText = await firstCallRes.text();
-          console.error("[AI Agent] OpenAI API Error:", errText);
-        }
-      } catch (e) {
-        console.warn("[AI Agent] OpenAI Tool Calling failed, using heuristic fallback:", e);
       }
-    }
-
-    // -------------------------------------------------------------------------
-    // LOCAL AGENTIC PARSER & TOOL EXECUTION ENGINE (High-Reliability Fallback)
-    // -------------------------------------------------------------------------
-    const lower = userMessage.toLowerCase();
-    const toolResults: any[] = [];
-    let reply = "";
-
-    // 1. INTENT: Update Order (e.g. Change delivery date, status, priority)
-    if (
-      lower.includes("change") ||
-      lower.includes("update") ||
-      lower.includes("modify") ||
-      lower.includes("delivery date") ||
-      lower.includes("priority") ||
-      lower.includes("reschedule")
-    ) {
-      // Find order number like SO-DL-01070
-      const orderNumMatch = userMessage.match(/SO-[A-Z0-9-]+/i);
-      const orderNum = orderNumMatch ? orderNumMatch[0].toUpperCase() : "SO-DL-01070";
-
-      // Detect priority
-      let priority: OrderPriority | undefined;
-      if (lower.includes("urgent") || lower.includes("high")) priority = OrderPriority.URGENT;
-      else if (lower.includes("normal") || lower.includes("medium")) priority = OrderPriority.NORMAL;
-      else if (lower.includes("stock") || lower.includes("low")) priority = OrderPriority.STOCK;
-
-      // Detect date if mentioned like "3rd september 2026" or "2026-09-03"
-      let newDate: Date | undefined;
-      if (lower.includes("september") || lower.includes("sep")) {
-        const dayMatch = userMessage.match(/(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s*)?sep/i);
-        const day = dayMatch ? parseInt(dayMatch[1], 10) : 3;
-        newDate = new Date(2026, 8, day);
-      } else if (lower.includes("august") || lower.includes("aug")) {
-        const dayMatch = userMessage.match(/(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s*)?aug/i);
-        const day = dayMatch ? parseInt(dayMatch[1], 10) : 25;
-        newDate = new Date(2026, 7, day);
-      } else if (lower.includes("delivery") || lower.includes("date")) {
-        newDate = new Date("2026-09-03");
-      }
-
-      const updateRes = await agentUpdateOrder({
-        orderNumberOrId: orderNum,
-        deliveryDate: newDate,
-        priority,
-      });
-
-      toolResults.push(updateRes);
-
-      if (updateRes.success) {
-        const details: string[] = [];
-        if (newDate) details.push(`Delivery Date set to **${newDate.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}**`);
-        if (priority) details.push(`Priority changed to **${priority}**`);
-        if (details.length === 0) details.push(`Details updated successfully`);
-        reply = `✅ **Sales Order #${orderNum} Updated**: ${details.join(", ")}.`;
-      } else {
-        reply = `❌ Failed to update order: ${updateRes.error || updateRes.message}`;
-      }
-    }
-    // 2. INTENT: Create Sales Order (from text or uploaded PO)
-    else if (
-      lower.includes("create sales order") ||
-      lower.includes("create order") ||
-      lower.includes("add order") ||
-      lower.includes("new order") ||
-      lower.includes("po") ||
-      lower.includes("purchase order")
-    ) {
-      // Check if user specified sizes/GSM or has uploaded file text
-      const fullText = userMessage + " " + (files?.map((f) => f.text || "").join(" ") || "");
-      
-      // Heuristic extractor for sizes: e.g. 28" 140gsm 392kg or standard sizes
-      const lineItems: Array<{ widthInch: number; gsm: number; quantityKg: number; ratePerKg?: number }> = [];
-      
-      // Regex search for patterns like `28" 140 392kg` or `49 inch 120 gsm`
-      const sizeMatches = fullText.matchAll(/(\d+(?:\.\d+)?)\s*(?:\"|inch|in)?\s*(?:x|\*|,)?\s*(\d{2,3})\s*(?:gsm)?\s*(?:x|\*|,)?\s*(\d+(?:\.\d+)?)\s*(?:kg|kgs|mt)?/gi);
-      for (const match of sizeMatches) {
-        const w = parseFloat(match[1]);
-        const g = parseInt(match[2], 10);
-        let q = parseFloat(match[3]);
-        if (q < 10) q = q * 1000; // If MT given like 0.392 MT -> 392 kg
-        if (w >= 10 && w <= 200 && g >= 50 && g <= 400) {
-          lineItems.push({ widthInch: w, gsm: g, quantityKg: q, ratePerKg: 33.5 });
-        }
-      }
-
-      // If no specific inline regex match, check for default demo sizes or create a structured sample
-      if (lineItems.length === 0) {
-        lineItems.push(
-          { widthInch: 28.0, gsm: 140, quantityKg: 392.0, ratePerKg: 33.6 },
-          { widthInch: 26.0, gsm: 140, quantityKg: 364.0, ratePerKg: 33.6 },
-          { widthInch: 49.0, gsm: 140, quantityKg: 686.0, ratePerKg: 33.6 },
-          { widthInch: 48.0, gsm: 140, quantityKg: 672.0, ratePerKg: 33.6 },
-          { widthInch: 30.0, gsm: 140, quantityKg: 420.0, ratePerKg: 33.6 },
-          { widthInch: 28.0, gsm: 120, quantityKg: 392.0, ratePerKg: 33.1 },
-          { widthInch: 49.0, gsm: 120, quantityKg: 1372.0, ratePerKg: 33.1 },
-          { widthInch: 45.0, gsm: 120, quantityKg: 630.0, ratePerKg: 33.1 }
-        );
-      }
-
-      // Detect client name
-      let clientName = "SHITTLA PAPER GLOBAL PRIVATE LIMITED";
-      if (lower.includes("hari")) clientName = "SHRI HARI PAPERS";
-      if (lower.includes("kwality")) clientName = "KWALITY PACKERS";
-      if (lower.includes("balaji")) clientName = "BALAJI PACKAGING";
-
-      const createRes = await agentCreateOrder({
-        clientNameOrCode: clientName,
-        priority: lower.includes("urgent") ? OrderPriority.URGENT : OrderPriority.NORMAL,
-        items: lineItems,
-      });
-
-      toolResults.push(createRes);
-
-      if (createRes.success && createRes.data) {
-        reply = `✅ **Sales Order #${createRes.data.orderNumber}** created for **${createRes.data.client}** (${(createRes.data.totalWeightKg / 1000).toFixed(3)} MT across ${createRes.data.totalItems} sizes).`;
-      } else {
-        reply = `❌ Failed to create order: ${createRes.error || createRes.message}`;
-      }
-    }
-    // 2. INTENT: Query Orders / Pending Demand
-    else if (lower.includes("order") || lower.includes("orders") || lower.includes("sales")) {
-      const ordersRes = await agentGetOrders({ limit: 6 });
-      toolResults.push(ordersRes);
-
-      if (ordersRes.success && ordersRes.data) {
-        reply = `Here are the active Sales Orders currently registered in the ERP:`;
-      }
-    }
-    // 3. INTENT: Query Stock / Inventory
-    else if (lower.includes("stock") || lower.includes("inventory") || lower.includes("warehouse") || lower.includes("reel")) {
-      const stockRes = await agentGetStockInventory({ limit: 10 });
-      toolResults.push(stockRes);
-
-      if (stockRes.success && stockRes.data) {
-        reply = `Here are the active finished goods reels in warehouse inventory:`;
-      }
-    }
-    // 4. INTENT: Query Production Runs
-    else if (lower.includes("production") || lower.includes("run") || lower.includes("machine") || lower.includes("plan")) {
-      const [runsRes, machinesRes] = await Promise.all([
-        agentGetProductionRuns({ limit: 5 }),
-        agentGetMachines(),
-      ]);
-      toolResults.push(runsRes, machinesRes);
-
-      reply = `Here are the current machine capacities and recent production runs:`;
-    }
-    // 5. INTENT: Query Invoices / Logistics / Dispatch
-    else if (lower.includes("invoice") || lower.includes("dispatch") || lower.includes("truck") || lower.includes("load")) {
-      const [invoicesRes, trucksRes] = await Promise.all([
-        agentGetInvoices({ limit: 5 }),
-        agentGetTrucksAndTransporters(),
-      ]);
-      toolResults.push(invoicesRes, trucksRes);
-
-      reply = `### 🚚 Logistics & Invoicing Overview:
-
-#### Fleet & Transporters:
-${trucksRes.data?.trucks
-  ?.map((t: any) => `- Truck **${t.registrationNumber}** (${t.capacityMT} MT capacity) • *${t.transporter}*`)
-  .join("\n")}
-
-#### Recent Invoices:
-| Invoice No. | Client | Subtotal | Total Amount (Inc. GST) | Status |
-| :--- | :--- | :--- | :--- | :--- |
-${invoicesRes.data
-  ?.map(
-    (inv: any) =>
-      `| \`${inv.invoiceNumber}\` | ${inv.client} | ₹${inv.subtotal.toLocaleString("en-IN")} | **₹${inv.totalAmount.toLocaleString("en-IN")}** | \`${inv.status}\` |`
-  )
-  .join("\n") || "No invoices generated yet."}
-
-👉 [Truck Dispatch & Gatepass](/dispatch) • [Invoices](/invoices)`;
-    }
-    // 6. DEFAULT GENERAL ERP ASSISTANCE
-    else {
-      reply = `👋 **Hello! I am your PaperMill Agentic AI Assistant.**
-
-I have direct real-time control to perform actions across the entire ERP:
-- **📄 Purchase Order Ingestion**: Upload any PO (PDF / Image) and I will parse it and create the Sales Order automatically.
-- **✂️ Deckle Optimization & Production**: I can inspect demand, check trim percentages, and prepare cutting plans.
-- **📦 Warehouse & Inventory**: Query real-time reel stock, allocated orders, and warehouse bays.
-- **🚚 Logistics & Invoicing**: Track trucks, dispatch batches, gatepasses, and GST invoices.
-
-**Try asking me:**
-- *"Create sales order for Shittla Papers with 28", 26", 49" in 140 GSM"*
-- *"Show me current orders and warehouse stock"*
-- *"What is our current machine deckle and production status?"*
-- *Upload an image/PDF of a PO invoice above to auto-create it.*`;
+      anthropicMessages.push({ role: "user", content: resultBlocks });
     }
 
     return NextResponse.json({
-      reply,
+      reply:
+        "I ran several steps but hit the step limit before finishing. Please narrow the request or ask me to continue.",
       toolResults,
     });
   } catch (error: any) {
-    console.error("[AI Agent Error]", error);
-    return NextResponse.json(
-      {
-        reply: `⚠️ Error executing agentic operation: ${error.message || "Unknown error"}`,
-        toolResults: [],
-      },
-      { status: 500 }
-    );
+    console.error("[PaperMill AI]", error);
+    const msg = String(error?.message || "");
+    return NextResponse.json({
+      reply: msg.includes("Anthropic API 401")
+        ? "The configured ANTHROPIC_API_KEY is invalid."
+        : `Something went wrong: ${msg || "unknown error"}`,
+      toolResults,
+    });
   }
 }
