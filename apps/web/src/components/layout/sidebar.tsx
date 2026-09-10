@@ -67,38 +67,33 @@ export function Sidebar({
 
     return (
       <div key={item.href} className="relative select-none">
-        {/* Left Active Cyan Line Indicator */}
-        {isCurrentActive && (
-          <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-1.5 h-6 bg-sky-500 rounded-r-full" />
-        )}
-
         {hasSubItems ? (
           <div>
             <button
               onClick={() => toggleSubMenu(item.href)}
               className={cn(
-                "w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 group",
+                "w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-[13px] font-semibold transition-all duration-150 group",
                 isCurrentActive
-                  ? "bg-sky-400 text-white font-semibold shadow-sm shadow-sky-200"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  ? "bg-[#d4f842] text-[#11111a] font-bold shadow-md shadow-[#d4f842]/20"
+                  : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
               )}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <Icon
                   className={cn(
-                    "h-4 w-4 shrink-0 transition-colors",
+                    "h-4 w-4 shrink-0 transition-colors stroke-[2.2]",
                     isCurrentActive
-                      ? "text-white"
-                      : "text-slate-400 group-hover:text-slate-600"
+                      ? "text-[#11111a]"
+                      : "text-slate-400 group-hover:text-slate-200"
                   )}
                 />
-                <span className="truncate">{item.title}</span>
+                <span className="truncate tracking-tight">{item.title}</span>
               </div>
 
               <ChevronRight
                 className={cn(
                   "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                  isCurrentActive ? "text-white/80" : "text-slate-400",
+                  isCurrentActive ? "text-[#11111a]" : "text-slate-500 group-hover:text-slate-300",
                   isSubOpen && "rotate-90"
                 )}
               />
@@ -106,7 +101,7 @@ export function Sidebar({
 
             {/* Nested Sub-items with Branching Guide Line */}
             {isSubOpen && (
-              <div className="ml-5 pl-3 mt-1 space-y-0.5 border-l border-slate-200">
+              <div className="ml-5 pl-3.5 mt-1 space-y-1 border-l border-white/10">
                 {item.subItems
                   ?.filter((sub) => sub.allowedRoles.includes(userRole))
                   .map((sub) => {
@@ -116,10 +111,10 @@ export function Sidebar({
                         key={sub.href}
                         href={sub.href}
                         className={cn(
-                          "block px-2.5 py-1.5 text-xs rounded-lg transition-colors",
+                          "block px-2.5 py-1.5 text-xs rounded-xl transition-colors",
                           isSubActive
-                            ? "font-bold text-sky-600 bg-sky-50/80"
-                            : "text-slate-500 hover:text-slate-900 hover:bg-slate-50 font-normal"
+                            ? "font-bold text-[#d4f842] bg-white/[0.06]"
+                            : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
                         )}
                       >
                         {sub.title}
@@ -133,31 +128,31 @@ export function Sidebar({
           <Link
             href={item.href}
             className={cn(
-              "flex items-center justify-between px-3 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-150 group",
+              "flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-[13px] font-semibold transition-all duration-150 group",
               isCurrentActive
-                ? "bg-sky-400 text-white font-semibold shadow-sm shadow-sky-200"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                ? "bg-[#d4f842] text-[#11111a] font-bold shadow-md shadow-[#d4f842]/20"
+                : "text-slate-400 hover:text-white hover:bg-white/[0.05]"
             )}
           >
             <div className="flex items-center gap-3 min-w-0">
               <Icon
                 className={cn(
-                  "h-4 w-4 shrink-0 transition-colors",
+                  "h-4 w-4 shrink-0 transition-colors stroke-[2.2]",
                   isCurrentActive
-                    ? "text-white"
-                    : "text-slate-400 group-hover:text-slate-600"
+                    ? "text-[#11111a]"
+                    : "text-slate-400 group-hover:text-slate-200"
                 )}
               />
-              <span className="truncate">{item.title}</span>
+              <span className="truncate tracking-tight">{item.title}</span>
             </div>
 
             {item.badge && (
               <span
                 className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-md font-mono",
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold",
                   isCurrentActive
-                    ? "bg-white/20 text-white font-bold"
-                    : "bg-slate-100 text-slate-500"
+                    ? "bg-[#11111a]/20 text-[#11111a]"
+                    : "bg-white/10 text-slate-300"
                 )}
               >
                 {item.badge}
@@ -170,86 +165,85 @@ export function Sidebar({
   };
 
   return (
-    <aside className="hidden md:flex w-60 border-r border-slate-100 bg-white flex-col shrink-0 h-screen sticky top-0 font-sans shadow-[1px_0_10px_rgba(0,0,0,0.02)]">
-      {/* 1. BRAND HEADER */}
-      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100/80">
-        <div className="flex items-center gap-3">
-          {/* Minimalist Logo Icon */}
-          <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-700 via-blue-600 to-sky-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
-            <Factory className="h-5 w-5 stroke-[2.2]" />
-          </div>
-
-          <div className="flex flex-col">
-            <span className="font-extrabold text-[15px] tracking-tight text-slate-900 leading-none">
-              HRA MILL
-            </span>
-            <span className="text-[11px] text-slate-400 font-medium leading-tight mt-1">
-              Kraft ERP Suite
-            </span>
-          </div>
-        </div>
-
-        {/* Minimalist Badge */}
-        <div className="h-5 w-5 rounded-md border border-slate-200 flex items-center justify-center text-[10px] text-slate-400 font-mono">
-          α
-        </div>
-      </div>
-
-      {/* 2. SCROLLABLE NAVIGATION */}
-      <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-6 scrollbar-thin">
-        {/* MAIN SECTION */}
-        <div className="space-y-1">
-          <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            MAIN
-          </div>
-          <div className="space-y-1">
-            {mainItems.map(renderNavItem)}
-          </div>
-        </div>
-
-        {/* OTHERS SECTION */}
-        {othersItems.length > 0 && (
-          <div className="space-y-1 pt-2 border-t border-slate-100">
-            <div className="px-3 pb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              OTHERS
-            </div>
-            <div className="space-y-1">
-              {othersItems.map(renderNavItem)}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* 3. USER PROFILE BOTTOM CARD WITH EMBEDDED LOGOUT */}
-      <div className="p-3 border-t border-slate-100 bg-white">
-        <div className="flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors group">
-          <div className="flex items-center gap-2.5 min-w-0">
-            {/* User Avatar */}
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-amber-200 to-amber-100 border border-amber-300 flex items-center justify-center text-xs font-bold text-amber-900 shrink-0">
-              {userName.charAt(0)}
+    <aside className="hidden md:flex flex-col shrink-0 w-80 h-screen sticky top-0 p-3 select-none font-sans z-30">
+      {/* Floating Dark Pill Container */}
+      <div className="flex-1 flex flex-col bg-[#161622] text-slate-300 rounded-[28px] shadow-2xl border border-white/[0.06] overflow-hidden">
+        {/* 1. BRAND HEADER */}
+        <div className="pt-6 pb-4 px-6 flex items-center justify-between shrink-0">
+          <Link href="/" className="flex items-center gap-2.5 group">
+            {/* Custom Neon Spiral/Geometric Logo Icon */}
+            <div className="h-9 w-9 rounded-xl bg-[#d4f842] flex items-center justify-center text-[#11111a] font-black shadow-[0_0_15px_rgba(212,248,66,0.35)] transition-transform group-hover:scale-105">
+              <span className="text-xl leading-none font-black font-mono">@</span>
             </div>
 
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="text-xs font-bold text-slate-900 truncate">
-                  {userName}
-                </span>
-                <CheckCircle2 className="h-3 w-3 text-sky-500 fill-sky-500/20 shrink-0" />
-              </div>
-              <span className="text-[11px] text-slate-400 truncate">
-                {userEmail}
+            <div className="flex flex-col">
+              <span className="font-extrabold text-[17px] tracking-tight text-white leading-none flex items-center gap-1">
+                <span className="text-[#d4f842]">hra</span>
+                <span>mill</span>
+              </span>
+              <span className="text-[9px] font-bold text-[#d4f842]/70 uppercase tracking-widest leading-tight mt-1">
+                KRAFT ERP SUITE
               </span>
             </div>
+          </Link>
+
+          {/* Minimalist Pill Badge */}
+          <div className="px-1.5 py-0.5 rounded-full border border-white/10 bg-white/5 text-[9px] text-slate-400 font-mono">
+            v2.4
+          </div>
+        </div>
+
+        {/* 2. SCROLLABLE NAVIGATION */}
+        <div className="flex-1 overflow-y-auto px-5 py-2 space-y-5 sidebar-scrollbar">
+          {/* MAIN / OVERVIEW SECTION */}
+          <div className="space-y-1">
+            <div className="px-3 pb-1.5 text-[11px] font-medium text-slate-400">
+              Overview
+            </div>
+            <div className="space-y-1.5">
+              {mainItems.map(renderNavItem)}
+            </div>
           </div>
 
-          {/* 1-Click Logout Icon Button */}
-          <button
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            title="Sign out of ERP"
-            className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-all shrink-0"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          {/* OTHERS SECTION */}
+          {othersItems.length > 0 && (
+            <div className="space-y-1 pt-3 border-t border-white/[0.06]">
+              <div className="px-3 pb-1.5 text-[11px] font-medium text-slate-400">
+                Other
+              </div>
+              <div className="space-y-1.5">
+                {othersItems.map(renderNavItem)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 3. BOTTOM USER PROFILE */}
+        <div className="p-3.5 space-y-3 shrink-0 bg-[#161622] border-t border-white/[0.06]">
+          {/* User Account Bar with Logout */}
+          <div className="flex items-center justify-between px-2 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.05]">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-7 w-7 rounded-lg bg-gradient-to-tr from-[#d4f842] to-lime-200 text-[#11111a] flex items-center justify-center text-[11px] font-black shrink-0">
+                {userName.charAt(0)}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-semibold text-white truncate leading-tight">
+                  {userName}
+                </span>
+                <span className="text-[10px] text-slate-400 truncate leading-tight">
+                  {userRole}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              title="Sign out of ERP"
+              className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors shrink-0"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>
