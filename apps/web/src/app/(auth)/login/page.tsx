@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Image from "next/image";
 import { LoginForm } from "./login-form";
 import { Factory } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -39,14 +40,20 @@ export default function LoginPage() {
       {/* Right — brand panel */}
       <div className="hidden p-3 lg:block">
         <div className="relative flex h-full flex-col justify-end overflow-hidden rounded-[28px] bg-neutral-950 p-10 text-white">
-          {/* decorative glow + oversized watermark */}
-          <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-sky-500/10 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 bottom-10 h-72 w-72 rounded-full bg-blue-600/10 blur-3xl" />
-          <Factory
-            className="pointer-events-none absolute -top-6 right-6 h-72 w-72 text-white/[0.04]"
-            strokeWidth={1}
+          {/* brand photo + legibility scrim */}
+          <Image
+            src="/images/login-brand.jpg"
+            alt="Kraft paper mill floor with finished reels"
+            fill
+            priority
+            sizes="54vw"
+            className="pointer-events-none object-cover"
           />
-          <div className="pointer-events-none absolute right-0 top-8 h-56 w-56 rotate-45 rounded-3xl bg-gradient-to-br from-white/10 to-transparent blur-2xl" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/70 to-neutral-950/25" />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-neutral-950/60 to-transparent" />
+
+          {/* decorative glow */}
+          <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-sky-500/10 blur-3xl" />
 
           <div className="relative">
             <span className="text-sm font-semibold text-white/70">HRA MILL</span>
