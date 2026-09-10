@@ -190,7 +190,7 @@ async function computeDashboardData(days: number) {
 
   // Compute 30d Average Trim %
   const totalTrimSum = runs30d.reduce((acc, r) => acc + Number(r.totalTrimPercent || 0), 0);
-  const avgTrimPercent30d = runs30d.length > 0 ? totalTrimSum / runs30d.length : 1.85;
+  const avgTrimPercent30d = runs30d.length > 0 ? totalTrimSum / runs30d.length : 0;
 
   const totalProducedKgThisMonth = Number(producedThisMonthRes._sum.totalActualKg || 0);
   const invoicedThisMonth = Number(invoicedThisMonthRes._sum.totalAmount || 0);

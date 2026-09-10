@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { runWithTenantContext } from "@/lib/tenant-context";
+import { runWithTenantContext, type TenantContext } from "@/lib/tenant-context";
 import {
   agentGetOrders,
   agentCreateOrder,
@@ -689,10 +689,12 @@ export async function POST(req: NextRequest) {
   }
   // This route is in the middleware public-list, so it carries no tenant headers.
   // Establish the tenant scope explicitly for the isolation layer.
-  return runWithTenantContext(
-    { tenantId: u.tenantId, isPlatform: false, userId: u.id },
-    () => handleAgentPost(req, u)
-  );
+  const tenantCtx: TenantContext = {
+    tenantId: u.tenantId,
+    isPlatform: false,
+    userId: u.id,
+  };
+  return runWithTenantContext(tenantCtx, () => handleAgentPost(req, u, tenantCtx));
 }
 
 
@@ -787,7 +789,11 @@ async function callOpenAI(apiKey: string, requestBody: Record<string, unknown>) 
   return JSON.parse(text) as ResponsesOutput;
 }
 
-async function handleAgentPost(req: NextRequest, sessionUser: any) {
+async function handleAgentPost(
+  req: NextRequest,
+  sessionUser: any,
+  tenantCtx: TenantContext
+) {
   const userRole = sessionUser?.role || "STAFF";
   const userName = sessionUser?.name || "Staff Member";
 
@@ -898,7 +904,14 @@ async function handleAgentPost(req: NextRequest, sessionUser: any) {
         }
         let out: any;
         try {
-          out = await executeAgentTool(call.name || "", args);
+          // Re-assert the tenant scope for every tool call. The agentic loop
+          // awaits the OpenAI fetch between steps, and the ambient
+          // AsyncLocalStorage store is not guaranteed to survive that boundary
+          // on workerd — without this, tenant-scoped Prisma reads/writes throw
+          // "No tenant context" and the model reports a vague "system issue".
+          out = await runWithTenantContext(tenantCtx, () =>
+            executeAgentTool(call.name || "", args)
+          );
         } catch (e: any) {
           out = { success: false, message: "Tool crashed", error: e?.message || String(e) };
         }
