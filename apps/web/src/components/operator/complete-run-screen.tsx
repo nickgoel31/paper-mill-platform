@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { completeProductionRun } from "@/server/services/production-service";
+import { offlineCompleteProductionRun } from "@/lib/offline/wrapped-actions";
 import { formatWeightKg, formatTrimPercent } from "@/lib/utils";
 import { FullscreenNumpad } from "./fullscreen-numpad";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,7 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
   // Execution state
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
+  const [isQueued, setIsQueued] = React.useState(false);
 
   // Variance calculation
   const varianceKg = actualTotalKg - totalPlannedKg;
@@ -63,7 +64,7 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
     const actionId = `act_complete_${run.id}_${Date.now()}`;
 
     try {
-      await completeProductionRun({
+      const result = await offlineCompleteProductionRun({
         runId: run.id,
         actualKg: actualTotalKg,
         trimWasteKg: trimWasteKg,
@@ -71,14 +72,52 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
         actionId,
       });
 
-      setIsSuccess(true);
-      toast.success(`Production Run #${run.runNumber} marked COMPLETED.`);
+      if (result.queued) {
+        // Reel/inventory allocation happens server-side, so we can't show the
+        // "reels added to inventory" success screen until this actually syncs.
+        setIsQueued(true);
+        toast.info("Offline — run completion saved locally and will sync automatically.");
+      } else {
+        setIsSuccess(true);
+        toast.success(`Production Run #${run.runNumber} marked COMPLETED.`);
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to finalize production run");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  if (isQueued) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center space-y-6 select-none">
+        <div className="p-8 sm:p-12 rounded-3xl bg-slate-900 border-4 border-amber-500 shadow-2xl space-y-6">
+          <div className="h-24 w-24 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center mx-auto shadow-xl">
+            <AlertCircle className="h-16 w-16 stroke-[3]" />
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              RUN #{run.runNumber} QUEUED
+            </h1>
+            <p className="text-base sm:text-lg text-amber-400 font-mono font-bold">
+              Saved on this device. Reels will be added to inventory once this
+              tablet reconnects and syncs.
+            </p>
+          </div>
+
+          <Button
+            asChild
+            className="w-full h-16 sm:h-20 rounded-2xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xl sm:text-2xl gap-3 shadow-xl"
+          >
+            <Link href="/operator">
+              <RotateCcw className="h-7 w-7" /> RETURN TO MACHINE QUEUE
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Big Celebratory Success Screen
   if (isSuccess) {

@@ -11,7 +11,7 @@ import {
   orderFormSchema,
   OrderFormInput,
 } from "@/lib/schemas/order";
-import { createOrder, updateOrder } from "@/server/services/order-service";
+import { offlineCreateOrder, offlineUpdateOrder } from "@/lib/offline/wrapped-actions";
 import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,13 +227,27 @@ export function OrderForm({
     setIsSubmitting(true);
     try {
       if (isEditing) {
-        await updateOrder(initialOrder.id, values);
-        toast.success(`Order #${initialOrder.orderNumber} updated successfully.`);
-        router.push(`/orders/${initialOrder.id}`);
+        const result = await offlineUpdateOrder(initialOrder.id, values);
+        if (result.queued) {
+          toast.info(
+            `Offline — changes to Order #${initialOrder.orderNumber} saved locally and will sync automatically.`
+          );
+          router.push(`/orders/${initialOrder.id}`);
+        } else {
+          toast.success(`Order #${initialOrder.orderNumber} updated successfully.`);
+          router.push(`/orders/${initialOrder.id}`);
+        }
       } else {
-        const created = await createOrder(values);
-        toast.success(`Sales Order #${created.orderNumber} created successfully!`);
-        router.push(`/orders/${created.id}`);
+        const result = await offlineCreateOrder(values);
+        if (result.queued) {
+          // No server id exists yet for a queued create, so the detail page
+          // (a fresh server render) can't be opened until this syncs.
+          toast.info("Offline — sales order saved locally and will be created once you're back online.");
+          router.push("/orders");
+        } else {
+          toast.success(`Sales Order #${result.data!.orderNumber} created successfully!`);
+          router.push(`/orders/${result.data!.id}`);
+        }
       }
       router.refresh();
     } catch (err: any) {

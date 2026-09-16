@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { startProductionRun } from "@/server/services/production-service";
+import { offlineStartProductionRun } from "@/lib/offline/wrapped-actions";
 import { formatWeightKg, formatTrimPercent } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,15 @@ export function MachineQueueScreen({
     const actionId = `act_start_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     try {
-      await startProductionRun(runId, actionId);
+      const result = await offlineStartProductionRun(runId, actionId);
+      if (result.queued) {
+        // The run detail screen needs a fresh server render (machine-conflict
+        // checks, pattern data) that isn't available offline, so stay here
+        // rather than navigate into a page that can't load yet.
+        toast.info("Offline — run start queued locally and will begin syncing once reconnected.");
+        setIsStartingRunId(null);
+        return;
+      }
       toast.success("Production run started!");
       router.push(`/operator/run/${runId}`);
     } catch (err: any) {

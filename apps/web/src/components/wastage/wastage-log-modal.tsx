@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { toast } from "sonner";
-import { createManualWastageLog } from "@/server/services/wastage-service";
+import { offlineCreateManualWastageLog } from "@/lib/offline/wrapped-actions";
 import {
   Dialog,
   DialogContent,
@@ -49,14 +49,18 @@ export function WastageLogModal({
 
     setIsSubmitting(true);
     try {
-      await createManualWastageLog({
+      const result = await offlineCreateManualWastageLog({
         productionRunId: productionRunId !== "NONE" ? productionRunId : undefined,
         wastageKg: parseFloat(wastageKgStr),
         wastageType,
         reason,
       });
 
-      toast.success("Wastage log recorded successfully.");
+      toast[result.queued ? "info" : "success"](
+        result.queued
+          ? "Offline — wastage log saved locally and will sync automatically."
+          : "Wastage log recorded successfully."
+      );
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {

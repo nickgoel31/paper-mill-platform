@@ -1,0 +1,10 @@
+{
+  "name": "HRA Paper Mill ERP",
+  "short_name": "PaperMill ERP",
+  "description": "Production ERP for Kraft Paper Mill cutting stock & trim waste reduction.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": []
+}

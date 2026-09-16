@@ -5,6 +5,8 @@ import Link from "next/link";
 import { signOut } from "next-auth/react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useOnlineStatus } from "@/lib/offline/use-online-status";
+import { PendingSyncBadge } from "@/components/shared/pending-sync-badge";
 import {
   Factory,
   Wifi,
@@ -26,20 +28,7 @@ export function OperatorHeader({
   backHref,
   backLabel,
 }: OperatorHeaderProps) {
-  const [isOnline, setIsOnline] = React.useState(true);
-
-  React.useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
+  const isOnline = useOnlineStatus();
 
   return (
     <header className="sticky top-0 z-30 bg-slate-950 text-white border-b-2 border-slate-800 shadow-md select-none">
@@ -88,6 +77,8 @@ export function OperatorHeader({
 
         {/* Right Side: Network Status & Sign Out */}
         <div className="flex items-center gap-3">
+          <PendingSyncBadge className="h-10 gap-1.5 rounded-full border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 font-mono text-xs font-bold" />
+
           <div className="hidden sm:flex items-center gap-1.5 font-mono text-xs font-bold text-slate-400 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-800">
             {isOnline ? (
               <>

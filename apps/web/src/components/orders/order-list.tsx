@@ -25,12 +25,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
+import { canTransition } from "@/server/services/order-service";
 import {
-  getOrders,
-  getOrderSummaryStats,
-  transitionOrderStatus,
-  canTransition,
-} from "@/server/services/order-service";
+  offlineGetOrders,
+  offlineGetOrderSummaryStats,
+  offlineTransitionOrderStatus,
+} from "@/lib/offline/wrapped-actions";
+import { OfflineEmptyState } from "@/components/shared/offline-empty-state";
 import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
 import {
   ShoppingCart,
@@ -121,6 +122,8 @@ export function OrderList({
   const [gsmFilter, setGsmFilter] = React.useState<string>("ALL");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isOfflineEmpty, setIsOfflineEmpty] = React.useState(false);
+  const [showingCached, setShowingCached] = React.useState(false);
 
   const isAdminOrSales = userRole === Role.ADMIN || userRole === Role.SALES;
   const isPlannerOrAdmin = userRole === Role.ADMIN || userRole === Role.PLANNER;
@@ -129,7 +132,7 @@ export function OrderList({
   const fetchFilteredOrders = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const res = await getOrders({
+      const ordersResult = await offlineGetOrders({
         status: statusFilter === "ALL" ? undefined : [statusFilter as OrderStatus],
         priority: priorityFilter === "ALL" ? undefined : [priorityFilter as OrderPriority],
         clientId: clientFilter === "ALL" ? undefined : clientFilter,
@@ -139,11 +142,20 @@ export function OrderList({
         pageSize,
       });
 
-      const st = await getOrderSummaryStats();
+      if (ordersResult.empty) {
+        setIsOfflineEmpty(true);
+        return;
+      }
+      setIsOfflineEmpty(false);
+      setShowingCached(ordersResult.fromCache);
+
+      const res = ordersResult.data!;
       setData(res.rows as OrderRow[]);
       setTotal(res.total);
       setTotalPages(res.totalPages);
-      setStats(st);
+
+      const statsResult = await offlineGetOrderSummaryStats();
+      if (!statsResult.empty && statsResult.data) setStats(statsResult.data);
     } catch (err: any) {
       toast.error(err.message || "Failed to load orders");
     } finally {
@@ -161,9 +173,13 @@ export function OrderList({
     newStatus: OrderStatus
   ) => {
     try {
-      await transitionOrderStatus({ orderId, newStatus });
-      toast.success(`Order #${orderNumber} transitioned to ${newStatus}`);
-      fetchFilteredOrders();
+      const result = await offlineTransitionOrderStatus({ orderId, newStatus });
+      if (result.queued) {
+        toast.info(`Offline — Order #${orderNumber} status change saved locally and will sync automatically.`);
+      } else {
+        toast.success(`Order #${orderNumber} transitioned to ${newStatus}`);
+        fetchFilteredOrders();
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to transition status");
     }
@@ -508,6 +524,15 @@ export function OrderList({
           )}
         </div>
       </div>
+
+      {isOfflineEmpty && <OfflineEmptyState label="Orders haven't been loaded on this device yet." />}
+
+      {showingCached && !isOfflineEmpty && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800">
+          You&apos;re offline — showing the last data loaded on this device. New orders and status
+          changes you make now will sync automatically once you&apos;re back online.
+        </div>
+      )}
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

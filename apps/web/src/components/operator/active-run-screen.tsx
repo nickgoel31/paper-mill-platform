@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { updatePatternProgress } from "@/server/services/production-service";
+import { offlineUpdatePatternProgress } from "@/lib/offline/wrapped-actions";
 import { formatWeightKg, formatTrimPercent, formatWidthInch } from "@/lib/utils";
 import { PatternBar } from "@/components/deckle/pattern-bar";
 import { TactileStepper } from "./tactile-stepper";
@@ -82,7 +82,10 @@ export function ActiveRunScreen({ run }: ActiveRunScreenProps) {
 
     try {
       const actionId = `act_reps_${patternId}_${newReps}_${Date.now()}`;
-      await updatePatternProgress(run.id, patternId, newReps, undefined, actionId);
+      const result = await offlineUpdatePatternProgress(run.id, patternId, newReps, undefined, actionId);
+      if (result.queued) {
+        toast.info("Offline — repetition count saved locally and will sync automatically.");
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to update repetitions. Rolling back.");
       // Rollback to server state
@@ -102,8 +105,12 @@ export function ActiveRunScreen({ run }: ActiveRunScreenProps) {
       const targetPattern = patterns.find((p: any) => p.id === targetId);
       const reps = targetPattern?.completedRepetitions || targetPattern?.repetitions || 1;
       const actionId = `act_weight_${targetId}_${Date.now()}`;
-      await updatePatternProgress(run.id, targetId, reps, weightKg, actionId);
-      toast.success(`Recorded ${weightKg.toLocaleString("en-IN")} kg actual weight.`);
+      const result = await offlineUpdatePatternProgress(run.id, targetId, reps, weightKg, actionId);
+      toast.success(
+        result.queued
+          ? `Offline — recorded ${weightKg.toLocaleString("en-IN")} kg locally, will sync automatically.`
+          : `Recorded ${weightKg.toLocaleString("en-IN")} kg actual weight.`
+      );
     } catch (err: any) {
       toast.error(err.message || "Failed to record weight");
     } finally {
@@ -123,8 +130,12 @@ export function ActiveRunScreen({ run }: ActiveRunScreenProps) {
     );
 
     try {
-      await updatePatternProgress(run.id, pat.id, targetReps);
-      toast.success(`Pattern #${pat.sequence} marked COMPLETED.`);
+      const result = await offlineUpdatePatternProgress(run.id, pat.id, targetReps);
+      toast.success(
+        result.queued
+          ? `Offline — Pattern #${pat.sequence} saved locally, will sync automatically.`
+          : `Pattern #${pat.sequence} marked COMPLETED.`
+      );
 
       // Move to next pattern if available
       if (patIndex + 1 < patterns.length) {
