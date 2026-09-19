@@ -242,12 +242,12 @@ export const TUTORIAL_MODULES: TutorialStep[] = [
   {
     id: "deckle-planning",
     title: "5. Mathematical Deckle Optimization",
-    subtitle: "Google OR-Tools CP-SAT Algorithm, Visual Pattern Bar & AI Insights",
+    subtitle: "Column-Generation Cutting-Stock Solver, Visual Pattern Bar & AI Insights",
     badge: "MATHEMATICAL CORE",
     roleRequired: "PLANNER / ADMIN",
     route: "/deckle",
     overview:
-      "The deckle planning workspace is the algorithmic heart of PaperMill ERP. It groups pending demand by GSM grade, calls the Python FastAPI OR-Tools solver, generates cutting patterns, and renders full-width 100% scaled interactive visualization bars.",
+      "The deckle planning workspace is the algorithmic heart of PaperMill ERP. It groups pending demand by GSM grade, calls the cutting-stock solver worker, generates cutting patterns, and renders full-width 100% scaled interactive visualization bars.",
     whyItMatters:
       "Cutting loss is a paper mill's single biggest direct cost. The optimizer drives edge trim loss down from industry typical 6–10% to under 2–3%, saving millions in annual fiber cost.",
     keyConcepts: [
@@ -257,9 +257,9 @@ export const TUTORIAL_MODULES: TutorialStep[] = [
           "Hard physical paper mill constraint. A paper machine runs one GSM web at a time. Each selected GSM becomes its own distinct production run.",
       },
       {
-        term: "Google OR-Tools CP-SAT",
+        term: "Column-Generation LP Solver",
         explanation:
-          "1D Cutting-Stock integer programming solver utilizing column generation to minimize trim width and pattern changes.",
+          "1D cutting-stock solver: a linear program picks how many metres to run of each knife pattern, and column generation finds the patterns that waste the least paper (trim and overproduction together), then trims down the number of knife setups.",
       },
       {
         term: "Interactive <PatternBar />",
@@ -388,7 +388,7 @@ export const TUTORIAL_MODULES: TutorialStep[] = [
       {
         term: "Theoretical vs Actual Variance",
         explanation:
-          "Compares OR-Tools predicted trim scrap against operator weighed scrap logs.",
+          "Compares the solver-predicted trim scrap against operator weighed scrap logs.",
       },
     ],
     setupSteps: [

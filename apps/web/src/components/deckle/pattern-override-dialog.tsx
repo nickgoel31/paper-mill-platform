@@ -67,8 +67,15 @@ export function PatternOverrideDialog({
   const trimWidthInch = Math.max(0, machine.maxDeckleInch - usedWidthInch);
   const trimPercent = (trimWidthInch / machine.maxDeckleInch) * 100;
 
+  // One repetition is run_length_m / repetitions metres (about 1000 m, but the solver plans exact
+  // lengths). Keep that unit so opening and saving a pattern never silently changes its run length.
+  const metresPerRep =
+    pattern.run_length_m > 0 && pattern.repetitions > 0
+      ? pattern.run_length_m / pattern.repetitions
+      : 1000.0;
+
   // Recalculate Estimated KG
-  const runLengthM = repetitions * 1000.0;
+  const runLengthM = repetitions * metresPerRep;
   const estimatedKg = cuts.reduce((acc, c) => {
     const widthM = c.width_inch * 0.0254;
     return acc + widthM * runLengthM * (gsm / 1000.0) * c.count;
@@ -126,6 +133,7 @@ export function PatternOverrideDialog({
       trim_width_inch: Number(trimWidthInch.toFixed(2)),
       trim_percent: Number(trimPercent.toFixed(2)),
       repetitions,
+      run_length_m: Number(runLengthM.toFixed(2)),
       estimated_kg: Number(estimatedKg.toFixed(2)),
       is_manually_edited: true,
       cuts: cuts.filter((c) => c.count > 0),

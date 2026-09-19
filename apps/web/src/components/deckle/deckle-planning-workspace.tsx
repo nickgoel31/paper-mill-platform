@@ -17,6 +17,7 @@ import {
 } from "@/lib/solver-client";
 import { PatternBar } from "./pattern-bar";
 import { PatternOverrideDialog } from "./pattern-override-dialog";
+import { TrimAdvisorBanner } from "./trim-advisor-banner";
 import { OrderPriority, Role } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -306,6 +307,14 @@ export function DecklePlanningWorkspace({
     });
 
     toast.success(`Pattern #${updatedPattern.sequence} updated. Trim recomputed.`);
+  };
+
+  // Open the manual pattern editor for a given pattern (used by the trim advisor)
+  const handleEditPatternFromAdvisor = (runIndex: number, patternIndex: number) => {
+    const pattern = solverResult?.runs[runIndex]?.patterns[patternIndex];
+    if (!pattern) return;
+    setActiveOverrideTarget({ runIndex, patternIndex, pattern });
+    setOverrideModalOpen(true);
   };
 
   // Generate AI Explanation
@@ -907,7 +916,7 @@ export function DecklePlanningWorkspace({
               {isSolving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Solving with OR-Tools ({solveElapsedSeconds}s)...
+                  Optimizing cutting patterns ({solveElapsedSeconds}s)...
                 </>
               ) : (
                 <>
@@ -967,7 +976,7 @@ export function DecklePlanningWorkspace({
                 <div className="text-2xl font-black font-mono text-slate-900">
                   {(solverResult.summary.solve_time_ms / 1000).toFixed(2)}s
                 </div>
-                <span className="text-[11px] text-slate-400">CP-SAT engine</span>
+                <span className="text-[11px] text-slate-400">Column-generation LP</span>
               </div>
             </div>
           </div>
@@ -986,6 +995,15 @@ export function DecklePlanningWorkspace({
               ))}
             </div>
           )}
+
+          {/* AI Trim Advisor — manual-only ways to cut trim further */}
+          <TrimAdvisorBanner
+            solverResult={solverResult}
+            demandItems={demandItems}
+            selectedItemIds={selectedItemIds}
+            machines={machines}
+            onEditPattern={handleEditPatternFromAdvisor}
+          />
 
           {/* Production Runs */}
           <div className="space-y-5">
@@ -1073,7 +1091,7 @@ export function DecklePlanningWorkspace({
                             AI Plan Analysis
                           </div>
                           <span className="text-[10px] text-amber-500 italic">
-                            Numbers from OR-Tools • explanations from AI
+                            Numbers from the solver • explanations from AI
                           </span>
                         </div>
 
