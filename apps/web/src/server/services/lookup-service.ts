@@ -1,4 +1,3 @@
-import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { LOOKUP_TAGS } from "./cache-tags";
 import { runWithTenantContext } from "@/lib/tenant-context";
@@ -14,20 +13,22 @@ export { LOOKUP_TAGS };
  * cached payload is plain JSON.
  */
 
-const LOOKUP_REVALIDATE_SECONDS = 120;
-
-/** Cache one mill's lookup list — keyed and tenant-scoped by `tenantId`. */
+/**
+ * One mill's lookup list, tenant-scoped by `tenantId`.
+ *
+ * Deliberately NOT wrapped in `unstable_cache`: on OpenNext/Cloudflare there is no
+ * tag cache configured, so `revalidateTag()` never invalidated these entries and
+ * the deckle screen, order form, etc. kept showing machines/clients that had
+ * since been added, disabled or deleted. These are small per-mill tables, so
+ * reading them fresh is cheap. `keyBase`/`tag` are kept so call sites don't change.
+ */
 function cachedLookup<T>(
-  keyBase: string,
-  tag: string,
+  _keyBase: string,
+  _tag: string,
   tenantId: string,
   run: () => Promise<T>
 ): Promise<T> {
-  return unstable_cache(
-    () => runWithTenantContext({ tenantId, isPlatform: false }, run),
-    [keyBase, tenantId],
-    { tags: [tag], revalidate: LOOKUP_REVALIDATE_SECONDS }
-  )();
+  return runWithTenantContext({ tenantId, isPlatform: false }, run);
 }
 
 export type ClientOption = {
