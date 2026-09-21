@@ -23,8 +23,17 @@ declare global {
  * the tenant-isolation `$extends` (see `withTenantScope`).
  */
 
-/** PrismaClients backed by the D1 adapter (no interactive-transaction support). */
-const d1Clients = new WeakSet<object>();
+/**
+ * PrismaClients backed by the D1 adapter (no interactive-transaction support).
+ *
+ * Pinned on globalThis alongside the clients themselves: the clients live on
+ * globalThis and are shared across bundled copies of this module, so the marker
+ * set must be shared too. With a per-module set, a second copy of this file sees
+ * the shared client as "not D1", skips the interactive-transaction shim, and
+ * Prisma throws "Cloudflare D1 does not support interactive transactions".
+ */
+const g = globalThis as { __d1Clients?: WeakSet<object> };
+const d1Clients = (g.__d1Clients ??= new WeakSet<object>());
 
 function clientFromD1(d1: unknown): PrismaClient {
   const binding = d1 as { withSession?: (constraint: string) => unknown };
@@ -190,10 +199,20 @@ function resolveClient(): PrismaClient {
  * runs the interactive callback against the (scoped) client directly. Array-form
  * `$transaction([...])` and the local better-sqlite3 client run natively.
  */
+function hasD1Binding(): boolean {
+  try {
+    return Boolean((getCloudflareContext() as unknown as { env?: { DB?: unknown } })?.env?.DB);
+  } catch {
+    return false;
+  }
+}
+
 function txShim(client: PrismaClient) {
   const native = client.$transaction.bind(client) as (...a: unknown[]) => Promise<unknown>;
   return (...args: unknown[]) => {
-    if (typeof args[0] === "function" && d1Clients.has(client as object)) {
+    // D1 can't run interactive transactions. Trust the runtime as well as the
+    // marker set, so a stale/duplicated marker can never send D1 down the native path.
+    if (typeof args[0] === "function" && (d1Clients.has(client as object) || hasD1Binding())) {
       const callback = args[0] as (tx: PrismaClient) => Promise<unknown>;
       return Promise.resolve(callback(client));
     }
