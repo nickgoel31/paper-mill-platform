@@ -1,48 +1,13 @@
 import { requireRole } from "@/server/auth-helpers";
 import { Role } from "@/generated/prisma/browser";
-import { db } from "@/lib/db";
-import { getOperatorMachineQueue } from "@/server/services/production-service";
-import { MachineQueueScreen } from "@/components/operator/machine-queue-screen";
+import { getFloorRuns } from "@/server/services/production-service";
+import { FloorRunsScreen } from "@/components/operator/floor-runs-screen";
 
-interface OperatorQueuePageProps {
-  searchParams: Promise<{ machineId?: string }>;
-}
-
-export default async function OperatorQueuePage({ searchParams }: OperatorQueuePageProps) {
+/** Floor tablet: every run deployed to the floor, with Start / Complete. */
+export default async function OperatorPage() {
   await requireRole(Role.OPERATOR, Role.ADMIN, Role.PLANNER);
 
-  const { machineId } = await searchParams;
+  const runs = await getFloorRuns();
 
-  const machines = await db.machine.findMany({
-    where: { deletedAt: null, isActive: true },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-      maxDeckleInch: true,
-    },
-    orderBy: { name: "asc" },
-  });
-
-  const selectedMachineId = machineId || (machines.length > 0 ? machines[0].id : "");
-
-  const { runningRun, releasedRuns } = selectedMachineId
-    ? await getOperatorMachineQueue(selectedMachineId)
-    : { runningRun: null, releasedRuns: [] };
-
-  const formattedMachines = machines.map((m) => ({
-    id: m.id,
-    name: m.name,
-    code: m.code,
-    maxDeckleInch: Number(m.maxDeckleInch),
-  }));
-
-  return (
-    <MachineQueueScreen
-      machines={formattedMachines}
-      initialMachineId={selectedMachineId}
-      runningRun={runningRun ? JSON.parse(JSON.stringify(runningRun)) : null}
-      releasedRuns={JSON.parse(JSON.stringify(releasedRuns))}
-    />
-  );
+  return <FloorRunsScreen runs={JSON.parse(JSON.stringify(runs))} />;
 }

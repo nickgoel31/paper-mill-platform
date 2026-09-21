@@ -2,7 +2,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatWidthInch } from "@/lib/utils";
 
-interface RunCardData {
+export interface RunCardData {
   runNumber: string;
   machineName: string;
   maxDeckleInch: number;
@@ -48,7 +48,7 @@ interface RunCardData {
   }>;
 }
 
-export function generateRunCardPDF(data: RunCardData) {
+function buildRunCardDoc(data: RunCardData): jsPDF {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -406,6 +406,15 @@ export function generateRunCardPDF(data: RunCardData) {
     );
   }
 
-  // Trigger browser download
-  doc.save(`RunCard-${data.runNumber}.pdf`);
+  return doc;
+}
+
+/** Build the run card and trigger a browser download. */
+export function generateRunCardPDF(data: RunCardData) {
+  buildRunCardDoc(data).save(`RunCard-${data.runNumber}.pdf`);
+}
+
+/** Build the run card and return it as a PDF Blob (for on-screen viewing). */
+export function generateRunCardPDFBlob(data: RunCardData): Blob {
+  return buildRunCardDoc(data).output("blob");
 }

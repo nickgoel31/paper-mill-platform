@@ -130,7 +130,7 @@ export async function getProductionSummaryStats() {
   };
 }
 
-export async function getProductionRunById(id: string) {
+export async function getProductionRunById(id: string, opts?: { includeAudit?: boolean }) {
   const run = await db.productionRun.findFirst({
     where: { id },
     include: {
@@ -174,21 +174,86 @@ export async function getProductionRunById(id: string) {
         })
       : [];
 
-  const auditLogs = await db.auditLog.findMany({
-    where: {
-      entityType: "ProductionRun",
-      entityId: id,
-    },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { name: true, role: true } } },
-    take: 50,
-  });
+  const auditLogs =
+    opts?.includeAudit === false
+      ? []
+      : await db.auditLog.findMany({
+          where: {
+            entityType: "ProductionRun",
+            entityId: id,
+          },
+          orderBy: { createdAt: "desc" },
+          include: { user: { select: { name: true, role: true } } },
+          take: 50,
+        });
 
   return {
     ...run,
     orderItems,
     auditLogs,
   };
+}
+
+// -----------------------------------------------------------------------------
+// FLOOR TABLET (deliberately minimal: view run card, start, complete + feedback)
+// -----------------------------------------------------------------------------
+
+/** Every run currently deployed to the floor (released or running), oldest first. */
+export async function getFloorRuns() {
+  await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
+
+  const rows = await db.productionRun.findMany({
+    where: { status: { in: [RunStatus.RELEASED, RunStatus.RUNNING] } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
+  const runs = await Promise.all(rows.map((r) => getProductionRunById(r.id, { includeAudit: false })));
+  return runs.filter((r): r is NonNullable<typeof r> => !!r);
+}
+
+export type FloorActionResult = { success: true } | { success: false; error: string };
+
+/** Start a run. Returns the reason instead of throwing so the tablet can show it. */
+export async function floorStartRun(id: string, actionId?: string): Promise<FloorActionResult> {
+  try {
+    await startProductionRun(id, actionId);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Could not start the run." };
+  }
+}
+
+/**
+ * Complete a run from the tablet. The operator enters nothing but feedback: output
+ * weight and trim default to the planned figures, and reels go where the mill's
+ * post-production setting says.
+ */
+export async function floorCompleteRun(input: {
+  runId: string;
+  feedback?: string;
+  actionId?: string;
+}): Promise<FloorActionResult> {
+  try {
+    await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
+    const run = await db.productionRun.findFirst({ where: { id: input.runId } });
+    if (!run) return { success: false, error: "Run not found." };
+
+    const plannedKg = Number(run.totalPlannedKg) || 0;
+    const trimKg = Math.round(plannedKg * ((Number(run.totalTrimPercent) || 0) / 100));
+
+    await completeProductionRun({
+      runId: input.runId,
+      actualKg: plannedKg,
+      trimWasteKg: trimKg,
+      wastageReason: "TRIM_WASTE",
+      feedback: input.feedback,
+      actionId: input.actionId,
+    });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : "Could not complete the run." };
+  }
 }
 
 export async function getOperatorMachineQueue(machineId: string) {
@@ -392,6 +457,8 @@ export async function completeProductionRun(input: {
   actionId?: string;
   /** Where finished reels go. Defaults to the mill's `postProductionMode`. */
   destination?: PostProductionMode;
+  /** Free-text note from the floor operator. */
+  feedback?: string;
 }) {
   const { userId, tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
   const destination = input.destination ?? (await getPostProductionMode(tenantId));
@@ -427,6 +494,7 @@ export async function completeProductionRun(input: {
         status: RunStatus.COMPLETED,
         completedAt: new Date(),
         totalActualKg: new Prisma.Decimal(input.actualKg.toFixed(3)),
+        ...(input.feedback?.trim() ? { operatorFeedback: input.feedback.trim().slice(0, 2000) } : {}),
       },
     });
 

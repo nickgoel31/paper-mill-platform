@@ -394,6 +394,7 @@ model ProductionRun {
   totalTrimPercent Decimal?
   totalPlannedKg   Decimal   @default(0)
   totalActualKg    Decimal   @default(0)
+  operatorFeedback String?   // free-text note left by the floor operator on completion
   solverPayload    Json?
   aiExplanation    String?
   notes            String?

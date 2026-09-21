@@ -17,6 +17,8 @@ import {
   updatePatternProgress,
   startProductionRun,
   completeProductionRun,
+  floorStartRun,
+  floorCompleteRun,
 } from "@/server/services/production-service";
 import { createManualWastageLog } from "@/server/services/wastage-service";
 import {
@@ -41,6 +43,17 @@ export const offlineStartProductionRun = createOfflineWriteAction(startProductio
 export const offlineCompleteProductionRun = createOfflineWriteAction(completeProductionRun, {
   entity: "ProductionRun",
   actionName: "production.completeProductionRun",
+});
+
+// Floor tablet: the only two actions an operator has (start, complete + feedback).
+export const offlineFloorStartRun = createOfflineWriteAction(floorStartRun, {
+  entity: "ProductionRun",
+  actionName: "production.floorStartRun",
+});
+
+export const offlineFloorCompleteRun = createOfflineWriteAction(floorCompleteRun, {
+  entity: "ProductionRun",
+  actionName: "production.floorCompleteRun",
 });
 
 export const offlineCreateManualWastageLog = createOfflineWriteAction(createManualWastageLog, {

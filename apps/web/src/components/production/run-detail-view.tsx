@@ -346,6 +346,19 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
         </CardContent>
       </Card>
 
+      {(run as any).operatorFeedback && (
+        <Card>
+          <CardContent className="p-4 space-y-1">
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              Operator feedback
+            </div>
+            <p className="text-sm text-slate-800 whitespace-pre-wrap">
+              {(run as any).operatorFeedback}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Order Impact Table */}
       <Card className="print:border print:shadow-none">
         <CardHeader className="pb-3 border-b bg-slate-50/50 print:bg-white">
