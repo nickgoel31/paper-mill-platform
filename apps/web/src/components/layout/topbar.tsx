@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Role } from "@/generated/prisma/browser";
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, User } from "lucide-react";
 import { MobileSidebarDrawer } from "@/components/layout/mobile-nav/mobile-sidebar-drawer";
 
 interface TopbarProps {
@@ -62,23 +62,13 @@ export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
             <Bell className="w-4 h-4 stroke-[2]" />
           </button>
 
-          {/* User Profile Avatar Pill */}
-          <div className="relative shrink-0">
-            <div className="h-11 w-11 rounded-2xl overflow-hidden bg-slate-200 border border-slate-200/80 shadow-xs flex items-center justify-center">
-              {/* Default Avatar Photo matching the mockup persona */}
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&h=160&q=80"
-                alt={userName}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  // Fallback to initials if network image fails
-                  (e.target as HTMLElement).style.display = "none";
-                }}
-              />
-              <span className="text-xs font-bold text-slate-700 select-none">
-                {firstName.charAt(0).toUpperCase()}
-              </span>
-            </div>
+          {/* User Profile Icon */}
+          <div
+            className="h-11 w-11 shrink-0 rounded-2xl bg-slate-100/70 border border-transparent flex items-center justify-center text-slate-600"
+            title={userName}
+            aria-label={userName}
+          >
+            <User className="w-4 h-4 stroke-[2]" />
           </div>
         </div>
       </div>
