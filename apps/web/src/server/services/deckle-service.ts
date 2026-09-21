@@ -2,8 +2,9 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, OrderStatus, RunStatus, Prisma } from "@/generated/prisma/browser";
+import { Role, OrderStatus, RunStatus, StockStatus, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
+import { allocateStockToOrderItem } from "./stock-service";
 import {
   callDeckleSolver,
   SolverRequestPayload,
@@ -137,6 +138,39 @@ export async function getPendingDemandItems() {
 }
 
 // -----------------------------------------------------------------------------
+// UNALLOCATED INVENTORY (for inventory-first planning)
+// -----------------------------------------------------------------------------
+
+/** Finished reels sitting free in inventory: AVAILABLE and not tied to any order. */
+export async function getMatchableInventory() {
+  await requireRole(Role.ADMIN, Role.PLANNER);
+
+  const reels = await db.stockItem.findMany({
+    where: { status: StockStatus.AVAILABLE, orderItemId: null },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      widthInch: true,
+      gsm: true,
+      quantityKg: true,
+      location: true,
+      createdAt: true,
+      originOrderItemId: true,
+    },
+  });
+
+  return reels.map((r) => ({
+    id: r.id,
+    widthInch: Number(r.widthInch),
+    gsm: r.gsm,
+    quantityKg: Number(r.quantityKg),
+    location: r.location,
+    createdAt: r.createdAt.toISOString(),
+    originOrderItemId: r.originOrderItemId,
+  }));
+}
+
+// -----------------------------------------------------------------------------
 // SOLVER PROXY ACTION
 // -----------------------------------------------------------------------------
 
@@ -179,6 +213,8 @@ export async function runSolverOptimization(
 
 export interface CommitRunsInput {
   solverPayload: any;
+  /** Inventory reels the planner approved to fill sales orders instead of new production. */
+  stockAllocations?: Array<{ stockItemId: string; orderItemId: string }>;
   runs: Array<{
     machineId: string;
     gsm: number;
@@ -202,11 +238,35 @@ export interface CommitRunsInput {
   }>;
 }
 
-export async function commitProductionRuns(input: CommitRunsInput) {
+async function commitProductionRunsImpl(input: CommitRunsInput) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
-  if (!input.runs || input.runs.length === 0) {
-    throw new Error("No production runs provided for commitment.");
+  const allocations = input.stockAllocations ?? [];
+  if ((!input.runs || input.runs.length === 0) && allocations.length === 0) {
+    throw new Error("Nothing to commit: no production runs and no inventory allocations.");
+  }
+
+  // 1. Inventory first. Make sure every approved reel is still free, then allocate
+  //    them. Runs are created afterwards so the orders they touch end up PLANNED.
+  if (allocations.length > 0) {
+    const reels = await db.stockItem.findMany({
+      where: { id: { in: allocations.map((a) => a.stockItemId) } },
+      select: { id: true, status: true, orderItemId: true },
+    });
+    const byId = new Map(reels.map((r) => [r.id, r]));
+    const taken = allocations.filter((a) => {
+      const r = byId.get(a.stockItemId);
+      return !r || r.status !== StockStatus.AVAILABLE || r.orderItemId !== null;
+    });
+    if (taken.length > 0) {
+      throw new Error(
+        `${taken.length} inventory reel(s) were allocated by someone else while you were planning. ` +
+          `Nothing was committed — please re-run the plan.`
+      );
+    }
+    for (const a of allocations) {
+      await allocateStockToOrderItem(a.stockItemId, a.orderItemId);
+    }
   }
 
   const createdRuns = await db.$transaction(async (tx) => {
@@ -336,6 +396,33 @@ export async function commitProductionRuns(input: CommitRunsInput) {
   revalidatePath("/production");
   revalidatePath("/deckle");
   revalidatePath("/orders");
+  revalidatePath("/stock");
   revalidateTag(DASHBOARD_TAG);
-  return createdRuns;
+  return { runs: createdRuns, allocated: allocations.length };
+}
+
+export type CommitRunsResult =
+  | { success: true; runCount: number; patternCount: number; allocatedReels: number }
+  | { success: false; error: string };
+
+/**
+ * Commit an approved deckle plan: allocate the approved inventory reels, then create
+ * the production runs. Returns errors as data — thrown messages are hidden in
+ * production builds, and the planner needs to see why a commit was refused.
+ */
+export async function commitProductionRuns(input: CommitRunsInput): Promise<CommitRunsResult> {
+  try {
+    const { runs, allocated } = await commitProductionRunsImpl(input);
+    return {
+      success: true,
+      runCount: runs.length,
+      patternCount: runs.reduce((acc: number, r: any) => acc + r.patterns.length, 0),
+      allocatedReels: allocated,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to commit the plan.",
+    };
+  }
 }

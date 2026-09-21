@@ -8,7 +8,13 @@ import { formatWeightKg, formatTrimPercent, formatWidthInch } from "@/lib/utils"
 import {
   runSolverOptimization,
   commitProductionRuns,
+  getMatchableInventory,
 } from "@/server/services/deckle-service";
+import {
+  matchInventoryToDemand,
+  type InventoryAllocation,
+} from "@/lib/deckle-inventory-match";
+import { InventoryUsageDialog } from "./inventory-usage-dialog";
 import { explainPlan, AIExplanationResult } from "@/server/services/ai-explain-service";
 import {
   OptimizeResponse,
@@ -141,6 +147,12 @@ export function DecklePlanningWorkspace({
   // Committing State
   const [isCommitting, setIsCommitting] = React.useState(false);
 
+  // Inventory-first: free reels that were matched to orders instead of being produced.
+  const [inventoryAllocs, setInventoryAllocs] = React.useState<InventoryAllocation[]>([]);
+  const [inventoryDialogOpen, setInventoryDialogOpen] = React.useState(false);
+  // The planner has approved the listed reels (required before committing).
+  const [inventoryApproved, setInventoryApproved] = React.useState(false);
+
   // Timer for solving elapsed indicator
   React.useEffect(() => {
     let interval: any;
@@ -209,8 +221,8 @@ export function DecklePlanningWorkspace({
     return map;
   }, [demandItems]);
 
-  // Execute Solver
-  const handleRunOptimization = async () => {
+  // Execute Solver. `excludedReelIds` are inventory reels the planner declined to use.
+  const handleRunOptimization = async (excludedReelIds: string[] = []) => {
     if (selectedItems.length === 0) {
       toast.error("Please select at least one demand item for deckle planning.");
       return;
@@ -223,6 +235,19 @@ export function DecklePlanningWorkspace({
     }
 
     setIsSolving(true);
+
+    // Inventory first: match free reels to the selected orders so only the
+    // remaining demand goes to the solver.
+    let match = matchInventoryToDemand(selectedItems, [], new Set());
+    try {
+      const reels = await getMatchableInventory();
+      match = matchInventoryToDemand(selectedItems, reels, new Set(excludedReelIds));
+    } catch {
+      toast.warning("Couldn't check inventory — planning full production instead.");
+    }
+    setInventoryAllocs(match.allocations);
+    setInventoryApproved(false);
+
     const payload = {
       machines: chosenMachines.map((m) => ({
         id: m.id,
@@ -234,12 +259,12 @@ export function DecklePlanningWorkspace({
         min_gsm: m.minGsm,
         max_gsm: m.maxGsm,
       })),
-      items: selectedItems.map((it) => ({
+      items: match.remainingItems.map((it) => ({
         order_item_id: it.id,
         order_number: it.orderNumber,
         width_inch: it.widthInch,
         gsm: it.gsm,
-        quantity_kg: it.quantityKg,
+        quantity_kg: it.solverQuantityKg,
         tolerance_percent: it.tolerancePercent,
         priority: it.priority,
         delivery_date: it.deliveryDate ? new Date(it.deliveryDate).toISOString().split("T")[0] : null,
@@ -257,12 +282,31 @@ export function DecklePlanningWorkspace({
     setLastPayload(payload);
 
     try {
-      const result = await runSolverOptimization(payload as any);
-      setSolverResult(result);
-      setCurrentStep(3);
-      toast.success(
-        `Optimization solved in ${(result.summary.solve_time_ms / 1000).toFixed(2)}s with ${result.summary.total_trim_percent}% average trim waste!`
-      );
+      if (payload.items.length === 0) {
+        // Inventory covers everything selected — nothing for the solver to cut.
+        setSolverResult({
+          runs: [],
+          unassigned_items: [],
+          summary: {
+            total_trim_percent: 0,
+            total_kg: 0,
+            machines_used: 0,
+            runs_created: 0,
+            solve_time_ms: 0,
+          },
+          warnings: [],
+        });
+        setCurrentStep(3);
+        toast.success("Inventory covers all selected orders — no new production needed.");
+      } else {
+        const result = await runSolverOptimization(payload as any);
+        setSolverResult(result);
+        setCurrentStep(3);
+        toast.success(
+          `Optimization solved in ${(result.summary.solve_time_ms / 1000).toFixed(2)}s with ${result.summary.total_trim_percent}% average trim waste!`
+        );
+      }
+      if (match.allocations.length > 0) setInventoryDialogOpen(true);
     } catch (err: any) {
       toast.error(err.message || "Failed to run deckle optimization solver");
     } finally {
@@ -364,7 +408,13 @@ export function DecklePlanningWorkspace({
 
   // Commit Production Runs
   const handleCommitRuns = async () => {
-    if (!solverResult || solverResult.runs.length === 0) return;
+    if (!solverResult) return;
+    if (solverResult.runs.length === 0 && inventoryAllocs.length === 0) return;
+    if (inventoryAllocs.length > 0 && !inventoryApproved) {
+      setInventoryDialogOpen(true);
+      toast.info("Please review and approve the inventory reels first.");
+      return;
+    }
 
     setIsCommitting(true);
     try {
@@ -373,6 +423,10 @@ export function DecklePlanningWorkspace({
           request: lastPayload,
           response: solverResult,
         },
+        stockAllocations: inventoryAllocs.map((a) => ({
+          stockItemId: a.stockItemId,
+          orderItemId: a.orderItemId,
+        })),
         runs: solverResult.runs.map((r) => ({
           machineId: r.machine_id,
           gsm: r.gsm,
@@ -396,14 +450,20 @@ export function DecklePlanningWorkspace({
         })),
       };
 
-      const created = await commitProductionRuns(commitPayload);
-      toast.success(
-        `Successfully committed ${created.length} production run(s) with ${created.reduce(
-          (acc, r) => acc + r.patterns.length,
-          0
-        )} cutting patterns!`
-      );
-      router.push("/production");
+      const res = await commitProductionRuns(commitPayload);
+      if (!res.success) {
+        toast.error(res.error);
+        return;
+      }
+      const parts: string[] = [];
+      if (res.runCount > 0) {
+        parts.push(`${res.runCount} production run(s) with ${res.patternCount} cutting patterns`);
+      }
+      if (res.allocatedReels > 0) {
+        parts.push(`${res.allocatedReels} inventory reel(s) allocated to orders`);
+      }
+      toast.success(`Committed: ${parts.join(" and ")}.`);
+      router.push(res.runCount > 0 ? "/production" : "/orders");
     } catch (err: any) {
       toast.error(err.message || "Failed to commit production runs");
     } finally {
@@ -915,7 +975,7 @@ export function DecklePlanningWorkspace({
             <Button
               size="lg"
               disabled={isSolving || selectedMachineIds.length === 0}
-              onClick={handleRunOptimization}
+              onClick={() => handleRunOptimization()}
               className="h-11 px-8 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-2 shadow-sm transition-all"
             >
               {isSolving ? (
@@ -938,6 +998,41 @@ export function DecklePlanningWorkspace({
       {/* ========================================================================= */}
       {currentStep === 3 && solverResult && (
         <div className="space-y-5">
+          {/* Inventory used instead of production */}
+          {inventoryAllocs.length > 0 && (
+            <div
+              className={`rounded-2xl p-4 border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                inventoryApproved
+                  ? "bg-emerald-50 border-emerald-200"
+                  : "bg-amber-50 border-amber-300"
+              }`}
+            >
+              <div className="text-xs">
+                <div
+                  className={`font-bold ${inventoryApproved ? "text-emerald-900" : "text-amber-900"}`}
+                >
+                  {inventoryApproved ? "Inventory allocation approved" : "Inventory reels need your approval"}
+                </div>
+                <div className="text-slate-600 mt-0.5">
+                  {inventoryAllocs.length} free reel{inventoryAllocs.length === 1 ? "" : "s"} (
+                  {formatWeightKg(inventoryAllocs.reduce((s, a) => s + a.quantityKg, 0))}) will be
+                  allocated to{" "}
+                  {new Set(inventoryAllocs.map((a) => a.orderNumber)).size} order(s) instead of being
+                  produced.
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setInventoryDialogOpen(true)}
+                className="rounded-xl text-xs"
+              >
+                Review reels
+              </Button>
+            </div>
+          )}
+
           {/* Compact KPI Strip — single row */}
           <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)]">
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
@@ -1206,7 +1301,10 @@ export function DecklePlanningWorkspace({
 
             <Button
               size="lg"
-              disabled={isCommitting || solverResult.runs.length === 0}
+              disabled={
+                isCommitting ||
+                (solverResult.runs.length === 0 && inventoryAllocs.length === 0)
+              }
               onClick={handleCommitRuns}
               className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-8 h-10 rounded-xl gap-2 shadow-lg transition-all"
             >
@@ -1216,13 +1314,33 @@ export function DecklePlanningWorkspace({
                 </>
               ) : (
                 <>
-                  <Save className="h-4 w-4 stroke-[2.5]" /> Commit Production Runs
+                  <Save className="h-4 w-4 stroke-[2.5]" />{" "}
+                  {solverResult.runs.length === 0
+                    ? "Confirm Inventory Allocation"
+                    : "Commit Production Runs"}
                 </>
               )}
             </Button>
           </div>
         </div>
       )}
+
+      {/* Inventory reels used instead of production: approve or re-run without */}
+      <InventoryUsageDialog
+        open={inventoryDialogOpen}
+        onOpenChange={setInventoryDialogOpen}
+        allocations={inventoryAllocs}
+        isBusy={isSolving}
+        onApprove={() => {
+          setInventoryApproved(true);
+          setInventoryDialogOpen(false);
+          toast.success("Inventory allocation approved.");
+        }}
+        onRerun={(excludedIds) => {
+          setInventoryDialogOpen(false);
+          handleRunOptimization(excludedIds);
+        }}
+      />
 
       {/* Manual Pattern Override Modal */}
       {activeOverrideTarget && solverResult && (
