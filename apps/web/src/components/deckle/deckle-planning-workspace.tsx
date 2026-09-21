@@ -80,6 +80,7 @@ interface MachineOption {
   minDeckleInch: number;
   minTrimInch: number;
   maxTrimInch: number;
+  trimMode?: "BOTH_SIDES" | "ONE_SIDE";
   minGsm: number;
   maxGsm: number;
 }
@@ -724,7 +725,11 @@ export function DecklePlanningWorkspace({
                           Deckle: <strong>{formatWidthInch(m.maxDeckleInch)}</strong> (Min: {m.minDeckleInch}&quot;)
                         </div>
                         <div className="font-mono text-slate-500 text-[11px]">
-                          Trim: {m.minTrimInch}&quot; – {m.maxTrimInch}&quot; • {m.minGsm}–{m.maxGsm} GSM
+                          Trim: {m.minTrimInch}&quot; – {m.maxTrimInch}&quot;
+                          {m.trimMode === "ONE_SIDE"
+                            ? " (one side)"
+                            : ` (${(m.minTrimInch / 2).toFixed(2).replace(/\.?0+$/, "")}" each side)`}{" "}
+                          • {m.minGsm}–{m.maxGsm} GSM
                         </div>
                         {!isGsmEligible && (
                           <span className="text-[10px] text-rose-600 font-semibold block pt-1">
@@ -1153,6 +1158,7 @@ export function DecklePlanningWorkspace({
                               cuts={cutsDisplay}
                               isManuallyEdited={pat.is_manually_edited}
                               orderColorMap={orderColorMap}
+                              trimMode={machine.trimMode}
                             />
 
                             {/* Edit Override Button */}

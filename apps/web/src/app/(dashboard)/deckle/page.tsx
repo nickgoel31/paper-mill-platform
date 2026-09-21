@@ -26,6 +26,7 @@ export default async function DecklePlanningPage() {
       minDeckleInch: m.minDeckleInch,
       minTrimInch: m.minTrimInch,
       maxTrimInch: m.maxTrimInch,
+      trimMode: m.trimMode,
       minGsm: m.minGsm,
       maxGsm: m.maxGsm,
     }));

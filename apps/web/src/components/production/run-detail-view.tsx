@@ -338,6 +338,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
                   cuts={cutsDisplay}
                   isManuallyEdited={pat.isManuallyEdited}
                   orderColorMap={orderColorMap}
+                  trimMode={(run.machine as any).trimMode}
                 />
               </div>
             );

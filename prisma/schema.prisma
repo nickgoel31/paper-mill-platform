@@ -65,6 +65,11 @@ enum StockStatus {
   DISPATCHED
 }
 
+enum TrimMode {
+  BOTH_SIDES
+  ONE_SIDE
+}
+
 enum PostProductionMode {
   AUTO_DISPATCH
   INVENTORY
@@ -201,6 +206,7 @@ model Machine {
   minDeckleInch Decimal // minimum usable width for a run
   minTrimInch   Decimal // mandatory edge trim, e.g. 0.50
   maxTrimInch   Decimal // reject patterns above this, e.g. 6.00
+  trimMode      TrimMode  @default(BOTH_SIDES) // trim split across both edges, or one edge only
   minGsm        Int
   maxGsm        Int
   speedMpm      Int? // metres per minute, for run time estimate

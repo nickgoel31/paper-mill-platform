@@ -23,6 +23,12 @@ export interface PatternBarProps {
   cuts: PatternCutDisplay[];
   isManuallyEdited?: boolean;
   orderColorMap?: Record<string, string>;
+  /**
+   * Where the machine's edge trim falls. BOTH_SIDES (default) splits the trim
+   * evenly across the two edges (1" trim = 0.5" each side); ONE_SIDE puts it all
+   * on the right edge.
+   */
+  trimMode?: "BOTH_SIDES" | "ONE_SIDE";
 }
 
 // Distinct width-based colors so different reel sizes are visually distinguishable
@@ -49,6 +55,7 @@ export function PatternBar({
   sequence,
   cuts,
   isManuallyEdited = false,
+  trimMode = "BOTH_SIDES",
 }: PatternBarProps) {
   const trimBenchmark = formatTrimPercent(trimPercent);
 
@@ -85,8 +92,33 @@ export function PatternBar({
     }
   });
 
-  const trimPercentWidth = Math.max(0, (trimWidthInch / deckleInch) * 100);
+  const bothSides = trimMode !== "ONE_SIDE";
+  // Total trim is what the solver computed; on a both-sided machine it is shared
+  // equally between the two edges.
+  const sideTrimInch = bothSides ? trimWidthInch / 2 : trimWidthInch;
+  const sideTrimPercentWidth = Math.max(0, (sideTrimInch / deckleInch) * 100);
   const outputMT = (estimatedKg / 1000).toFixed(3);
+
+  const renderTrimSegment = (side: "left" | "right") => (
+    <div
+      style={{ width: `${sideTrimPercentWidth}%` }}
+      className={`h-full flex items-center justify-center bg-slate-200 text-slate-500 relative overflow-hidden border-dashed border-slate-300 select-none ${
+        side === "left" ? "border-r" : "border-l"
+      }`}
+      title={`${bothSides ? (side === "left" ? "Left" : "Right") + " trim" : "Trim"}: ${formatWidthInch(sideTrimInch)}`}
+    >
+      <div
+        className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(45deg, #000, #000 2px, transparent 2px, transparent 5px)",
+        }}
+      />
+      <span className="font-mono text-[10px] font-bold z-10 truncate px-0.5">
+        {formatWidthInch(sideTrimInch)}
+      </span>
+    </div>
+  );
 
   return (
     <div className="space-y-3">
@@ -119,6 +151,9 @@ export function PatternBar({
 
       {/* Proportional Pattern Visualizer */}
       <div className="relative h-12 w-full rounded-xl overflow-hidden flex bg-slate-100 border border-slate-200/80 shadow-inner">
+        {/* Left edge trim (both-sided machines only) */}
+        {bothSides && sideTrimPercentWidth > 0.05 && renderTrimSegment("left")}
+
         {individualCuts.map((cut) => {
           const isStock = cut.isStockPreset || cut.orderNumber === "STOCK" || cut.orderNumber === "STOCK PRESET";
           return (
@@ -150,25 +185,8 @@ export function PatternBar({
           );
         })}
 
-        {/* Trim Waste Segment */}
-        {trimPercentWidth > 0.1 && (
-          <div
-            style={{ width: `${trimPercentWidth}%` }}
-            className="h-full flex items-center justify-center bg-slate-200 text-slate-500 relative overflow-hidden border-l border-dashed border-slate-300 select-none"
-            title={`Trim: ${formatWidthInch(trimWidthInch)}`}
-          >
-            <div
-              className="absolute inset-0 opacity-10 pointer-events-none"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(45deg, #000, #000 2px, transparent 2px, transparent 5px)",
-              }}
-            />
-            <span className="font-mono text-[10px] font-bold z-10 truncate px-0.5">
-              {formatWidthInch(trimWidthInch)}
-            </span>
-          </div>
-        )}
+        {/* Right edge trim (the only trim on one-sided machines) */}
+        {sideTrimPercentWidth > 0.05 && renderTrimSegment("right")}
       </div>
 
       {/* Detailed Slitting Blade & Order Attribution Breakdown */}
@@ -215,6 +233,17 @@ export function PatternBar({
 
         <span className="ml-auto text-slate-400 font-mono text-[11px] font-medium">
           Deckle: <strong>{formatWidthInch(usedWidthInch)}</strong> / {formatWidthInch(deckleInch)}
+          {trimWidthInch > 0 && (
+            <>
+              {" "}
+              · Trim:{" "}
+              <strong>
+                {bothSides
+                  ? `${formatWidthInch(sideTrimInch)} × 2`
+                  : formatWidthInch(trimWidthInch)}
+              </strong>
+            </>
+          )}
         </span>
       </div>
     </div>

@@ -55,6 +55,7 @@ interface MachineRow {
   minDeckleInch: any;
   minTrimInch: any;
   maxTrimInch: any;
+  trimMode?: "BOTH_SIDES" | "ONE_SIDE";
   minGsm: number;
   maxGsm: number;
   speedMpm: number | null;
@@ -79,12 +80,15 @@ function DecklePreview({
   minDeckle,
   minTrim,
   maxTrim,
+  trimMode = "BOTH_SIDES",
 }: {
   maxDeckle: number;
   minDeckle: number;
   minTrim: number;
   maxTrim: number;
+  trimMode?: "BOTH_SIDES" | "ONE_SIDE";
 }) {
+  const bothSides = trimMode !== "ONE_SIDE";
   const safeMax = typeof maxDeckle === "number" && !isNaN(maxDeckle) ? Math.max(1, maxDeckle) : 100;
   const safeMin = typeof minDeckle === "number" && !isNaN(minDeckle) ? Math.min(safeMax, Math.max(0, minDeckle)) : 40;
   const safeMinTrim = typeof minTrim === "number" && !isNaN(minTrim) ? Math.max(0, minTrim) : 0;
@@ -109,8 +113,8 @@ function DecklePreview({
       {/* Horizontal Deckle Graphic Bar */}
       <div className="space-y-1.5">
         <div className="h-8 w-full bg-slate-800 rounded flex overflow-hidden border border-slate-700 relative text-[10px] font-mono select-none">
-          {/* Left mandatory edge trim */}
-          {safeMinTrim > 0 ? (
+          {/* Left mandatory edge trim (both-sided machines only) */}
+          {bothSides && safeMinTrim > 0 ? (
             <div
               style={{ width: `${Math.max(3, minTrimPercent / 2)}%` }}
               className="bg-red-500/80 border-r border-red-400 flex items-center justify-center text-white shrink-0"
@@ -139,12 +143,12 @@ function DecklePreview({
             </div>
           ) : null}
 
-          {/* Right mandatory edge trim */}
+          {/* Right mandatory edge trim (all of it on one-sided machines) */}
           {safeMinTrim > 0 ? (
             <div
-              style={{ width: `${Math.max(3, minTrimPercent / 2)}%` }}
+              style={{ width: `${Math.max(3, bothSides ? minTrimPercent / 2 : minTrimPercent)}%` }}
               className="bg-red-500/80 flex items-center justify-center text-white shrink-0"
-              title={`Mandatory Right Trim: ${(safeMinTrim / 2).toFixed(2)}"`}
+              title={`Mandatory ${bothSides ? "Right " : ""}Trim: ${(bothSides ? safeMinTrim / 2 : safeMinTrim).toFixed(2)}"`}
             >
               ✂
             </div>
@@ -156,6 +160,7 @@ function DecklePreview({
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
             Min Trim: {safeMinTrim.toFixed(2)}&quot;
+            {bothSides ? ` (${(safeMinTrim / 2).toFixed(2)}" each side)` : " (one side)"}
           </span>
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-amber-500 inline-block" />
@@ -197,6 +202,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
       minDeckleInch: 60.0,
       minTrimInch: 0.5,
       maxTrimInch: 6.0,
+      trimMode: "BOTH_SIDES",
       minGsm: 80,
       maxGsm: 300,
       speedMpm: 450,
@@ -209,6 +215,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
   const watchedMinDeckle = useWatch({ control: form.control, name: "minDeckleInch" });
   const watchedMinTrim = useWatch({ control: form.control, name: "minTrimInch" });
   const watchedMaxTrim = useWatch({ control: form.control, name: "maxTrimInch" });
+  const watchedTrimMode = useWatch({ control: form.control, name: "trimMode" });
 
   const fetchData = React.useCallback(async (newPage: number, searchTerm: string) => {
     setIsLoading(true);
@@ -244,6 +251,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
       minDeckleInch: 50.0,
       minTrimInch: 0.5,
       maxTrimInch: 5.0,
+      trimMode: "BOTH_SIDES",
       minGsm: 80,
       maxGsm: 280,
       speedMpm: 350,
@@ -262,6 +270,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
       minDeckleInch: Number(machine.minDeckleInch),
       minTrimInch: Number(machine.minTrimInch),
       maxTrimInch: Number(machine.maxTrimInch),
+      trimMode: machine.trimMode ?? "BOTH_SIDES",
       minGsm: machine.minGsm,
       maxGsm: machine.maxGsm,
       speedMpm: machine.speedMpm || null,
@@ -364,6 +373,9 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
       cell: ({ row }) => (
         <div className="text-right font-mono text-muted-foreground">
           {Number(row.getValue("minTrimInch")).toFixed(2)}&quot;
+          <div className="text-[10px] font-sans text-slate-400">
+            {row.original.trimMode === "ONE_SIDE" ? "one side" : "both sides"}
+          </div>
         </div>
       ),
     },
@@ -495,6 +507,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
               minDeckle={watchedMinDeckle}
               minTrim={watchedMinTrim}
               maxTrim={watchedMaxTrim}
+              trimMode={watchedTrimMode}
             />
 
             {/* Basic Info */}
@@ -607,8 +620,56 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
                         />
                       </FormControl>
                       <FormDescription className="text-[10px]">
-                        Mandatory edge trim margin.
+                        {watchedTrimMode === "ONE_SIDE"
+                          ? "Total mandatory edge trim, all on one side."
+                          : `Total mandatory edge trim, split evenly: ${(
+                              (Number(watchedMinTrim) || 0) / 2
+                            ).toFixed(2)}" on each side.`}
                       </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="trimMode"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel className="text-xs font-semibold">Trim Sides *</FormLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(
+                          [
+                            {
+                              value: "BOTH_SIDES",
+                              label: "Both sides",
+                              hint: "Trim is split across both edges",
+                            },
+                            {
+                              value: "ONE_SIDE",
+                              label: "One side",
+                              hint: "All trim falls on a single edge",
+                            },
+                          ] as const
+                        ).map((opt) => {
+                          const selected = field.value === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => field.onChange(opt.value)}
+                              className={`text-left rounded-lg border px-3 py-2 transition-colors ${
+                                selected
+                                  ? "border-primary bg-primary/5"
+                                  : "border-slate-200 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="text-xs font-bold text-slate-900">{opt.label}</div>
+                              <div className="text-[10px] text-slate-500">{opt.hint}</div>
+                            </button>
+                          );
+                        })}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}

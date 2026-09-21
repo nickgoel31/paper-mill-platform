@@ -37,6 +37,7 @@ export const machineSchema = z
       .positive("Speed must be positive")
       .optional()
       .nullable(),
+    trimMode: z.enum(["BOTH_SIDES", "ONE_SIDE"]).default("BOTH_SIDES"),
     isActive: z.boolean().default(true),
   })
   .refine((data) => data.maxDeckleInch > data.minDeckleInch, {

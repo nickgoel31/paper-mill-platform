@@ -57,6 +57,7 @@ export type MachineOption = {
   minDeckleInch: number;
   minTrimInch: number;
   maxTrimInch: number;
+  trimMode: "BOTH_SIDES" | "ONE_SIDE";
   minGsm: number;
   maxGsm: number;
 };
@@ -73,6 +74,7 @@ export function getMachineOptions(tenantId: string): Promise<MachineOption[]> {
         minDeckleInch: true,
         minTrimInch: true,
         maxTrimInch: true,
+        trimMode: true,
         minGsm: true,
         maxGsm: true,
       },
