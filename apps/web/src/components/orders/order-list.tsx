@@ -122,6 +122,10 @@ export function OrderList({
   const [clientFilter, setClientFilter] = React.useState<string>("ALL");
   const [gsmFilter, setGsmFilter] = React.useState<string>("ALL");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
+  // Date filter: which date the range applies to, and the (inclusive) range itself.
+  const [dateField, setDateField] = React.useState<"ORDER" | "DELIVERY">("ORDER");
+  const [dateFrom, setDateFrom] = React.useState<string>("");
+  const [dateTo, setDateTo] = React.useState<string>("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [isOfflineEmpty, setIsOfflineEmpty] = React.useState(false);
   const [showingCached, setShowingCached] = React.useState(false);
@@ -139,6 +143,9 @@ export function OrderList({
         clientId: clientFilter === "ALL" ? undefined : clientFilter,
         gsm: gsmFilter === "ALL" ? undefined : Number(gsmFilter),
         search: searchQuery || undefined,
+        ...(dateField === "ORDER"
+          ? { orderFrom: dateFrom || undefined, orderTo: dateTo || undefined }
+          : { deliveryFrom: dateFrom || undefined, deliveryTo: dateTo || undefined }),
         page,
         pageSize,
       });
@@ -162,7 +169,18 @@ export function OrderList({
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, priorityFilter, clientFilter, gsmFilter, searchQuery, page, pageSize]);
+  }, [
+    statusFilter,
+    priorityFilter,
+    clientFilter,
+    gsmFilter,
+    searchQuery,
+    dateField,
+    dateFrom,
+    dateTo,
+    page,
+    pageSize,
+  ]);
 
   React.useEffect(() => {
     fetchFilteredOrders();
@@ -192,6 +210,22 @@ export function OrderList({
     setClientFilter("ALL");
     setGsmFilter("ALL");
     setSearchQuery("");
+    setDateFrom("");
+    setDateTo("");
+    setPage(1);
+  };
+
+  // Quick ranges, filled relative to today (local date, formatted YYYY-MM-DD).
+  const toISODate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const applyDatePreset = (preset: "TODAY" | "7D" | "30D" | "MONTH") => {
+    const today = new Date();
+    const start = new Date(today);
+    if (preset === "7D") start.setDate(today.getDate() - 6);
+    if (preset === "30D") start.setDate(today.getDate() - 29);
+    if (preset === "MONTH") start.setDate(1);
+    setDateFrom(toISODate(start));
+    setDateTo(toISODate(today));
     setPage(1);
   };
 
@@ -200,6 +234,8 @@ export function OrderList({
     priorityFilter !== "ALL" ||
     clientFilter !== "ALL" ||
     gsmFilter !== "ALL" ||
+    dateFrom !== "" ||
+    dateTo !== "" ||
     searchQuery.trim() !== "";
 
   // Helper for Status Badge
@@ -712,6 +748,68 @@ export function OrderList({
               <SelectItem value="220">220 GSM</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Date Range Filter */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-2 py-1">
+            <Calendar className="h-4 w-4 text-sky-500 shrink-0" />
+            <Select
+              value={dateField}
+              onValueChange={(v) => {
+                setDateField(v as "ORDER" | "DELIVERY");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger className="h-7 text-xs w-[118px] bg-white border-slate-200 rounded-lg">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl">
+                <SelectItem value="ORDER">Order date</SelectItem>
+                <SelectItem value="DELIVERY">Delivery date</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => {
+                setDateFrom(e.target.value);
+                setPage(1);
+              }}
+              aria-label="From date"
+              className="h-7 text-xs w-[130px] bg-white border-slate-200 rounded-lg"
+            />
+            <span className="text-xs text-slate-400">to</span>
+            <Input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => {
+                setDateTo(e.target.value);
+                setPage(1);
+              }}
+              aria-label="To date"
+              className="h-7 text-xs w-[130px] bg-white border-slate-200 rounded-lg"
+            />
+            <div className="flex items-center gap-1">
+              {(
+                [
+                  ["TODAY", "Today"],
+                  ["7D", "7d"],
+                  ["30D", "30d"],
+                  ["MONTH", "This month"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => applyDatePreset(key)}
+                  className="h-7 px-2 rounded-lg text-[11px] font-semibold text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:text-slate-900"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Search Box */}
           <Input

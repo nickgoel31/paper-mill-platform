@@ -151,6 +151,21 @@ export interface OrderQueryParams extends QueryParams {
   gsm?: number;
   deliveryFrom?: string;
   deliveryTo?: string;
+  orderFrom?: string;
+  orderTo?: string;
+}
+
+/**
+ * `YYYY-MM-DD` range -> Prisma date filter. "From" is the start of that day and
+ * "to" is the END of that day, so picking the same day twice returns that day.
+ */
+function dateRange(from?: string, to?: string) {
+  const gte = from ? new Date(`${from.slice(0, 10)}T00:00:00.000Z`) : undefined;
+  const lte = to ? new Date(`${to.slice(0, 10)}T23:59:59.999Z`) : undefined;
+  return {
+    ...(gte && !isNaN(gte.getTime()) ? { gte } : {}),
+    ...(lte && !isNaN(lte.getTime()) ? { lte } : {}),
+  };
 }
 
 export async function getOrders(params: OrderQueryParams) {
@@ -182,12 +197,10 @@ export async function getOrders(params: OrderQueryParams) {
         }
       : {}),
     ...(params.deliveryFrom || params.deliveryTo
-      ? {
-          deliveryDate: {
-            ...(params.deliveryFrom ? { gte: new Date(params.deliveryFrom) } : {}),
-            ...(params.deliveryTo ? { lte: new Date(params.deliveryTo) } : {}),
-          },
-        }
+      ? { deliveryDate: dateRange(params.deliveryFrom, params.deliveryTo) }
+      : {}),
+    ...(params.orderFrom || params.orderTo
+      ? { orderDate: dateRange(params.orderFrom, params.orderTo) }
       : {}),
   };
 
