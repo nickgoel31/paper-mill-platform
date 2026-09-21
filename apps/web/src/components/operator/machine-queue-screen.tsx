@@ -237,7 +237,7 @@ export function MachineQueueScreen({
                     type="button"
                     disabled={isStarting || !!runningRun}
                     onClick={() => handleStartRun(run.id)}
-                    className="w-full h-16 sm:h-18 rounded-2xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 text-white font-black text-lg sm:text-xl gap-3 shadow-lg transition-transform active:scale-[0.98]"
+                    className="w-full h-16 sm:h-18 rounded-2xl bg-[#161622] hover:bg-[#202030] active:bg-black disabled:opacity-40 text-white font-black text-lg sm:text-xl gap-3 shadow-lg transition-transform active:scale-[0.98]"
                   >
                     {isStarting ? (
                       <>

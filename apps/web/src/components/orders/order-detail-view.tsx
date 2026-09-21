@@ -172,7 +172,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
   return (
     <div className="space-y-6 font-sans pb-10">
       {/* 1. TOP HERO BANNER */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="bg-white rounded-[26px] p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Button asChild variant="ghost" size="sm" className="h-7 text-xs px-2 text-slate-500 hover:text-slate-900 rounded-lg">
@@ -214,7 +214,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
           )}
 
           {isPlannerOrAdmin && order.status === OrderStatus.CONFIRMED && (
-            <Button asChild className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-400/25 gap-1.5">
+            <Button asChild className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm gap-1.5 transition-all">
               <Link href="/deckle">
                 <Scissors className="h-4 w-4 stroke-[2.5]" /> Plan in Deckle Optimizer
               </Link>
@@ -279,48 +279,46 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
       </div>
 
       {/* 2. 4 PERFORMANCE METRIC CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. ORDERED WEIGHT */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* 1. ORDERED WEIGHT (Hero Dark Card) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              ORDERED WEIGHT
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
-              <ShoppingCart className="h-4 w-4" />
+            <span className="text-xs font-semibold text-slate-400">Ordered Weight</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Demand</span>
+              <ShoppingCart className="h-3 w-3" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(totalKg / 1000).toFixed(2)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {(totalKg / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               {formatWeightKg(totalKg)} across {order.items.length} sizes
             </p>
           </div>
         </div>
 
         {/* 2. PRODUCED PROGRESS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              PRODUCTION PROGRESS
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Production Progress</span>
+            <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <CheckCircle2 className="h-4 w-4" />
             </div>
           </div>
-          <div>
+          <div className="space-y-1.5 mt-2">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-black font-mono text-emerald-700">
+              <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-700 tracking-tight">
                 {percentProduced}%
               </span>
-              <span className="text-xs font-mono text-slate-400">
+              <span className="text-xs font-mono text-slate-400 font-medium">
                 ({(producedKg / 1000).toFixed(2)} MT)
               </span>
             </div>
-            {/* Progress Bar */}
-            <div className="w-full bg-slate-100 rounded-full h-2 mt-2 overflow-hidden">
+            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
               <div
                 className="bg-emerald-500 h-2 rounded-full transition-all"
                 style={{ width: `${percentProduced}%` }}
@@ -330,40 +328,37 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
         </div>
 
         {/* 3. DISPATCHED QUANTITY */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              DISPATCHED
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Dispatched</span>
+            <div className="h-8 w-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
               <Send className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(dispatchedKg / 1000).toFixed(2)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {(dispatchedKg / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               {percentDispatched}% of total shipment
             </p>
           </div>
         </div>
 
         {/* 4. GROSS TAXABLE VALUE */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              TAXABLE VALUE
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Taxable Value</span>
+            <div className="h-8 w-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
               <FileText className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
               {formatCurrencyINR(totalValue)}
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               Billing rate + GST applicable
             </p>
           </div>

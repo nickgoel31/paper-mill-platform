@@ -92,7 +92,7 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
   return (
     <div className="space-y-6 font-sans pb-10">
       {/* 1. TOP HERO BANNER */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="bg-white rounded-[26px] p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 text-rose-700 text-[11px] font-bold uppercase tracking-wide">
             QUALITY & EFFICIENCY • WASTAGE MONITORING
@@ -107,7 +107,7 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button asChild className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all">
+          <Button asChild className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-[#d4f842] font-bold text-xs gap-1.5 shadow-md transition-all">
             <Link href="/deckle">
               <Scissors className="h-4 w-4 stroke-[2.5]" /> Run Deckle Optimizer
             </Link>
@@ -116,83 +116,87 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
       </div>
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. THEORETICAL TRIM */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* 1. THEORETICAL TRIM (Hero Dark Card) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              THEORETICAL TRIM
+            <span className="text-xs font-semibold text-slate-400">
+              Theoretical Trim
             </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
-              <Scissors className="h-4 w-4" />
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Loss</span>
+              <Scissors className="h-3 w-3" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(analytics.theoreticalTrimKg / 1000).toFixed(2)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {(analytics.theoreticalTrimKg / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Planned edge trim loss
+            <p className="text-[11px] text-slate-400 font-medium">
+              Planned edge trim loss across batches
             </p>
           </div>
         </div>
 
         {/* 2. OPERATOR LOGGED SCRAP */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              LOGGED SCRAP
+            <span className="text-xs font-semibold text-slate-500">
+              Logged Scrap
             </span>
-            <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
               <AlertTriangle className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-amber-800">
-              {(analytics.operatorWastageKg / 1000).toFixed(2)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {(analytics.operatorWastageKg / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Floor weighbridge scrap
+            <p className="text-[11px] text-slate-400 font-medium">
+              Floor weighbridge scrap logs
             </p>
           </div>
         </div>
 
-        {/* 3. VARIANCE */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        {/* 3. SCRAP VARIANCE */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              SCRAP VARIANCE
+            <span className="text-xs font-semibold text-slate-500">
+              Scrap Variance
             </span>
-            <div className="h-8 w-8 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
+            <div className={`h-8 w-8 rounded-full flex items-center justify-center ${isHighVariance ? "bg-rose-50 text-rose-500" : "bg-emerald-50 text-emerald-600"}`}>
               <TrendingDown className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
               {analytics.variancePct > 0 ? `+${analytics.variancePct.toFixed(1)}%` : `${analytics.variancePct.toFixed(1)}%`}
             </div>
-            <p className={`text-[11px] font-bold mt-1 ${isHighVariance ? "text-rose-600" : "text-emerald-700"}`}>
+            <p className={`text-[11px] font-bold ${isHighVariance ? "text-rose-600" : "text-emerald-700"}`}>
               {isHighVariance ? "High floor deviation" : "✓ Within acceptable limits"}
             </p>
           </div>
         </div>
 
-        {/* 4. NET LOSS KG */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        {/* 4. NET VARIANCE */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              NET VARIANCE
+            <span className="text-xs font-semibold text-slate-500">
+              Net Variance
             </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
+            <div className="h-8 w-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
               <Layers className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
               {formatWeightKg(Math.abs(analytics.varianceKg))}
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Reconciled difference
+            <p className="text-[11px] text-slate-400 font-medium">
+              Reconciled theoretical difference
             </p>
           </div>
         </div>
@@ -201,7 +205,7 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
       {/* 3. CHARTS ROW */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Daily Trim % Trend */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-4">
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -239,7 +243,7 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
         </div>
 
         {/* Machine Breakdown */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-4">
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -272,7 +276,7 @@ export function WastageAnalyticsView({ analytics }: WastageAnalyticsViewProps) {
       </div>
 
       {/* 4. HIGHEST TRIM RUNS TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
+      <div className="bg-white rounded-[26px] border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">

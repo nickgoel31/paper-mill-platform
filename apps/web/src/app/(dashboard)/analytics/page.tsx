@@ -16,10 +16,14 @@ export default async function AnalyticsPage() {
   }
 
   const analyticsData = await getAnalyticsData({ timeRange: "last_6_months" });
+  const userName = session.user.name || "Factory Executive";
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <AnalyticsDashboardClient initialData={analyticsData} />
+    <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
+      <AnalyticsDashboardClient
+        initialData={JSON.parse(JSON.stringify(analyticsData))}
+        userName={userName}
+      />
     </div>
   );
 }

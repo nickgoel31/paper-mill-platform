@@ -319,7 +319,7 @@ export function StockPresetsManager({ initialData, isAdmin }: StockPresetsManage
   return (
     <div className="space-y-6 font-sans">
       {/* 1. TOP HERO BANNER */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+      <div className="bg-white rounded-[26px] p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col sm:flex-row sm:items-center justify-between gap-5">
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-[11px] font-bold uppercase tracking-wide">
             MASTER DATA • REPEATED CONFIGURATIONS
@@ -335,76 +335,86 @@ export function StockPresetsManager({ initialData, isAdmin }: StockPresetsManage
 
         <Button
           onClick={handleOpenCreate}
-          className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all"
+          className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
         >
-          <Plus className="h-4 w-4 stroke-[2.5]" /> Create New Preset
+          <Plus className="h-4 w-4 text-[#d4f842]" /> Create New Preset
         </Button>
       </div>
 
       {/* 2. STATS ROW */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            TOTAL CONFIGURED PRESETS
-          </span>
-          <div className="text-2xl font-black font-mono text-slate-900">
-            {total} <span className="text-sm font-semibold text-slate-400 font-sans">SKUs</span>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+        {/* Card 1: Hero Dark Card */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[150px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Total Configured Presets</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Catalog</span>
+              <BookmarkCheck className="h-3 w-3" />
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400">Fast-moving factory configurations</p>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {total} <span className="text-sm font-semibold text-slate-400 font-sans">SKUs</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">Fast-moving factory configurations</p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            AVG REEL SIZE
-          </span>
-          <div className="text-2xl font-black font-mono text-sky-600">
-            26&quot; – 49&quot;
+        {/* Card 2: Avg Reel Size */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[150px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Avg Reel Size</span>
+            <div className="h-8 w-8 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center">
+              <Layers className="h-4 w-4" />
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400">120 & 140 GSM standard Kraft</p>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              26&quot; – 49&quot;
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">120 & 140 GSM standard Kraft</p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            INWARD ACCELERATION
-          </span>
-          <div className="text-2xl font-black font-mono text-emerald-600">
-            1-Click Fill
+        {/* Card 3: Inward Acceleration */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[150px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Inward Acceleration</span>
+            <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Sparkles className="h-4 w-4" />
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400">Auto-fills dimensions on /stock/new</p>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-700 tracking-tight">
+              1-Click Fill
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">Auto-fills dimensions on /stock/new</p>
+          </div>
         </div>
       </div>
 
       {/* 3. DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4">
-          <div className="relative w-full max-w-sm">
-            <Input
-              placeholder="Search presets by name, code, width, bay..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="h-10 rounded-xl bg-slate-50 border-slate-200 text-xs pl-3.5"
-            />
-          </div>
-        </div>
-
-        <DataTable
-          columns={columns}
-          data={data}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalRows={total}
-          onPageChange={setPage}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setPage(1);
-          }}
-          isLoading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        searchPlaceholder="Search presets by name, code, width, bay..."
+        searchTerm={search}
+        onSearchChange={(t) => {
+          setSearch(t);
+          setPage(1);
+        }}
+        page={page}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        totalRows={total}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        isLoading={isLoading}
+      />
 
       {/* 4. CREATE / EDIT PRESET MODAL */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -546,7 +556,7 @@ export function StockPresetsManager({ initialData, isAdmin }: StockPresetsManage
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-9 rounded-xl bg-sky-400 hover:bg-sky-500 text-white text-xs font-bold gap-1.5"
+                className="h-9 rounded-xl bg-[#161622] hover:bg-[#202030] text-white text-xs font-bold gap-1.5 shadow-xs transition-all"
               >
                 {isSubmitting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

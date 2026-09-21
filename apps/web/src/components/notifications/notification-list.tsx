@@ -310,7 +310,7 @@ export function NotificationList({
           <Button
             onClick={handleFlushQueue}
             disabled={isFlushingQueue}
-            className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all"
+            className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
           >
             {isFlushingQueue ? (
               <>

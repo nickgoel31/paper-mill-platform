@@ -118,47 +118,51 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
   return (
     <div className="space-y-6">
       {/* Header & Status Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-lg border shadow-sm">
-        <div className="flex items-center gap-4">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/loads">
-              <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Loads
-            </Link>
-          </Button>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold font-mono text-slate-900">
-                {batch.batchNumber}
-              </h1>
-              <Badge
-                className={`font-mono text-xs ${
-                  batch.status === LoadStatus.PLANNED
-                    ? "bg-blue-100 text-blue-800 border-blue-300"
-                    : batch.status === LoadStatus.DISPATCHED
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                    : batch.status === LoadStatus.CANCELLED
-                    ? "bg-red-100 text-red-800 border-red-300"
-                    : ""
-                }`}
-              >
-                {batch.status}
-              </Badge>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 bg-white p-6 sm:p-7 rounded-[26px] border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)]">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm" className="h-7 text-xs px-2 text-slate-500 hover:text-slate-900 rounded-lg">
+              <Link href="/loads">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Load Batches
+              </Link>
+            </Button>
+            <span className="text-slate-300">•</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-mono font-bold uppercase">
+              BATCH #{batch.batchNumber}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Created by {batch.createdBy?.name || "Planner"} • {new Date(batch.createdAt).toLocaleString("en-IN")}
-            </p>
           </div>
+
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {batch.batchNumber}
+            </h1>
+            <Badge
+              className={`font-mono text-xs ${
+                batch.status === LoadStatus.PLANNED
+                  ? "bg-blue-100 text-blue-800 border-blue-300"
+                  : batch.status === LoadStatus.DISPATCHED
+                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                  : batch.status === LoadStatus.CANCELLED
+                  ? "bg-red-100 text-red-800 border-red-300"
+                  : ""
+              }`}
+            >
+              {batch.status}
+            </Badge>
+          </div>
+          <p className="text-xs text-slate-500 font-medium">
+            Created by {batch.createdBy?.name || "Planner"} • {new Date(batch.createdAt).toLocaleString("en-IN")}
+          </p>
         </div>
 
         {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {batch.status === LoadStatus.DRAFT && canManage && (
             <Button
               size="sm"
               disabled={isTransitioning}
               onClick={handleMarkPlanned}
-              className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+              className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm gap-1.5 transition-all"
             >
               {isTransitioning ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -175,7 +179,7 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
               size="sm"
               disabled={isTransitioning}
               onClick={handleRevertDraft}
-              className="gap-1.5 text-xs text-slate-700"
+              className="h-10 px-4 rounded-xl border-slate-200 text-slate-700 font-bold text-xs shadow-xs gap-1.5"
             >
               Revert to Draft
             </Button>
@@ -186,11 +190,11 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
             batch.status !== LoadStatus.CANCELLED &&
             canManage && (
               <Button
-                variant="destructive"
+                variant="outline"
                 size="sm"
                 disabled={isTransitioning}
                 onClick={() => setCancelModalOpen(true)}
-                className="gap-1.5 text-xs"
+                className="h-10 px-4 rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold shadow-xs gap-1.5"
               >
                 <XCircle className="h-4 w-4" /> Cancel Batch
               </Button>
@@ -201,7 +205,7 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
       {/* Summary Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Vehicle & Payload Card */}
-        <Card>
+        <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
               <Truck className="h-4 w-4 text-primary" /> Vehicle & Payload
@@ -239,10 +243,10 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
         </Card>
 
         {/* Transport & Driver Card */}
-        <Card>
+        <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
-              <Building className="h-4 w-4 text-primary" /> Transporter & Driver
+              <Building className="h-4 w-4 text-sky-500" /> Transporter & Driver
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
@@ -262,7 +266,7 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
         </Card>
 
         {/* Dispatch & WhatsApp Fanout Card */}
-        <Card>
+        <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden">
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
               <MessageSquare className="h-4 w-4 text-emerald-600" /> WhatsApp Fanout (Rule E)
@@ -291,7 +295,7 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
       </div>
 
       {/* Orders Table with WhatsApp Notification Preview */}
-      <Card>
+      <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden">
         <CardHeader className="pb-3 border-b bg-slate-50/50">
           <CardTitle className="text-base font-bold flex items-center gap-2">
             <Truck className="h-5 w-5 text-primary" />

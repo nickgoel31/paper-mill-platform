@@ -438,7 +438,7 @@ export function DecklePlanningWorkspace({
             onClick={() => setCurrentStep(1)}
             className={`h-9 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               currentStep === 1
-                ? "bg-sky-400 text-white shadow-md shadow-sky-400/25"
+                ? "bg-[#161622] text-[#d4f842] shadow-md shadow-[#161622]/20"
                 : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80"
             }`}
           >
@@ -450,7 +450,7 @@ export function DecklePlanningWorkspace({
             onClick={() => setCurrentStep(2)}
             className={`h-9 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               currentStep === 2
-                ? "bg-sky-400 text-white shadow-md shadow-sky-400/25"
+                ? "bg-[#161622] text-[#d4f842] shadow-md shadow-[#161622]/20"
                 : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80"
             }`}
           >
@@ -463,7 +463,7 @@ export function DecklePlanningWorkspace({
             onClick={() => setCurrentStep(3)}
             className={`h-9 px-4 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
               currentStep === 3
-                ? "bg-sky-400 text-white shadow-md shadow-sky-400/25"
+                ? "bg-[#161622] text-[#d4f842] shadow-md shadow-[#161622]/20"
                 : solverResult
                 ? "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80"
                 : "bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed"
@@ -498,7 +498,7 @@ export function DecklePlanningWorkspace({
               <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
                 All confirmed orders have already been scheduled. Create or confirm new sales orders to populate demand.
               </p>
-              <Button asChild size="sm" className="mt-4 rounded-xl bg-sky-400 hover:bg-sky-500 font-bold text-xs">
+              <Button asChild size="sm" className="mt-4 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-xs">
                 <Link href="/orders/new">Create Sales Order</Link>
               </Button>
             </div>
@@ -632,23 +632,23 @@ export function DecklePlanningWorkspace({
           )}
 
           {/* Sticky Bottom Floating Bar */}
-          <div className="sticky bottom-4 z-10 p-4 bg-slate-900 text-white rounded-2xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs">
+          <div className="sticky bottom-4 z-20 p-4 sm:p-5 bg-[#161622] text-white rounded-[24px] border border-white/[0.08] shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs">
             <div className="flex flex-wrap items-center gap-6">
               <div>
-                <span className="text-[10px] text-slate-400 block font-sans font-bold">SELECTED SIZES</span>
-                <strong className="text-base text-white">{selectedItems.length} Reels</strong>
+                <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase">SELECTED SIZES</span>
+                <strong className="text-base text-white font-mono">{selectedItems.length} Reels</strong>
               </div>
-              <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+              <div className="h-6 w-px bg-white/10 hidden sm:block" />
               <div>
-                <span className="text-[10px] text-slate-400 block font-sans font-bold">TOTAL PLANNED WEIGHT</span>
-                <strong className="text-base text-amber-400">
+                <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase">TOTAL PLANNED WEIGHT</span>
+                <strong className="text-base text-[#d4f842] font-mono">
                   {(selectedTotalKg / 1000).toFixed(2)} MT <span className="text-xs text-slate-400 font-sans">({formatWeightKg(selectedTotalKg)})</span>
                 </strong>
               </div>
-              <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+              <div className="h-6 w-px bg-white/10 hidden sm:block" />
               <div>
-                <span className="text-[10px] text-slate-400 block font-sans font-bold">DISTINCT GSM RUNS</span>
-                <strong className="text-base text-emerald-400">
+                <span className="text-[10px] text-slate-400 block font-sans font-bold uppercase">DISTINCT GSM RUNS</span>
+                <strong className="text-base text-emerald-400 font-mono">
                   {selectedDistinctGsms.length} {selectedDistinctGsms.length === 1 ? "Run" : "Runs"}
                 </strong>
               </div>
@@ -657,7 +657,7 @@ export function DecklePlanningWorkspace({
             <Button
               disabled={selectedItems.length === 0}
               onClick={() => setCurrentStep(2)}
-              className="bg-sky-400 hover:bg-sky-500 text-white font-sans text-xs font-bold h-10 px-6 rounded-xl gap-2 shadow-md shadow-sky-400/25 transition-all"
+              className="bg-[#d4f842] hover:bg-[#c3e832] text-[#11111a] font-sans text-xs font-bold h-10 px-6 rounded-xl gap-2 shadow-md shadow-[#d4f842]/20 transition-all active:scale-95"
             >
               Configure Optimization <ArrowRight className="h-4 w-4" />
             </Button>
@@ -911,7 +911,7 @@ export function DecklePlanningWorkspace({
               size="lg"
               disabled={isSolving || selectedMachineIds.length === 0}
               onClick={handleRunOptimization}
-              className="h-11 px-8 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-2 shadow-md shadow-sky-400/25 transition-all"
+              className="h-11 px-8 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-2 shadow-sm transition-all"
             >
               {isSolving ? (
                 <>

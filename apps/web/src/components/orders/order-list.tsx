@@ -49,6 +49,7 @@ import {
   X,
   Sparkles,
   ArrowRight,
+  ArrowUpRight,
   TrendingUp,
   Package,
 } from "lucide-react";
@@ -503,7 +504,7 @@ export function OrderList({
           {isAdminOrSales && (
             <Button
               asChild
-              className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all"
+              className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
             >
               <Link href="/orders/new">
                 <Plus className="h-4 w-4 stroke-[2.5]" /> Book New Order
@@ -535,84 +536,112 @@ export function OrderList({
       )}
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. OPEN ORDERS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              OPEN ORDERS
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
-              <ShoppingCart className="h-4 w-4" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Card 1: HERO DARK CARD (Open Orders Backlog) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-400 uppercase">
+                Active Orders
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1 font-mono">
+                {stats.openOrdersCount} <span className="text-sm font-semibold text-slate-400 font-sans">Orders</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>•••</span>
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.openOrdersCount}
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10 relative z-10">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#d4f842]">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>Live Backlog</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Draft, Confirmed & In Production
-            </p>
+            <span className="text-[11px] text-slate-400">Draft, Confirmed & Floor</span>
           </div>
         </div>
 
-        {/* 2. TOTAL PENDING BACKLOG */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              TOTAL DEMAND
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
-              <Layers className="h-4 w-4" />
+        {/* Card 2: White Pill Card - Total Demand Backlog */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Total Demand
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {(stats.totalPendingKg / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+              </div>
             </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(stats.totalPendingKg / 1000).toFixed(2)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-purple-600">
+              <Layers className="w-3.5 h-3.5" />
+              <span>{stats.totalPendingKg.toLocaleString("en-IN")} kg</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              {stats.totalPendingKg.toLocaleString("en-IN")} kg remaining
-            </p>
+            <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
+              <Package className="w-3.5 h-3.5" />
+            </div>
           </div>
         </div>
 
-        {/* 3. DUE THIS WEEK */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              DUE THIS WEEK
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
-              <Clock className="h-4 w-4" />
+        {/* Card 3: White Pill Card - Due This Week */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Due This Week
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {stats.ordersDueThisWeek} <span className="text-sm font-semibold text-slate-400 font-sans">Orders</span>
+              </div>
             </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.ordersDueThisWeek} <span className="text-sm font-semibold text-slate-400 font-sans">Orders</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Next 7 Days</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Target dispatch in next 7 days
-            </p>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <Calendar className="w-3.5 h-3.5" />
+            </div>
           </div>
         </div>
 
-        {/* 4. OVERDUE ORDERS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              OVERDUE
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
-              <AlertTriangle className="h-4 w-4" />
+        {/* Card 4: White Pill Card - Overdue Orders */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Overdue Dispatch
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-rose-600 mt-1 font-mono">
+                {stats.overdueOrdersCount} <span className="text-sm font-semibold text-slate-400 font-sans">Orders</span>
+              </div>
             </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-rose-600">
-              {stats.overdueOrdersCount} <span className="text-sm font-semibold text-slate-400 font-sans">Orders</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-rose-600">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Critical Action</span>
             </div>
-            <p className="text-[11px] text-rose-600 font-medium mt-1">
-              Passed promised delivery date
-            </p>
+            <div className="w-7 h-7 rounded-xl bg-rose-50 flex items-center justify-center text-rose-600">
+              <Clock className="w-3.5 h-3.5" />
+            </div>
           </div>
         </div>
       </div>
@@ -710,22 +739,20 @@ export function OrderList({
       </div>
 
       {/* 4. ORDERS DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
-        <DataTable
-          columns={columns}
-          data={data}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalRows={total}
-          onPageChange={setPage}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setPage(1);
-          }}
-          isLoading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        page={page}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        totalRows={total}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

@@ -344,7 +344,7 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
             <Button
               type="button"
               onClick={addReelRow}
-              className="h-9 px-4 rounded-xl bg-sky-50 text-sky-700 hover:bg-sky-100 font-bold text-xs gap-1.5 border border-sky-200"
+              className="h-9 px-4 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200 font-bold text-xs gap-1.5 border border-slate-200"
             >
               <Plus className="h-3.5 w-3.5" /> Add Another Reel
             </Button>
@@ -522,7 +522,7 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-10 px-7 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-2 shadow-md shadow-sky-400/25 transition-all w-full sm:w-auto"
+                className="h-10 px-7 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-2 shadow-sm transition-all w-full sm:w-auto"
               >
                 {isSubmitting ? (
                   <>

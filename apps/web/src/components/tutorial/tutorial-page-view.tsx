@@ -47,7 +47,7 @@ export function TutorialPageView() {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button asChild className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all">
+          <Button asChild className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all">
             <Link href="/deckle">
               <Play className="h-4 w-4 fill-current stroke-[2.5]" /> Open Deckle Planner
             </Link>
@@ -77,7 +77,7 @@ export function TutorialPageView() {
                   onClick={() => setSelectedId(mod.id)}
                   className={`w-full text-left p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
                     isSelected
-                      ? "bg-sky-400 text-white border-sky-400 shadow-md shadow-sky-200 font-semibold"
+                      ? "bg-[#161622] text-white border-[#161622] shadow-sm font-semibold"
                       : "bg-white hover:bg-slate-50 border-slate-100 text-slate-700 font-medium shadow-[0_1px_4px_rgba(0,0,0,0.02)]"
                   }`}
                 >
@@ -165,7 +165,7 @@ export function TutorialPageView() {
                   className="p-5 rounded-2xl bg-slate-50/70 border border-slate-100 space-y-2"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="h-6 w-6 rounded-lg bg-sky-400 text-white flex items-center justify-center text-xs font-bold font-mono shrink-0">
+                    <span className="h-6 w-6 rounded-lg bg-[#161622] text-white flex items-center justify-center text-xs font-bold font-mono shrink-0">
                       {step.step || idx + 1}
                     </span>
                     <h4 className="text-xs font-bold text-slate-900">{step.action}</h4>

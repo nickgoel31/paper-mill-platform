@@ -282,7 +282,7 @@ export function InvoiceList({ initialData, initialStats }: InvoiceListProps) {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button asChild className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all">
+          <Button asChild className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all">
             <Link href="/dispatch">
               <CheckCircle2 className="h-4 w-4 stroke-[2.5]" /> Issue from Dispatch
             </Link>
@@ -291,64 +291,75 @@ export function InvoiceList({ initialData, initialStats }: InvoiceListProps) {
       </div>
 
       {/* 2. 3 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* 1. INVOICED THIS MONTH */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              INVOICED THIS MONTH
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-blue-50 text-blue-500 flex items-center justify-center">
-              <CreditCard className="h-4 w-4" />
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+        {/* Card 1: HERO DARK CARD (Invoiced This Month) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-400 uppercase">
+                Invoiced This Month
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1 font-mono">
+                {formatCurrencyINR(stats.invoicedThisMonth)}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>•••</span>
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {formatCurrencyINR(stats.invoicedThisMonth)}
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10 relative z-10">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#d4f842]">
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Gross Billed Revenue</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Gross billed revenue
-            </p>
+            <span className="text-[11px] text-slate-400">GST Reconciled</span>
           </div>
         </div>
 
-        {/* 2. TOTAL INVOICES ISSUED */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              TOTAL INVOICES
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-              <FileCheck className="h-4 w-4" />
+        {/* Card 2: White Pill Card - Total Invoices Issued */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Total Invoices
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600 mt-1 font-mono">
+                {stats.totalInvoicesCount} <span className="text-sm font-semibold text-slate-400 font-sans">Issued</span>
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <FileCheck className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-emerald-700">
-              {stats.totalInvoicesCount} <span className="text-sm font-semibold text-slate-400 font-sans">Issued</span>
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Active tax bills generated
-            </p>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Active tax bills</span>
+            <span className="text-xs font-bold text-emerald-600">Reconciled</span>
           </div>
         </div>
 
-        {/* 3. AVERAGE INVOICE VALUE */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              AVG INVOICE TICKET
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
-              <TrendingUp className="h-4 w-4" />
+        {/* Card 3: White Pill Card - Average Ticket */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Avg Invoice Ticket
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {formatCurrencyINR(stats.avgInvoiceValue)}
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+              <CreditCard className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {formatCurrencyINR(stats.avgInvoiceValue)}
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Per dispatch shipment ticket
-            </p>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Per dispatch shipment</span>
+            <span className="text-xs font-semibold text-slate-700">Average Weight Metric</span>
           </div>
         </div>
       </div>
@@ -379,7 +390,7 @@ export function InvoiceList({ initialData, initialStats }: InvoiceListProps) {
             className="h-9 text-xs w-[220px] bg-slate-50/70 border-slate-200 rounded-xl"
           />
 
-          <Button type="submit" size="sm" className="h-9 text-xs font-bold rounded-xl bg-sky-400 hover:bg-sky-500 text-white">
+          <Button type="submit" size="sm" className="h-9 text-xs font-bold rounded-xl bg-[#161622] hover:bg-[#202030] text-white shadow-xs">
             Search
           </Button>
 
@@ -405,22 +416,20 @@ export function InvoiceList({ initialData, initialStats }: InvoiceListProps) {
       </div>
 
       {/* 4. INVOICES DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
-        <DataTable
-          columns={columns}
-          data={data}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalRows={total}
-          onPageChange={setPage}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setPage(1);
-          }}
-          isLoading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        page={page}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        totalRows={total}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

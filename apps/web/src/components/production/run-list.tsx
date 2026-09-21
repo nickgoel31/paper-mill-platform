@@ -48,6 +48,7 @@ import {
   Activity,
   Tablet,
   Sparkles,
+  Scissors,
 } from "lucide-react";
 import { WorkflowBanner } from "@/components/layout/workflow-banner";
 
@@ -379,7 +380,7 @@ export function ProductionRunList({
           {isPlannerOrAdmin && (
             <Button
               asChild
-              className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all"
+              className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
             >
               <Link href="/deckle">
                 <Plus className="h-4 w-4 stroke-[2.5]" /> Plan New Run
@@ -400,84 +401,103 @@ export function ProductionRunList({
       </div>
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. RUNS SCHEDULED TODAY */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              RUNS TODAY
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
-              <Factory className="h-4 w-4" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Card 1: HERO DARK CARD (Weekly Output MT) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-400 uppercase">
+                Weekly Reconciled Output
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1 font-mono">
+                {(stats.totalKgProducedWeek / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>•••</span>
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.runsToday} <span className="text-sm font-semibold text-slate-400 font-sans">Runs</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10 relative z-10">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#d4f842]">
+              <TrendingDown className="w-3.5 h-3.5" />
+              <span>Trim: {stats.avgTrimWeek.toFixed(2)}%</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Active machine schedules
-            </p>
+            <span className="text-[11px] text-slate-400">Yield Optimized</span>
           </div>
         </div>
 
-        {/* 2. RUNNING NOW */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              RUNNING ON FLOOR
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-              <Activity className="h-4 w-4 animate-pulse" />
+        {/* Card 2: White Pill Card - Running Now */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Running on Floor
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600 mt-1 font-mono">
+                {stats.runningNow} <span className="text-sm font-semibold text-slate-400 font-sans">Active</span>
+              </div>
             </div>
+            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse mt-1" />
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-emerald-700">
-              {stats.runningNow} <span className="text-sm font-semibold text-slate-400 font-sans">Active</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Live slitting & scaling</span>
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <Activity className="w-3.5 h-3.5" />
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Currently slitting reels
-            </p>
           </div>
         </div>
 
-        {/* 3. AVG TRIM (7D) */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              AVG TRIM (7D)
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
-              <TrendingDown className="h-4 w-4" />
+        {/* Card 3: White Pill Card - Runs Today */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Runs Today
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {stats.runsToday} <span className="text-sm font-semibold text-slate-400 font-sans">Runs</span>
+              </div>
             </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.avgTrimWeek.toFixed(2)}%
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Scheduled on floor</span>
+            <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
+              <Factory className="w-3.5 h-3.5" />
             </div>
-            <p className="text-[11px] text-emerald-700 font-bold mt-1">
-              {stats.avgTrimWeek <= 3.0 ? "✓ Target met (≤3%)" : "Above target"}
-            </p>
           </div>
         </div>
 
-        {/* 4. WEEKLY OUTPUT WEIGHT */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              WEEKLY OUTPUT
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
-              <Layers className="h-4 w-4" />
+        {/* Card 4: White Pill Card - Avg Trim Loss */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Avg Trim (7D)
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {stats.avgTrimWeek.toFixed(2)}%
+              </div>
             </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(stats.totalKgProducedWeek / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs font-bold text-emerald-600">
+              {stats.avgTrimWeek <= 3.0 ? "✓ ≤3.0% Target Met" : "Requires Review"}
+            </span>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <Scissors className="w-3.5 h-3.5" />
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Reconciled production output
-            </p>
           </div>
         </div>
       </div>
@@ -560,22 +580,20 @@ export function ProductionRunList({
       </div>
 
       {/* 4. RUNS DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
-        <DataTable
-          columns={columns}
-          data={data}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalRows={total}
-          onPageChange={setPage}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setPage(1);
-          }}
-          isLoading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        page={page}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        totalRows={total}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

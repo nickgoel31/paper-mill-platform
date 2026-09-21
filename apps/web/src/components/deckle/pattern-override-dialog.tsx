@@ -328,7 +328,7 @@ export function PatternOverrideDialog({
             size="sm"
             disabled={!isValid}
             onClick={handleSave}
-            className="h-9 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-400/25 transition-all"
+            className="h-9 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm transition-all"
           >
             Apply Manual Override
           </Button>

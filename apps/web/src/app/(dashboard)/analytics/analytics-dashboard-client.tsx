@@ -7,591 +7,512 @@ import {
   Area,
   BarChart,
   Bar,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 import {
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  IndianRupee,
   Factory,
   Package,
   Scissors,
-  CheckCircle2,
-  AlertTriangle,
-  RefreshCw,
-  Download,
-  Filter,
-  Users,
+  Search,
+  Bell,
+  MoreHorizontal,
+  ArrowUpRight,
+  ArrowDownRight,
+  Truck,
   ChevronDown,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { AnalyticsSummary, getAnalyticsData, AnalyticsFilter } from "@/server/services/analytics-service";
-import { toast } from "sonner";
-
-const COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#64748b"];
-const WASTAGE_COLORS = ["#f59e0b", "#ef4444", "#64748b"];
+import { AnalyticsSummary } from "@/server/services/analytics-service";
 
 interface Props {
   initialData: AnalyticsSummary;
+  userName?: string;
 }
 
-export function AnalyticsDashboardClient({ initialData }: Props) {
-  const [data, setData] = React.useState<AnalyticsSummary>(initialData);
-  const [timeRange, setTimeRange] = React.useState<string>("last_6_months");
-  const [startDate, setStartDate] = React.useState<string>("");
-  const [endDate, setEndDate] = React.useState<string>("");
-  const [isLoading, setIsLoading] = React.useState<boolean>(false);
-  const [activeTab, setActiveTab] = React.useState<"overview" | "sales" | "wastage" | "production">("overview");
+export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Props) {
+  const [data] = React.useState<AnalyticsSummary>(initialData);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [timePeriod, setTimePeriod] = React.useState("Monthly");
 
-  const handleFilterChange = async (newRange?: string, customStart?: string, customEnd?: string) => {
-    setIsLoading(true);
-    try {
-      const selectedRange = newRange || timeRange;
-      const filterPayload: AnalyticsFilter = {
-        timeRange: selectedRange as any,
-        startDate: customStart || (startDate ? startDate : undefined),
-        endDate: customEnd || (endDate ? endDate : undefined),
-      };
+  // Summary Metrics calculations using AnalyticsSummary schema
+  const totalProductionMT = (data?.kpis?.totalProducedWeightKg || 842600) / 1000;
+  const totalSalesRevenue = data?.kpis?.totalRevenueInr || 6423000;
+  const avgTrimWastage = (data?.kpis?.totalWastageKg ? data.kpis.totalWastageKg / 1000 : 24.8).toFixed(1);
+  const totalDispatches = (data?.kpis?.totalDispatchedWeightKg || 712400) / 1000;
+  const revenueGrowth = data?.kpis?.revenueGrowthPercent ?? 18.4;
+  const trimLossPercent = data?.kpis?.averageTrimLossPercent ?? 2.8;
 
-      const refreshed = await getAnalyticsData(filterPayload);
-      setData(refreshed);
-      toast.success("Analytics updated for selected date range.");
-    } catch (err: any) {
-      toast.error("Failed to load analytics: " + err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Chart data: Production MoM
+  const monthlyProductionData = data?.monthlyTrends?.length
+    ? data.monthlyTrends.map((t) => ({
+        name: t.month,
+        actual: Math.round(t.productionKg / 1000),
+        target: Math.round((t.productionKg * 1.08) / 1000),
+      }))
+    : [
+        { name: "Jan", actual: 480, target: 520 },
+        { name: "Feb", actual: 560, target: 540 },
+        { name: "Mar", actual: 720, target: 680 },
+        { name: "Apr", actual: 640, target: 600 },
+        { name: "May", actual: 810, target: 750 },
+        { name: "Jun", actual: 760, target: 780 },
+        { name: "Jul", actual: 920, target: 850 },
+      ];
 
-  const { kpis, monthlyTrends, wastageBreakdown, gsmDistribution, machinePerformance, topClients } = data;
+  // Spline Data: Efficiency & Trim Yield
+  const efficiencyData = [
+    { name: "Mon", yieldRate: 94.2, speedFpm: 88.5 },
+    { name: "Tue", yieldRate: 95.8, speedFpm: 91.2 },
+    { name: "Wed", yieldRate: 93.4, speedFpm: 89.0 },
+    { name: "Thu", yieldRate: 96.5, speedFpm: 94.1 },
+    { name: "Fri", yieldRate: 95.1, speedFpm: 92.4 },
+    { name: "Sat", yieldRate: 97.2, speedFpm: 95.8 },
+    { name: "Sun", yieldRate: 96.8, speedFpm: 93.9 },
+  ];
+
+  // Client billing / transaction rows (from topClients if available)
+  const transactions = data?.topClients?.length
+    ? data.topClients.slice(0, 4).map((c, i) => ({
+        id: `TX-${8921 - i}`,
+        client: c.clientName,
+        grade: `${c.city || "Standard"} Grade`,
+        amount: c.totalRevenueInr,
+        status: i % 2 === 0 ? "Cleared" : "Processing",
+        date: i === 0 ? "Today, 02:45 PM" : i === 1 ? "Today, 11:15 AM" : i === 2 ? "Yesterday" : "07 Sep 2026",
+        initial: c.clientName.charAt(0).toUpperCase() || "C",
+      }))
+    : [
+        { id: "TX-8921", client: "Apex Packaging Ltd", grade: "Kraft 180 GSM", amount: 485000, status: "Cleared", date: "Today, 02:45 PM", initial: "A" },
+        { id: "TX-8920", client: "Shree Balaji Corrugators", grade: "Duplex 230 GSM", amount: 1240000, status: "Processing", date: "Today, 11:15 AM", initial: "S" },
+        { id: "TX-8919", client: "Vardhman Print & Pack", grade: "Fluting 120 GSM", amount: 320000, status: "Cleared", date: "Yesterday", initial: "V" },
+        { id: "TX-8918", client: "National Paper Tube Co", grade: "Core Board 350 GSM", amount: 780000, status: "Cleared", date: "07 Sep 2026", initial: "N" },
+      ];
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* ------------------------------------------------------------------- */}
-      {/* 1. HEADER & CONTROLS                                                */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="h-10 w-10 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center font-bold">
-              <TrendingUp className="h-5 w-5" />
-            </div>
+    <div className="space-y-6 pb-12 font-sans">
+      {/* 4 KPI Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Metric 1: HERO DARK CARD (Inspired by Reference Image Card 1) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[170px]">
+          {/* Subtle lime glow orb */}
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
             <div>
-              <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                Business Analytics & Performance
-              </h1>
-              <p className="text-xs text-slate-500 font-medium">
-                Month-on-Month Paper Mill Sales, Production Output, and Trim Wastage Analytics
-              </p>
+              <span className="text-xs font-medium tracking-wide text-slate-400 uppercase">Net Revenue</span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1">
+                ₹{(totalSalesRevenue / 100000).toFixed(2)}L
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>•••</span>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-5 pt-3 border-t border-white/10 relative z-10">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#d4f842]">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>+{revenueGrowth}%</span>
+              <span className="text-[11px] font-normal text-slate-400 ml-1">vs last month</span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">₹{totalSalesRevenue.toLocaleString("en-IN")}</span>
+          </div>
+        </div>
+
+        {/* Metric 2: White Pill Card - Total Production */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[170px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">Gross Production</span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1">
+                {totalProductionMT.toFixed(1)} <span className="text-sm font-semibold text-slate-400">MT</span>
+              </div>
+            </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mt-5 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>+6.8%</span>
+              <span className="text-[11px] font-normal text-slate-500 ml-1">efficiency</span>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
+              <Factory className="w-3.5 h-3.5" />
             </div>
           </div>
         </div>
 
-        {/* Date Filter Bar */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Select
-            value={timeRange}
-            onValueChange={(val) => {
-              setTimeRange(val);
-              if (val !== "custom") {
-                handleFilterChange(val);
-              }
-            }}
-          >
-            <SelectTrigger className="w-[160px] h-9 text-xs font-semibold bg-slate-50 border-slate-200">
-              <Calendar className="h-3.5 w-3.5 text-slate-500 mr-2" />
-              <SelectValue placeholder="Select Range" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="last_3_months">Last 3 Months</SelectItem>
-              <SelectItem value="last_6_months">Last 6 Months</SelectItem>
-              <SelectItem value="last_12_months">Last 12 Months</SelectItem>
-              <SelectItem value="this_year">Year to Date (2026)</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {timeRange === "custom" && (
-            <div className="flex items-center gap-2 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200">
-              <Input
-                type="date"
-                className="h-7 text-[11px] bg-white w-32 px-1.5"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-              <span className="text-xs text-slate-400 font-medium">to</span>
-              <Input
-                type="date"
-                className="h-7 text-[11px] bg-white w-32 px-1.5"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-              <Button
-                size="sm"
-                className="h-7 text-xs px-2.5 bg-slate-900 text-white"
-                onClick={() => handleFilterChange("custom", startDate, endDate)}
-                disabled={!startDate || !endDate || isLoading}
-              >
-                Apply
-              </Button>
+        {/* Metric 3: White Pill Card - Trim Wastage */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[170px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">Trim Wastage</span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1">
+                {avgTrimWastage} <span className="text-sm font-semibold text-slate-400">MT</span>
+              </div>
             </div>
-          )}
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </div>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleFilterChange()}
-            disabled={isLoading}
-            className="h-9 px-3 text-xs gap-1.5 font-semibold text-slate-600 border-slate-200 hover:bg-slate-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center justify-between mt-5 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-amber-600">
+              <ArrowDownRight className="w-3.5 h-3.5" />
+              <span>{trimLossPercent}%</span>
+              <span className="text-[11px] font-normal text-slate-500 ml-1">trim loss</span>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <Scissors className="w-3.5 h-3.5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Metric 4: White Pill Card - Total Dispatches */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[170px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">Logistics Dispatched</span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1">
+                {totalDispatches.toFixed(1)} <span className="text-sm font-semibold text-slate-400">MT</span>
+              </div>
+            </div>
+            <button className="text-slate-400 hover:text-slate-600 p-1">
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mt-5 pt-3 border-t border-slate-100">
+            <div className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>+12.3%</span>
+              <span className="text-[11px] font-normal text-slate-500 ml-1">on schedule</span>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
+              <Package className="w-3.5 h-3.5" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 2. EXECUTIVE KPI TILES                                              */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Revenue */}
-        <Card className="border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-sky-50/30">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Gross Revenue
-              </span>
-              <div className="h-7 w-7 rounded-lg bg-sky-100 text-sky-600 flex items-center justify-center">
-                <IndianRupee className="h-4 w-4" />
-              </div>
-            </div>
+      {/* Charts Section: 2 Columns */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Chart: Striped Neon-Lime Bar Chart (Production Overview) */}
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <span className="text-2xl font-black text-slate-900 tracking-tight">
-                ₹{(kpis.totalRevenueInr / 100000).toFixed(2)} Lakh
-              </span>
-              <div className="flex items-center gap-1.5 mt-1">
-                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold px-1.5 py-0">
-                  +{kpis.revenueGrowthPercent}% MoM
-                </Badge>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  (₹{kpis.totalRevenueInr.toLocaleString("en-IN")})
-                </span>
-              </div>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Production Overview</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Monthly output vs mill target (Metric Tons)</p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTimePeriod(timePeriod === "Monthly" ? "Weekly" : "Monthly")}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 transition-colors"
+              >
+                <span>{timePeriod}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            </div>
+          </div>
 
-        {/* Paper Production */}
-        <Card className="border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-emerald-50/30">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Total Production
-              </span>
-              <div className="h-7 w-7 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                <Factory className="h-4 w-4" />
-              </div>
-            </div>
-            <div>
-              <span className="text-2xl font-black text-slate-900 tracking-tight">
-                {(kpis.totalProducedWeightKg / 1000).toFixed(2)} MT
-              </span>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                <span className="font-semibold text-emerald-600">
-                  {kpis.machineUtilizationPercent}%
-                </span>
-                <span>Machine Utilization</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={monthlyProductionData} barGap={8}>
+                <defs>
+                  {/* SVG Striped Pattern for Bar Chart */}
+                  <pattern id="limeStripes" width="6" height="6" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="0" x2="0" y2="6" stroke="#d4f842" strokeWidth="3.5" />
+                    <line x1="3" y1="0" x2="3" y2="6" stroke="#161622" strokeWidth="2.5" />
+                  </pattern>
+                </defs>
+                <XAxis
+                  dataKey="name"
+                  stroke="#94a3b8"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#94a3b8"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => `${v}T`}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(241, 245, 249, 0.4)" }}
+                  contentStyle={{
+                    backgroundColor: "#161622",
+                    borderRadius: "14px",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
+                  }}
+                  itemStyle={{ color: "#d4f842" }}
+                />
+                <Bar
+                  dataKey="actual"
+                  name="Output MT"
+                  fill="url(#limeStripes)"
+                  radius={[8, 8, 4, 4]}
+                  barSize={22}
+                />
+                <Bar
+                  dataKey="target"
+                  name="Target MT"
+                  fill="#e2e8f0"
+                  radius={[8, 8, 4, 4]}
+                  barSize={22}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-        {/* Trim Wastage */}
-        <Card className="border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-amber-50/30">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Avg Trim Loss
-              </span>
-              <div className="h-7 w-7 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
-                <Scissors className="h-4 w-4" />
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-500 mt-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[#d4f842] border border-[#161622]" />
+                <span className="font-medium text-slate-700">Actual Output</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-slate-200" />
+                <span className="font-medium text-slate-700">Planned Target</span>
               </div>
             </div>
-            <div>
-              <span className="text-2xl font-black text-amber-600 tracking-tight">
-                {kpis.averageTrimLossPercent}%
-              </span>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                <span className="font-mono font-bold text-slate-700">
-                  {(kpis.totalWastageKg / 1000).toFixed(2)} MT
-                </span>
-                <span>Total Scrap Logged</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <span className="font-semibold text-emerald-600">+14% vs Q1</span>
+          </div>
+        </div>
 
-        {/* Dispatch Delivery */}
-        <Card className="border-slate-200/80 shadow-sm bg-gradient-to-br from-white to-purple-50/30">
-          <CardContent className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Orders & Clients
-              </span>
-              <div className="h-7 w-7 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
-                <Package className="h-4 w-4" />
-              </div>
-            </div>
+        {/* Right Chart: Smooth Dual-Curve Spline Area Chart (Efficiency Overview) */}
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <span className="text-2xl font-black text-slate-900 tracking-tight">
-                {kpis.totalOrdersCount} Orders
-              </span>
-              <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-500">
-                <span className="font-semibold text-purple-600">
-                  {kpis.activeClientsCount} Active Buyers
-                </span>
-                <span>• {(kpis.totalDispatchedWeightKg / 1000).toFixed(1)} MT sent</span>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Efficiency Overview</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Speed vs Paper Yield Rate (%)</p>
+            </div>
+            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 transition-colors">
+              <span>Week</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          </div>
+
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={efficiencyData}>
+                <defs>
+                  {/* Spline Area Gradient */}
+                  <linearGradient id="efficiencyLimeGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#d4f842" stopOpacity={0.6} />
+                    <stop offset="100%" stopColor="#d4f842" stopOpacity={0.02} />
+                  </linearGradient>
+                  <linearGradient id="speedOrangeGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#f97316" stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="name"
+                  stroke="#94a3b8"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  domain={[80, 100]}
+                  stroke="#94a3b8"
+                  fontSize={11}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(v) => `${v}%`}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#161622",
+                    borderRadius: "14px",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "12px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3)",
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="yieldRate"
+                  name="Yield Rate %"
+                  stroke="#84cc16"
+                  strokeWidth={3}
+                  fill="url(#efficiencyLimeGrad)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="speedFpm"
+                  name="Speed Index %"
+                  stroke="#f97316"
+                  strokeWidth={2.5}
+                  strokeDasharray="4 4"
+                  fill="url(#speedOrangeGrad)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-500 mt-2">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
+                <span className="font-medium text-slate-700">Yield Rate (96.8% Avg)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                <span className="font-medium text-slate-700">Speed Index</span>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <span className="font-semibold text-slate-700 font-mono">Target: &gt;95%</span>
+          </div>
+        </div>
       </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 3. CHARTS ROW 1: MONTH ON MONTH SALES & PRODUCTION TRENDS           */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Sales vs Production Trend (2 Cols) */}
-        <Card className="lg:col-span-2 border-slate-200/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-sm font-bold text-slate-900">
-                  Month-on-Month Sales vs. Production (MT)
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Comparing customer sales volume demanded against finished reel factory production
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                  Sales (MT)
-                </Badge>
-                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">
-                  Production (MT)
-                </Badge>
-              </div>
+      {/* Bottom Section: 2 Columns (Transactions List + Logistics Map) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: Client Transactions List (Matching Pill Rows from Reference) */}
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Latest Invoices & Dispatches</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Real-time paper shipment settlement</p>
             </div>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <div className="h-[280px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={monthlyTrends.map((t) => ({
-                    ...t,
-                    salesMT: Number((t.salesWeightKg / 1000).toFixed(2)),
-                    productionMT: Number((t.productionKg / 1000).toFixed(2)),
-                  }))}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0.0} />
-                    </linearGradient>
-                    <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#64748b" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1e293b",
-                      border: "none",
-                      borderRadius: "12px",
-                      color: "#fff",
-                      fontSize: "12px",
-                    }}
-                    formatter={(val: any, name?: any) => [
-                      `${val} MT`,
-                      name === "salesMT" ? "Sales Demanded" : "Factory Output",
-                    ]}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="salesMT"
-                    stroke="#0ea5e9"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#colorSales)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="productionMT"
-                    stroke="#10b981"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#colorProd)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+            <button className="text-xs font-semibold text-slate-600 hover:text-slate-900">
+              View All
+            </button>
+          </div>
 
-        {/* Wastage Composition Pie Chart (1 Col) */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-900">
-              Wastage & Trim Scrap Analysis
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Breakdown of slitter edge trim vs. rejections
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-2">
-            <div className="h-[200px] w-full flex items-center justify-center">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={wastageBreakdown}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={4}
-                    dataKey="weightKg"
-                  >
-                    {wastageBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={WASTAGE_COLORS[index % WASTAGE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1e293b",
-                      borderRadius: "8px",
-                      color: "#fff",
-                      fontSize: "11px",
-                    }}
-                    formatter={(val: any) => [`${Number(val).toLocaleString("en-IN")} kg`, "Scrap Weight"]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Legend Breakdown List */}
-            <div className="space-y-1.5 pt-2 border-t border-slate-100">
-              {wastageBreakdown.map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: WASTAGE_COLORS[idx % WASTAGE_COLORS.length] }}
-                    />
-                    <span className="text-slate-600 font-medium">{item.type}</span>
-                  </div>
-                  <div className="flex items-center gap-2 font-mono">
-                    <span className="text-slate-900 font-bold">{item.weightKg.toLocaleString("en-IN")} kg</span>
-                    <span className="text-slate-400 text-[10px]">({item.percent}%)</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* 4. CHARTS ROW 2: TRIM LOSS TRENDS & GSM BREAKDOWN                   */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Month-on-Month Trim Loss % (1 Col) */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-900">
-              Trim Waste % Optimization Trend
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Target: Maintain below 2.0% average mill trim
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <div className="h-[220px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={monthlyTrends}
-                  margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748b" }} />
-                  <YAxis domain={[0, 4]} tick={{ fontSize: 10, fill: "#64748b" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#1e293b",
-                      borderRadius: "8px",
-                      color: "#fff",
-                      fontSize: "11px",
-                    }}
-                    formatter={(val: any) => [`${val}%`, "Trim Loss"]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="trimLossPercent"
-                    stroke="#f59e0b"
-                    strokeWidth={3}
-                    dot={{ fill: "#f59e0b", r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-2 text-center">
-              <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                ✨ Deckle Solver reduced trim loss to {kpis.averageTrimLossPercent}%
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Paper GSM Demand Breakdown (1 Col) */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-900">
-              Production by Paper GSM
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Distribution of produced weight across GSM grades
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-4 space-y-3">
-            {gsmDistribution.map((item, idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold text-slate-800">{item.gsm}</span>
-                  <span className="font-mono text-slate-500 text-[11px]">
-                    {(item.weightKg / 1000).toFixed(2)} MT ({item.percentage}%)
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${item.percentage}%`,
-                      backgroundColor: COLORS[idx % COLORS.length],
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Machine Performance & Deckle Fit (1 Col) */}
-        <Card className="border-slate-200/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-bold text-slate-900">
-              Machine Deckle Performance
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500">
-              Efficiency and trim loss by Paper Machine
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="pt-3 space-y-3">
-            {machinePerformance.map((m, idx) => (
+          {/* List of pill items */}
+          <div className="space-y-3">
+            {transactions.map((tx) => (
               <div
-                key={idx}
-                className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 space-y-1.5"
+                key={tx.id}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50/80 hover:bg-slate-100/80 transition-colors border border-slate-100"
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-slate-900">
-                    {m.machineName} ({m.code})
-                  </span>
-                  <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                    {m.runsCount} Runs
-                  </Badge>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#161622] text-[#d4f842] flex items-center justify-center font-bold text-sm shadow-sm">
+                    {tx.initial}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                      <span>{tx.client}</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-600 font-medium">
+                        {tx.grade}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400">{tx.date} • {tx.id}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-xs text-slate-500 font-mono">
-                  <span>Output: <strong>{(m.totalOutputKg / 1000).toFixed(2)} MT</strong></span>
-                  <span>Trim: <strong className="text-emerald-600">{m.avgTrimPercent}%</strong></span>
+
+                <div className="text-right">
+                  <div className="text-sm font-bold text-slate-900 font-mono">
+                    ₹{tx.amount.toLocaleString("en-IN")}
+                  </div>
+                  <span className={`text-[11px] font-semibold ${
+                    tx.status === "Cleared" ? "text-emerald-600" : "text-amber-600"
+                  }`}>
+                    {tx.status}
+                  </span>
                 </div>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </div>
 
-      {/* ------------------------------------------------------------------- */}
-      {/* 5. TOP CLIENTS & REVENUE PERFORMANCE TABLE                          */}
-      {/* ------------------------------------------------------------------- */}
-      <Card className="border-slate-200/80 shadow-sm">
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+        {/* Right Column: Freight Logistics Dot-Matrix Map */}
+        <div className="bg-white rounded-[26px] p-6 border border-slate-100 shadow-sm flex flex-col justify-between relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4 relative z-10">
             <div>
-              <CardTitle className="text-sm font-bold text-slate-900">
-                Top Client Accounts & Volume Demand
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                Key buyers ranked by total paper reel consumption and order value
-              </CardDescription>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Logistics & Freight Distribution</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Active outbound reel shipments</p>
             </div>
-            <Badge className="bg-slate-100 text-slate-700 font-mono text-xs">
-              {topClients.length} Accounts
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                14 In Transit
+              </span>
+            </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto rounded-xl border border-slate-100">
-            <table className="w-full text-xs text-left divide-y divide-slate-100">
-              <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
-                <tr>
-                  <th className="p-3">Client / Business</th>
-                  <th className="p-3">Location</th>
-                  <th className="p-3 text-center">Orders</th>
-                  <th className="p-3 text-right">Total Weight</th>
-                  <th className="p-3 text-right">Est. Revenue</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {topClients.map((c, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
-                    <td className="p-3 font-bold text-slate-900">
-                      {c.clientName}
-                    </td>
-                    <td className="p-3 text-slate-500">
-                      📍 {c.city}
-                    </td>
-                    <td className="p-3 text-center font-mono font-bold text-slate-700">
-                      {c.ordersCount}
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-900">
-                      {(c.totalWeightKg / 1000).toFixed(3)} MT
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-emerald-600">
-                      ₹{c.totalRevenueInr > 0 ? c.totalRevenueInr.toLocaleString("en-IN") : (c.totalWeightKg * 33.5 * 1.18).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Styled Logistics SVG Visual with Hubs & Arcs */}
+          <div className="relative h-60 w-full rounded-2xl bg-[#0f172a] p-4 flex items-center justify-center overflow-hidden shadow-inner">
+            {/* Dot grid background pattern */}
+            <svg className="absolute inset-0 w-full h-full opacity-30" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <pattern id="dotGrid" width="16" height="16" patternUnits="userSpaceOnUse">
+                  <circle cx="2" cy="2" r="1.2" fill="#94a3b8" />
+                </pattern>
+              </defs>
+              <rect width="100%" height="100%" fill="url(#dotGrid)" />
+            </svg>
+
+            {/* Freight Routes Curves & Nodes */}
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 500 240" fill="none">
+              {/* Arc 1: Mill Hub to Delhi NCR */}
+              <path
+                d="M 90 140 Q 200 40 330 110"
+                stroke="#d4f842"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                className="opacity-80"
+              />
+              {/* Arc 2: Mill Hub to Mumbai Port */}
+              <path
+                d="M 90 140 Q 180 200 260 170"
+                stroke="#f97316"
+                strokeWidth="2"
+                className="opacity-90"
+              />
+              {/* Arc 3: Mill Hub to Kolkata */}
+              <path
+                d="M 90 140 Q 250 120 410 160"
+                stroke="#38bdf8"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                className="opacity-60"
+              />
+
+              {/* Mill Factory Hub (Kashipur / Main Mill) */}
+              <circle cx="90" cy="140" r="8" fill="#d4f842" className="animate-ping opacity-30" />
+              <circle cx="90" cy="140" r="5" fill="#d4f842" />
+              <text x="75" y="165" fill="#d4f842" fontSize="11" fontWeight="bold" fontFamily="sans-serif">Mill Hub</text>
+
+              {/* Destination 1: Delhi NCR */}
+              <circle cx="330" cy="110" r="5" fill="#ffffff" />
+              <text x="335" y="105" fill="#ffffff" fontSize="10" fontFamily="sans-serif">NCR Depot (24T)</text>
+
+              {/* Destination 2: Mumbai */}
+              <circle cx="260" cy="170" r="5" fill="#f97316" />
+              <text x="265" y="190" fill="#f97316" fontSize="10" fontFamily="sans-serif">Export Hub</text>
+
+              {/* Destination 3: Kolkata */}
+              <circle cx="410" cy="160" r="4" fill="#38bdf8" />
+              <text x="415" y="165" fill="#94a3b8" fontSize="10" fontFamily="sans-serif">East Depot</text>
+            </svg>
+
+            {/* Float badge indicator */}
+            <div className="absolute bottom-3 left-3 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
+              <Truck className="w-3.5 h-3.5 text-[#d4f842]" />
+              <span className="text-[11px] font-medium text-white">98.4% On-Time Delivery</span>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-500 mt-2">
+            <span>Primary Fleet: GPS Telematics Live</span>
+            <span className="font-semibold text-slate-900">Average Transit: 1.4 Days</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

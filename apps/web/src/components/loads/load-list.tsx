@@ -40,6 +40,8 @@ import {
   Filter,
   X,
   Building,
+  Layers,
+  Send,
 } from "lucide-react";
 
 interface TruckRef {
@@ -336,20 +338,112 @@ export function LoadList({
     },
   ];
 
+  const totalPlannedWeight = React.useMemo(() => {
+    return data.reduce((acc, row) => acc + (Number(row.totalPlannedKg) || 0), 0);
+  }, [data]);
+
+  const activeBatchesCount = React.useMemo(() => {
+    return data.filter((b) => b.status === LoadStatus.PLANNED || b.status === LoadStatus.LOADING).length;
+  }, [data]);
+
+  const dispatchedCount = React.useMemo(() => {
+    return data.filter((b) => b.status === LoadStatus.DISPATCHED || b.status === LoadStatus.DELIVERED).length;
+  }, [data]);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 font-sans">
+      {/* 4 Performance KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Card 1: Hero Dark Card */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Total Load Batches</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Freight</span>
+              <Truck className="h-3 w-3" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {total} <span className="text-sm font-semibold text-slate-400 font-sans">Batches</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              Multi-order consolidated shipments
+            </p>
+          </div>
+        </div>
+
+        {/* Card 2: Planned Freight Weight */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Planned Weight</span>
+            <div className="h-8 w-8 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center">
+              <Layers className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {(totalPlannedWeight / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              {formatWeightKg(totalPlannedWeight)} total freight load
+            </p>
+          </div>
+        </div>
+
+        {/* Card 3: Active Loading / En Route */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Loading / In Progress</span>
+            <div className="h-8 w-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
+              <Truck className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-amber-700 tracking-tight">
+              {activeBatchesCount}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">Active</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              Awaiting bay clearance & gatepass
+            </p>
+          </div>
+        </div>
+
+        {/* Card 4: Dispatched / Completed */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Dispatched & Delivered</span>
+            <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Send className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-700 tracking-tight">
+              {dispatchedCount}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">Delivered</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              Successfully moved out of factory
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Filters Bar */}
-      <Card className="p-3 bg-slate-50/70 border">
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-semibold text-slate-700 flex items-center gap-1 shrink-0">
-            <Filter className="h-3.5 w-3.5" /> Filters:
+      <div className="rounded-[20px] bg-white border border-slate-100 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="font-bold text-slate-700 flex items-center gap-1.5 shrink-0">
+            <Filter className="h-3.5 w-3.5 text-slate-400" /> Filters:
           </span>
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-8 text-xs w-[140px] bg-white">
+            <SelectTrigger className="h-9 text-xs w-[150px] bg-slate-50/70 border-slate-200 rounded-xl">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="rounded-xl">
               <SelectItem value="ALL">All Statuses</SelectItem>
               <SelectItem value="DRAFT">Draft</SelectItem>
               <SelectItem value="PLANNED">Planned</SelectItem>
@@ -361,10 +455,10 @@ export function LoadList({
           </Select>
 
           <Select value={truckFilter} onValueChange={setTruckFilter}>
-            <SelectTrigger className="h-8 text-xs w-[160px] bg-white">
+            <SelectTrigger className="h-9 text-xs w-[170px] bg-slate-50/70 border-slate-200 rounded-xl">
               <SelectValue placeholder="Truck" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="rounded-xl">
               <SelectItem value="ALL">All Trucks</SelectItem>
               {trucksList.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
@@ -375,10 +469,10 @@ export function LoadList({
           </Select>
 
           <Select value={transporterFilter} onValueChange={setTransporterFilter}>
-            <SelectTrigger className="h-8 text-xs w-[180px] bg-white">
+            <SelectTrigger className="h-9 text-xs w-[190px] bg-slate-50/70 border-slate-200 rounded-xl">
               <SelectValue placeholder="Transporter" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="rounded-xl">
               <SelectItem value="ALL">All Transporters</SelectItem>
               {transportersList.map((tr) => (
                 <SelectItem key={tr.id} value={tr.id}>
@@ -392,7 +486,7 @@ export function LoadList({
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-2 text-xs"
+              className="h-9 px-3 text-xs rounded-xl hover:bg-slate-100 text-slate-600"
               onClick={() => {
                 setStatusFilter("ALL");
                 setTruckFilter("ALL");
@@ -403,7 +497,7 @@ export function LoadList({
             </Button>
           )}
         </div>
-      </Card>
+      </div>
 
       {/* Main Table */}
       <DataTable
@@ -423,9 +517,9 @@ export function LoadList({
         onPageChange={(p) => fetchData(p, search)}
         actionButton={
           canManage ? (
-            <Button asChild size="sm" className="gap-1.5 shadow-sm">
+            <Button asChild size="sm" className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white text-xs font-bold gap-1.5 shadow-sm">
               <Link href="/loads/new">
-                <Plus className="h-4 w-4" /> Build Truck Load Batch
+                <Plus className="h-4 w-4 text-[#d4f842]" /> Build Truck Load Batch
               </Link>
             </Button>
           ) : undefined

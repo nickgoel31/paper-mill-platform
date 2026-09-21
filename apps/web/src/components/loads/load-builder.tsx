@@ -273,21 +273,28 @@ export function LoadBuilder({
   );
 
   return (
-    <div className="space-y-6">
-      {/* Top Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="outline" size="sm">
+    <div className="space-y-6 font-sans pb-10">
+      {/* 1. TOP HEADER BANNER */}
+      <div className="bg-white rounded-[26px] p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-[11px] font-bold uppercase tracking-wide">
+            LOGISTICS & DISPATCH • LOAD BUILDER
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+            <Truck className="h-7 w-7 text-sky-500" />
+            Build Truck Load Batch
+          </h1>
+          <p className="text-xs text-slate-500 max-w-2xl font-medium">
+            Consolidate confirmed customer orders travelling in the same direction onto one vehicle with live capacity monitoring.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <Button asChild variant="outline" className="h-10 px-4 rounded-xl bg-white hover:bg-slate-50 border-slate-200 text-slate-700 font-bold text-xs shadow-xs">
             <Link href="/loads">
-              <ArrowLeft className="h-4 w-4 mr-1" /> Back to Load Batches
+              <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Load Batches
             </Link>
           </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Build Truck Load Batch</h1>
-            <p className="text-xs text-muted-foreground">
-              Consolidate confirmed customer orders travelling in the same direction onto one vehicle.
-            </p>
-          </div>
         </div>
       </div>
 
@@ -297,11 +304,11 @@ export function LoadBuilder({
         {/* LEFT PANEL: Unassigned Orders (5 Columns) */}
         {/* ========================================================================= */}
         <div className="lg:col-span-6 space-y-4">
-          <Card className="border shadow-sm">
-            <CardHeader className="p-4 border-b bg-slate-50 flex flex-row items-center justify-between">
+          <Card className="rounded-[26px] border border-slate-100 shadow-sm overflow-hidden bg-white">
+            <CardHeader className="p-5 border-b border-slate-100 bg-slate-50/50 flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-sm font-bold flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
+                  <Layers className="h-4 w-4 text-sky-500" />
                   Unassigned Active Orders ({availableOrders.length})
                 </CardTitle>
                 <CardDescription className="text-[11px]">
@@ -455,14 +462,14 @@ export function LoadBuilder({
         {/* RIGHT PANEL: This Load (6 Columns) */}
         {/* ========================================================================= */}
         <div className="lg:col-span-6 space-y-4">
-          <Card className="border shadow-sm">
-            <CardHeader className="p-4 border-b bg-slate-900 text-white">
+          <Card className="rounded-[26px] border border-slate-100 shadow-sm overflow-hidden bg-white">
+            <CardHeader className="p-5 border-b border-slate-800 bg-[#161622] text-white">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-white">
-                  <Truck className="h-4 w-4 text-amber-400" />
+                  <Truck className="h-4 w-4 text-[#d4f842]" />
                   This Truck Load ({selectedOrders.length} Orders)
                 </CardTitle>
-                <div className="font-mono text-xs text-amber-400 font-bold">
+                <div className="font-mono text-xs text-[#d4f842] font-bold">
                   {formatWeightKg(currentTotalKg)}
                 </div>
               </div>
@@ -664,18 +671,18 @@ export function LoadBuilder({
               )}
 
               {/* Footer Summary Statistics */}
-              <div className="p-3 rounded-lg bg-slate-900 text-white grid grid-cols-3 gap-2 text-center font-mono text-xs">
+              <div className="p-4 rounded-2xl bg-[#161622] text-white grid grid-cols-3 gap-2 text-center font-mono text-xs shadow-inner">
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">CLIENTS</span>
-                  <strong className="text-amber-400 text-sm">{distinctClients.length}</strong>
+                  <span className="text-[10px] text-slate-400 block font-sans font-semibold">CLIENTS</span>
+                  <strong className="text-[#d4f842] text-sm">{distinctClients.length}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">CITIES</span>
+                  <span className="text-[10px] text-slate-400 block font-sans font-semibold">CITIES</span>
                   <strong className="text-white text-sm">{distinctCities.length}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block font-sans">TOTAL WEIGHT</span>
-                  <strong className="text-emerald-400 text-sm">{(currentTotalKg / 1000).toFixed(2)} MT</strong>
+                  <span className="text-[10px] text-slate-400 block font-sans font-semibold">TOTAL WEIGHT</span>
+                  <strong className="text-[#d4f842] text-sm">{(currentTotalKg / 1000).toFixed(2)} MT</strong>
                 </div>
               </div>
 
@@ -684,11 +691,11 @@ export function LoadBuilder({
                 type="button"
                 disabled={isSubmitting || selectedOrderIds.length === 0 || isOverCapacity}
                 onClick={handleSaveBatch}
-                className="w-full h-10 font-semibold text-sm shadow-md"
+                className="w-full h-11 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-md transition-all"
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving Load Batch...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-[#d4f842]" /> Saving Load Batch...
                   </>
                 ) : (
                   "Create Truck Load Batch (Draft)"

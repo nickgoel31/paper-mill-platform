@@ -507,7 +507,7 @@ export function OrderForm({
                       const row = { ...NEW_ITEM_DEFAULTS, gsm: distinctGsms[0] || 120 };
                       append(Array.from({ length: addQty }, () => ({ ...row })));
                     }}
-                    className="h-8 text-xs font-bold bg-sky-400 hover:bg-sky-500 text-white rounded-xl shadow-xs gap-1.5"
+                    className="h-8 text-xs font-bold bg-[#161622] hover:bg-[#202030] text-white rounded-xl shadow-xs gap-1.5"
                   >
                     <Plus className="h-3.5 w-3.5 stroke-[2.5]" />
                     {addQty > 1 ? `Add ${addQty} Reel Sizes` : "Add Reel Size"}
@@ -872,7 +872,7 @@ export function OrderForm({
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-11 px-7 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-400/25 transition-all w-full md:w-auto"
+                className="h-11 px-7 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm transition-all w-full md:w-auto"
               >
                 {isSubmitting ? (
                   <>

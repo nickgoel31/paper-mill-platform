@@ -82,7 +82,7 @@ export function ReadyDispatchList({ batches }: ReadyDispatchListProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <Button asChild className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all">
+          <Button asChild className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all">
             <Link href="/loads/new">
               <Plus className="h-4 w-4 stroke-[2.5]" /> Build Truck Load
             </Link>
@@ -96,84 +96,97 @@ export function ReadyDispatchList({ batches }: ReadyDispatchListProps) {
       </div>
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. TOTAL PENDING TRUCKS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              PENDING TRUCKS
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
-              <Truck className="h-4 w-4" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Card 1: HERO DARK CARD (Total Manifest Weight) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="flex items-start justify-between relative z-10">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-400 uppercase">
+                Total Manifest Weight
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-white mt-1 font-mono">
+                {(totalWeight / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>•••</span>
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {batches.length} <span className="text-sm font-semibold text-slate-400 font-sans">Loads</span>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10 relative z-10">
+            <div className="flex items-center gap-1 text-xs font-bold text-[#d4f842]">
+              <Truck className="w-3.5 h-3.5" />
+              <span>{batches.length} Loads Scheduled</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              Awaiting gate pass departure
-            </p>
+            <span className="text-[11px] text-slate-400 font-mono">{formatWeightKg(totalWeight)}</span>
           </div>
         </div>
 
-        {/* 2. 100% READY */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              READY FOR LOADING
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-              <CheckCircle2 className="h-4 w-4" />
+        {/* Card 2: White Pill Card - 100% Ready */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Ready for Gate Pass
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-emerald-600 mt-1 font-mono">
+                {readyCount} <span className="text-sm font-semibold text-slate-400 font-sans">Trucks</span>
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <CheckCircle2 className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-emerald-700">
-              {readyCount} <span className="text-sm font-semibold text-slate-400 font-sans">Trucks</span>
-            </div>
-            <p className="text-[11px] text-emerald-700 font-bold mt-1">
-              100% produced and in stock
-            </p>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-emerald-600 font-bold">100% produced & in stock</span>
+            <span className="text-[11px] text-slate-400">Reeled</span>
           </div>
         </div>
 
-        {/* 3. PARTIAL / SHORT */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              PARTIAL PRODUCTION
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
-              <AlertTriangle className="h-4 w-4" />
+        {/* Card 3: White Pill Card - Partial Production */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Partial Production
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-700 mt-1 font-mono">
+                {partialCount} <span className="text-sm font-semibold text-slate-400 font-sans">Trucks</span>
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <AlertTriangle className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-amber-800">
-              {partialCount} <span className="text-sm font-semibold text-slate-400 font-sans">Trucks</span>
-            </div>
-            <p className="text-[11px] text-amber-700 font-medium mt-1">
-              Can ship short with confirmation
-            </p>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-amber-700 font-medium">Can ship short with confirmation</span>
+            <span className="text-[11px] text-slate-400">Staging</span>
           </div>
         </div>
 
-        {/* 4. TOTAL MANIFEST WEIGHT */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              TOTAL MANIFEST WT
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
-              <PackageCheck className="h-4 w-4" />
+        {/* Card 4: White Pill Card - Total Pending Trucks */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Pending Fleet
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1 font-mono">
+                {batches.length} <span className="text-sm font-semibold text-slate-400 font-sans">Loads</span>
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
+              <Truck className="w-3.5 h-3.5" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(totalWeight / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              {formatWeightKg(totalWeight)} planned
-            </p>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Awaiting weighbridge & gate pass</span>
+            <span className="text-[11px] font-bold text-slate-700">Active</span>
           </div>
         </div>
       </div>
@@ -186,7 +199,7 @@ export function ReadyDispatchList({ batches }: ReadyDispatchListProps) {
           <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
             All planned truck loads have already been dispatched. Build new loads from confirmed orders in Load Planning.
           </p>
-          <Button asChild size="sm" className="mt-4 rounded-xl bg-sky-400 hover:bg-sky-500 font-bold text-xs">
+          <Button asChild size="sm" className="mt-4 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-xs">
             <Link href="/loads/new">Plan Truck Load</Link>
           </Button>
         </div>
@@ -260,7 +273,7 @@ export function ReadyDispatchList({ batches }: ReadyDispatchListProps) {
                 )}
 
                 {/* Button */}
-                <Button asChild className="w-full h-10 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs shadow-xs gap-1.5">
+                <Button asChild className="w-full h-10 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-xs gap-1.5 transition-all">
                   <Link href={`/dispatch/${batch.id}`}>
                     <FileText className="h-4 w-4" /> Open Loading Sheet & Gate Pass
                   </Link>

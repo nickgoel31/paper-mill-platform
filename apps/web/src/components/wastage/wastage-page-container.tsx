@@ -233,11 +233,11 @@ export function WastagePageContainer({
       {/* Header & Tabs */}
       <Tabs defaultValue="analytics" className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <TabsList className="bg-slate-100 p-1 border">
-            <TabsTrigger value="analytics" className="gap-2 text-xs font-semibold">
+          <TabsList className="bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm h-auto">
+            <TabsTrigger value="analytics" className="gap-2 text-xs font-semibold rounded-xl px-4 py-2 data-[state=active]:bg-[#161622] data-[state=active]:text-white">
               <BarChart3 className="h-4 w-4" /> Wastage Analytics & Charts
             </TabsTrigger>
-            <TabsTrigger value="logs" className="gap-2 text-xs font-semibold">
+            <TabsTrigger value="logs" className="gap-2 text-xs font-semibold rounded-xl px-4 py-2 data-[state=active]:bg-[#161622] data-[state=active]:text-white">
               <List className="h-4 w-4" /> Wastage Log Records ({total})
             </TabsTrigger>
           </TabsList>
@@ -247,9 +247,9 @@ export function WastagePageContainer({
               type="button"
               size="sm"
               onClick={() => setLogModalOpen(true)}
-              className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold gap-1.5 shadow-sm"
+              className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white text-xs font-bold gap-1.5 shadow-sm"
             >
-              <Plus className="h-4 w-4" /> Log Floor Scrap / Wastage
+              <Plus className="h-4 w-4 text-[#d4f842]" /> Log Floor Scrap / Wastage
             </Button>
           )}
         </div>
@@ -262,17 +262,17 @@ export function WastagePageContainer({
         {/* Tab 2: Logs DataTable */}
         <TabsContent value="logs" className="space-y-4">
           {/* Filter Bar */}
-          <Card className="p-3 bg-slate-50/70 border">
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-semibold text-slate-700 flex items-center gap-1 shrink-0">
-                <Filter className="h-3.5 w-3.5" /> Filters:
+          <div className="rounded-[20px] bg-white border border-slate-100 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-bold text-slate-700 flex items-center gap-1.5 shrink-0">
+                <Filter className="h-3.5 w-3.5 text-slate-400" /> Filters:
               </span>
 
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="h-8 text-xs w-[140px] bg-white">
+                <SelectTrigger className="h-9 text-xs w-[150px] bg-slate-50/70 border-slate-200 rounded-xl">
                   <SelectValue placeholder="Wastage Type" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl">
                   <SelectItem value="ALL">All Types</SelectItem>
                   <SelectItem value="TRIM">Edge Trim</SelectItem>
                   <SelectItem value="REJECT">Paper Break / Reject</SelectItem>
@@ -281,10 +281,10 @@ export function WastagePageContainer({
               </Select>
 
               <Select value={machineFilter} onValueChange={setMachineFilter}>
-                <SelectTrigger className="h-8 text-xs w-[160px] bg-white">
+                <SelectTrigger className="h-9 text-xs w-[170px] bg-slate-50/70 border-slate-200 rounded-xl">
                   <SelectValue placeholder="Machine" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl">
                   <SelectItem value="ALL">All Machines</SelectItem>
                   {machinesList.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
@@ -297,7 +297,7 @@ export function WastagePageContainer({
               <Input
                 type="number"
                 placeholder="GSM (e.g. 120)"
-                className="h-8 w-28 bg-white font-mono text-xs"
+                className="h-9 w-32 bg-slate-50/70 border-slate-200 rounded-xl font-mono text-xs"
                 value={gsmFilter}
                 onChange={(e) => setGsmFilter(e.target.value)}
               />
@@ -306,7 +306,7 @@ export function WastagePageContainer({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 px-2 text-xs"
+                  className="h-9 px-3 text-xs rounded-xl hover:bg-slate-100 text-slate-600"
                   onClick={() => {
                     setTypeFilter("ALL");
                     setMachineFilter("ALL");
@@ -317,7 +317,7 @@ export function WastagePageContainer({
                 </Button>
               )}
             </div>
-          </Card>
+          </div>
 
           <DataTable
             columns={columns}

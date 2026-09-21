@@ -128,46 +128,50 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
   return (
     <div className="space-y-6 print:space-y-4">
       {/* Header & Status Bar (Hidden in Print View) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-lg border shadow-sm print:hidden">
-        <div className="flex items-center gap-4">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/production">
-              <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Production
-            </Link>
-          </Button>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold font-mono text-slate-900">
-                {run.runNumber}
-              </h1>
-              <Badge
-                className={`font-mono text-xs ${
-                  run.status === RunStatus.RELEASED
-                    ? "bg-blue-100 text-blue-800 border-blue-300"
-                    : run.status === RunStatus.RUNNING
-                    ? "bg-amber-100 text-amber-800 border-amber-300 animate-pulse"
-                    : run.status === RunStatus.COMPLETED
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                    : run.status === RunStatus.CANCELLED
-                    ? "bg-red-100 text-red-800 border-red-300"
-                    : ""
-                }`}
-              >
-                {run.status}
-              </Badge>
-              <Badge variant="outline" className="font-mono text-xs font-bold text-primary">
-                {run.gsm} GSM
-              </Badge>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 bg-white p-6 sm:p-7 rounded-[26px] border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] print:hidden">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Button asChild variant="ghost" size="sm" className="h-7 text-xs px-2 text-slate-500 hover:text-slate-900 rounded-lg">
+              <Link href="/production">
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" /> Production
+              </Link>
+            </Button>
+            <span className="text-slate-300">•</span>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-mono font-bold uppercase">
+              RUN #{run.runNumber}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Machine: <strong>{run.machine.name}</strong> ({Number(run.machine.maxDeckleInch).toFixed(1)}&quot; Deckle) • Scheduled: {new Date(run.createdAt).toLocaleString("en-IN")}
-            </p>
           </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {run.runNumber}
+            </h1>
+            <Badge
+              className={`font-mono text-xs ${
+                run.status === RunStatus.RELEASED
+                  ? "bg-blue-100 text-blue-800 border-blue-300"
+                  : run.status === RunStatus.RUNNING
+                  ? "bg-amber-100 text-amber-800 border-amber-300 animate-pulse"
+                  : run.status === RunStatus.COMPLETED
+                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                  : run.status === RunStatus.CANCELLED
+                  ? "bg-red-100 text-red-800 border-red-300"
+                  : ""
+              }`}
+            >
+              {run.status}
+            </Badge>
+            <Badge variant="outline" className="font-mono text-xs font-bold text-sky-600 bg-sky-50 border-sky-200">
+              {run.gsm} GSM
+            </Badge>
+          </div>
+          <p className="text-xs text-slate-500 font-medium">
+            Machine: <strong className="text-slate-900">{run.machine.name}</strong> ({Number(run.machine.maxDeckleInch).toFixed(1)}&quot; Deckle) • Scheduled: {new Date(run.createdAt).toLocaleString("en-IN")}
+          </p>
         </div>
 
         {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           <RunCardPdfButton run={run} />
 
           {run.status === RunStatus.PLANNED && canManage && (
@@ -175,7 +179,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
               size="sm"
               disabled={isTransitioning}
               onClick={handleRelease}
-              className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold"
+              className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm gap-1.5 transition-all"
             >
               {isTransitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Release to Floor
@@ -186,11 +190,11 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
             run.status !== RunStatus.CANCELLED &&
             canManage && (
               <Button
-                variant="destructive"
+                variant="outline"
                 size="sm"
                 disabled={isTransitioning}
                 onClick={() => setCancelModalOpen(true)}
-                className="gap-1.5 text-xs"
+                className="h-10 px-4 rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold shadow-xs gap-1.5"
               >
                 <XCircle className="h-4 w-4" /> Cancel Run
               </Button>
@@ -216,67 +220,86 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
       </div>
 
       {/* Summary KPI Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 print:grid-cols-4">
-        <Card className="print:border print:shadow-none">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-              Trim Wastage
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-slate-900">{trimPct.toFixed(2)}%</div>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border mt-1 inline-block ${trimBenchmark.badgeClass}`}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 print:grid-cols-4">
+        {/* Card 1: Planned Output (Hero Dark Card) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">Planned Output</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Target</span>
+              <Factory className="h-3 w-3" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {(totalPlannedKg / 1000).toFixed(2)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              {totalPlannedKg.toLocaleString("en-IN")} kg scheduled
+            </p>
+          </div>
+        </div>
+
+        {/* Card 2: Trim Wastage */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Trim Wastage</span>
+            <div className="h-8 w-8 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center">
+              <Scissors className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {trimPct.toFixed(2)}%
+            </div>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold inline-block ${trimBenchmark.badgeClass}`}>
               {trimBenchmark.text} Trim
             </span>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="print:border print:shadow-none">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-              Planned Output
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-slate-900">
-              {(totalPlannedKg / 1000).toFixed(2)} MT
+        {/* Card 3: Actual Output */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Actual Output</span>
+            <div className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CheckCircle2 className="h-4 w-4" />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">{totalPlannedKg.toLocaleString("en-IN")} kg</p>
-          </CardContent>
-        </Card>
-
-        <Card className="print:border print:shadow-none">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-              Actual Output
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-emerald-700">
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-emerald-700 tracking-tight">
               {actualKg > 0 ? `${(actualKg / 1000).toFixed(2)} MT` : "—"}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {actualKg > 0 ? `${actualKg.toLocaleString("en-IN")} kg produced` : "Pending execution"}
+            <p className="text-[11px] text-slate-400 font-medium">
+              {actualKg > 0 ? `${actualKg.toLocaleString("en-IN")} kg produced` : "Pending floor weighing"}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="print:border print:shadow-none">
-          <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">
-              Slitter Setups
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold font-mono text-slate-900">{run.patterns.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Unique cutting patterns</p>
-          </CardContent>
-        </Card>
+        {/* Card 4: Slitter Setups */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500">Cutting Setups</span>
+            <div className="h-8 w-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
+              <Layers className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {run.patterns.length}
+            </div>
+            <p className="text-[11px] text-slate-400 font-medium">
+              Distinct knife patterns
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Cutting Pattern Bars Visualizer Section */}
-      <Card className="print:border print:shadow-none">
-        <CardHeader className="pb-3 border-b bg-slate-50/50 print:bg-white flex flex-row items-center justify-between">
+      <Card className="rounded-[26px] border border-slate-100 bg-white shadow-sm overflow-hidden print:border print:shadow-none">
+        <CardHeader className="p-5 border-b border-slate-100 bg-slate-50/50 print:bg-white flex flex-row items-center justify-between">
           <div>
             <CardTitle className="text-base font-bold flex items-center gap-2">
               <Scissors className="h-5 w-5 text-primary" />

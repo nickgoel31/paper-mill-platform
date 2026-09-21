@@ -80,11 +80,11 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
   );
 
   return (
-    <div className="space-y-6 print:space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-6 print:space-y-4 max-w-4xl mx-auto font-sans pb-10">
       {/* Action Header (Hidden in Print) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-lg border shadow-sm print:hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-5 bg-white p-6 sm:p-7 rounded-[26px] border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] print:hidden">
         <div className="flex items-center gap-3">
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm" className="h-9 px-3 rounded-xl border-slate-200">
             <Link href="/invoices">
               <ArrowLeft className="h-4 w-4 mr-1.5" /> Back to Invoices
             </Link>
@@ -110,13 +110,13 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => window.print()}
-            className="text-xs gap-1.5 shadow-sm"
+            className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
           >
             <Printer className="h-4 w-4" /> Print / Save PDF (A4)
           </Button>
@@ -124,10 +124,10 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
           {!isCancelled && isAdmin && (
             <Button
               type="button"
-              variant="destructive"
+              variant="outline"
               size="sm"
               onClick={() => setCancelModalOpen(true)}
-              className="text-xs gap-1.5 shadow-sm"
+              className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-rose-200 text-rose-600 hover:bg-rose-50"
             >
               <Ban className="h-4 w-4" /> Cancel Invoice
             </Button>
@@ -135,8 +135,8 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
         </div>
       </div>
 
-      {/* Printable Tax Invoice Document */}
-      <Card className="print:border print:shadow-none bg-white border shadow-md">
+      {/* Printable Invoice Document (A4 Container) */}
+      <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden print:border print:shadow-none">
         {/* Header Block */}
         <CardHeader className="p-6 border-b space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b pb-4">

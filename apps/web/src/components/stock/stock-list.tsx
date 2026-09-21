@@ -327,7 +327,7 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
   return (
     <div className="space-y-6 font-sans pb-10">
       {/* 1. TOP HERO BANNER */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
+      <div className="bg-white rounded-[26px] p-6 sm:p-7 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 text-sky-700 text-[11px] font-bold uppercase tracking-wide">
             INVENTORY • FINISHED GOODS & BUFFER STOCK
@@ -345,10 +345,10 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
           {isPlannerOrAdmin && (
             <Button
               asChild
-              className="h-10 px-5 rounded-xl bg-sky-400 hover:bg-sky-500 text-white font-bold text-xs gap-1.5 shadow-md shadow-sky-400/25 transition-all"
+              className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
             >
               <Link href="/stock/new">
-                <Plus className="h-4 w-4 stroke-[2.5]" /> Add Stock Item
+                <Plus className="h-4 w-4 text-[#d4f842]" /> Add Stock Item
               </Link>
             </Button>
           )}
@@ -356,82 +356,80 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
       </div>
 
       {/* 2. 4 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. AVAILABLE STOCK */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* 1. AVAILABLE STOCK (Hero Dark Card) */}
+        <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
+          <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              AVAILABLE STOCK
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-              <Boxes className="h-4 w-4" />
+            <span className="text-xs font-semibold text-slate-400">Available Stock</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#d4f842] text-black text-[11px] font-bold shadow-sm">
+              <span>Ready</span>
+              <Boxes className="h-3 w-3" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-emerald-700">
-              {(stats.totalAvailableKg / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight">
+              {(stats.totalAvailableKg / 1000).toFixed(1)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              {stats.availableCount} unallocated reels
+            <p className="text-[11px] text-slate-400 font-medium">
+              {stats.availableCount} unallocated reels ready for shipment
             </p>
           </div>
         </div>
 
         {/* 2. ALLOCATED STOCK */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              ALLOCATED STOCK
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Allocated Stock</span>
+            <div className="h-8 w-8 rounded-full bg-sky-50 text-sky-500 flex items-center justify-center">
               <Package className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {(stats.totalAllocatedKg / 1000).toFixed(1)} <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {(stats.totalAllocatedKg / 1000).toFixed(1)}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">MT</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               {stats.allocatedCount} reels assigned to orders
             </p>
           </div>
         </div>
 
         {/* 3. DISTINCT SKUS */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              DISTINCT SIZES
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Distinct Sizes</span>
+            <div className="h-8 w-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center">
               <Layers className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.distinctSkusCount} <span className="text-sm font-semibold text-slate-400 font-sans">SKUs</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {stats.distinctSkusCount}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">SKUs</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               Width & GSM combinations
             </p>
           </div>
         </div>
 
         {/* 4. OLDEST STOCK AGE */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-2.5">
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              OLDEST BATCH
-            </span>
-            <div className="h-8 w-8 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center">
+            <span className="text-xs font-semibold text-slate-500">Oldest Batch</span>
+            <div className="h-8 w-8 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
               <Clock className="h-4 w-4" />
             </div>
           </div>
-          <div>
-            <div className="text-2xl font-black font-mono text-slate-900">
-              {stats.oldestStockDays} <span className="text-sm font-semibold text-slate-400 font-sans">Days</span>
+          <div className="space-y-1 mt-3">
+            <div className="text-2xl sm:text-3xl font-black font-mono text-slate-900 tracking-tight">
+              {stats.oldestStockDays}{" "}
+              <span className="text-sm font-semibold text-slate-400 font-sans">Days</span>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
+            <p className="text-[11px] text-slate-400 font-medium">
               Max aging in warehouse
             </p>
           </div>
@@ -439,7 +437,7 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
       </div>
 
       {/* 3. MULTI-FILTERS BAR */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)]">
+      <div className="rounded-[20px] bg-white border border-slate-100 p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 shrink-0 mr-1">
             <Filter className="h-4 w-4 text-sky-500" /> Filters:
@@ -496,22 +494,20 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
       </div>
 
       {/* 4. STOCK DATA TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] overflow-hidden">
-        <DataTable
-          columns={columns}
-          data={data}
-          page={page}
-          pageSize={pageSize}
-          totalPages={totalPages}
-          totalRows={total}
-          onPageChange={setPage}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setPage(1);
-          }}
-          isLoading={isLoading}
-        />
-      </div>
+      <DataTable
+        columns={columns}
+        data={data}
+        page={page}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        totalRows={total}
+        onPageChange={setPage}
+        onPageSizeChange={(newSize) => {
+          setPageSize(newSize);
+          setPage(1);
+        }}
+        isLoading={isLoading}
+      />
 
       {/* Allocation Modal */}
       {allocateItem && (
