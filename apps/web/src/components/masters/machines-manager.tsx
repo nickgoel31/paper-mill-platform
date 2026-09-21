@@ -274,13 +274,16 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
   const onSubmit = async (values: MachineFormInput) => {
     setIsSubmitting(true);
     try {
-      if (editingMachine) {
-        await updateMachine(editingMachine.id, values);
-        toast.success(`Machine "${values.name}" updated successfully.`);
-      } else {
-        await createMachine(values);
-        toast.success(`Machine "${values.name}" created successfully.`);
+      const res = editingMachine
+        ? await updateMachine(editingMachine.id, values)
+        : await createMachine(values);
+      if (!res.success) {
+        toast.error(res.error);
+        return;
       }
+      toast.success(
+        `Machine "${values.name}" ${editingMachine ? "updated" : "created"} successfully.`
+      );
       setSheetOpen(false);
       fetchData(page, search);
     } catch (err: any) {
@@ -302,7 +305,12 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
     setIsSubmitting(true);
     setDeleteError(null);
     try {
-      await deleteMachine(deletingMachine.id);
+      const res = await deleteMachine(deletingMachine.id);
+      if (!res.success) {
+        setDeleteError(res.error);
+        toast.error(res.error);
+        return;
+      }
       toast.success(`Machine "${deletingMachine.name}" removed successfully.`);
       setDeleteDialogOpen(false);
       fetchData(page, search);

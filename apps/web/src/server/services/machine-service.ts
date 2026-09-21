@@ -9,9 +9,47 @@ import {
   parsePaginationParams,
   buildPaginatedResponse,
 } from "./base-service";
-import { machineSchema, MachineFormInput } from "@/lib/schemas/machine";
+import { machineSchema, MachineFormInput, MachineActionResult } from "@/lib/schemas/machine";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { ZodError } from "zod";
 import { LOOKUP_TAGS } from "./cache-tags";
+
+/** Turn any thrown error into a message safe and useful to show the user. */
+function friendlyError(err: unknown): string {
+  if (err instanceof ZodError) {
+    return err.issues.map((i) => i.message).join(" ");
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/unique constraint/i.test(msg)) {
+    return "A machine with this name or code already exists.";
+  }
+  return msg || "Something went wrong. Please try again.";
+}
+
+/**
+ * Deleted machines are soft-deleted (`deletedAt`), but the database's unique
+ * (mill, name) and (mill, code) constraints still see them. Rename any deleted
+ * machine that holds the name/code being claimed so the new one can use it.
+ */
+async function releaseDeletedNameAndCode(code: string, name: string, exceptId?: string) {
+  const stale = await db.machine.findMany({
+    where: {
+      deletedAt: { not: null },
+      OR: [{ code }, { name }],
+      ...(exceptId ? { NOT: { id: exceptId } } : {}),
+    },
+  });
+  for (const m of stale) {
+    const tag = m.id.slice(-6);
+    await db.machine.update({
+      where: { id: m.id },
+      data: {
+        code: m.code === code ? `${m.code}~${tag}` : m.code,
+        name: m.name === name ? `${m.name} [deleted ${tag}]` : m.name,
+      },
+    });
+  }
+}
 
 export async function getMachines(params: QueryParams) {
   const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
@@ -46,7 +84,7 @@ export async function getMachines(params: QueryParams) {
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
 }
 
-export async function createMachine(data: MachineFormInput) {
+async function createMachineImpl(data: MachineFormInput) {
   const { userId } = await requireRole(Role.ADMIN);
   const validated = machineSchema.parse(data);
 
@@ -64,6 +102,8 @@ export async function createMachine(data: MachineFormInput) {
   if (existingName && !existingName.deletedAt) {
     throw new Error(`Machine name "${validated.name}" is already in use.`);
   }
+
+  await releaseDeletedNameAndCode(validated.code.trim().toUpperCase(), validated.name.trim());
 
   const machine = await db.$transaction(async (tx) => {
     const created = await tx.machine.create({
@@ -102,7 +142,7 @@ export async function createMachine(data: MachineFormInput) {
   return machine;
 }
 
-export async function updateMachine(id: string, data: MachineFormInput) {
+async function updateMachineImpl(id: string, data: MachineFormInput) {
   const { userId } = await requireRole(Role.ADMIN);
   const validated = machineSchema.parse(data);
 
@@ -129,6 +169,8 @@ export async function updateMachine(id: string, data: MachineFormInput) {
       throw new Error(`Machine name "${validated.name}" is already in use.`);
     }
   }
+
+  await releaseDeletedNameAndCode(validated.code.trim().toUpperCase(), validated.name.trim(), id);
 
   const updated = await db.$transaction(async (tx) => {
     const res = await tx.machine.update({
@@ -168,7 +210,7 @@ export async function updateMachine(id: string, data: MachineFormInput) {
   return updated;
 }
 
-export async function deleteMachine(id: string) {
+async function deleteMachineImpl(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
   const existing = await db.machine.findFirst({
@@ -220,4 +262,36 @@ export async function deleteMachine(id: string) {
   revalidatePath("/");
   revalidateTag(LOOKUP_TAGS.machines);
   return deleted;
+}
+
+// Public actions: never throw for expected failures (see MachineActionResult).
+
+export async function createMachine(data: MachineFormInput): Promise<MachineActionResult> {
+  try {
+    await createMachineImpl(data);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: friendlyError(err) };
+  }
+}
+
+export async function updateMachine(
+  id: string,
+  data: MachineFormInput
+): Promise<MachineActionResult> {
+  try {
+    await updateMachineImpl(id, data);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: friendlyError(err) };
+  }
+}
+
+export async function deleteMachine(id: string): Promise<MachineActionResult> {
+  try {
+    await deleteMachineImpl(id);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: friendlyError(err) };
+  }
 }

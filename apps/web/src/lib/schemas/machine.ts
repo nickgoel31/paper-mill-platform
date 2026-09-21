@@ -53,3 +53,10 @@ export const machineSchema = z
   });
 
 export type MachineFormInput = z.infer<typeof machineSchema>;
+
+/**
+ * Server actions return this instead of throwing: in production Next replaces the
+ * message of any thrown error with a generic "Server Components render" text, so
+ * expected failures (validation, duplicates, "has active runs") must travel as data.
+ */
+export type MachineActionResult = { success: true } | { success: false; error: string };
