@@ -18,7 +18,10 @@ import {
   type UpdateTenantUserInput,
   type ResetTenantUserPasswordInput,
 } from "@/lib/schemas/platform";
-import { Role } from "@/generated/prisma/browser";
+import { Role, PostProductionMode } from "@/generated/prisma/browser";
+import { cookies } from "next/headers";
+import { VIEW_AS_COOKIE, createViewAsCookieValue } from "@/lib/view-as";
+import { logAudit } from "./audit-service";
 
 /**
  * Platform (TWJ Labs) management of mills and their users.
@@ -162,6 +165,77 @@ export async function setTenantActive(id: string, isActive: boolean) {
   revalidatePath("/platform");
   revalidatePath(`/platform/mills/${id}`);
   return { success: true };
+}
+
+/** How a mill routes finished reels when a production run completes. */
+export async function setTenantPostProductionMode(id: string, mode: PostProductionMode) {
+  const admin = await requirePlatform();
+  if (!Object.values(PostProductionMode).includes(mode)) {
+    throw new Error("Invalid post-production mode.");
+  }
+  const existing = await db.tenant.findFirst({ where: { id } });
+  if (!existing) throw new Error("Mill not found.");
+
+  await db.tenant.update({ where: { id }, data: { postProductionMode: mode } });
+  await logAudit({
+    userId: admin.id,
+    entityType: "Tenant",
+    entityId: id,
+    action: "UPDATE_POST_PRODUCTION_MODE",
+    before: { postProductionMode: existing.postProductionMode },
+    after: { postProductionMode: mode },
+  });
+
+  revalidatePath("/platform");
+  revalidatePath(`/platform/mills/${id}`);
+  return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// View as mill
+// ---------------------------------------------------------------------------
+
+/** Step into a mill's ERP as its admin. Sets the signed "view as mill" cookie. */
+export async function enterMill(tenantId: string) {
+  const admin = await requirePlatform();
+  const tenant = await db.tenant.findFirst({ where: { id: tenantId } });
+  if (!tenant) throw new Error("Mill not found.");
+  if (!tenant.isActive) throw new Error("This mill is disabled.");
+
+  const jar = await cookies();
+  jar.set(VIEW_AS_COOKIE, await createViewAsCookieValue(tenant.id, admin.id), {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  });
+  await logAudit({
+    userId: admin.id,
+    entityType: "Tenant",
+    entityId: tenant.id,
+    action: "VIEW_AS_MILL",
+    after: { mill: tenant.name },
+  });
+  return { success: true };
+}
+
+export async function exitMill() {
+  await requirePlatform();
+  const jar = await cookies();
+  jar.delete(VIEW_AS_COOKIE);
+  return { success: true };
+}
+
+/** Active mills for the "view as mill" switcher. */
+export async function listMillsForSwitcher() {
+  await requirePlatform();
+  const tenants = await db.tenant.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, code: true, postProductionMode: true },
+    orderBy: { name: "asc" },
+  });
+  return tenants;
 }
 
 // ---------------------------------------------------------------------------

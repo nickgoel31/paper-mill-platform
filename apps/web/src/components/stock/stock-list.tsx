@@ -29,6 +29,8 @@ import {
   getStockItems,
   getStockSummaryStats,
   deallocateStock,
+  allocateStockToOrderItem,
+  allocateStockToOriginOrders,
 } from "@/server/services/stock-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
 import { StockAllocationModal } from "./stock-allocation-modal";
@@ -62,6 +64,12 @@ interface StockItemRow {
     id: string;
     runNumber: string;
     machine: { name: string; code: string };
+  } | null;
+  /** The order this reel was cut for (set when it was stored to inventory instead of allocated). */
+  originOrder?: {
+    orderItemId: string;
+    orderNumber: string;
+    clientName: string;
   } | null;
   orderItem?: {
     id: string;
@@ -156,6 +164,38 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
     }
   };
 
+  const handleMatchToOrigin = async (item: StockItemRow) => {
+    if (!item.originOrder) return;
+    try {
+      await allocateStockToOrderItem(item.id, item.originOrder.orderItemId);
+      toast.success(`Reel allocated to ${item.originOrder.orderNumber}.`);
+      fetchFilteredStock();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to allocate stock");
+    }
+  };
+
+  const [isMatchingAll, setIsMatchingAll] = React.useState(false);
+  const handleMatchAll = async () => {
+    setIsMatchingAll(true);
+    try {
+      const { allocated, skipped } = await allocateStockToOriginOrders();
+      if (allocated === 0 && skipped === 0) {
+        toast.info("No inventory reels are waiting for their original order.");
+      } else {
+        toast.success(
+          `Allocated ${allocated} reel${allocated === 1 ? "" : "s"} to their orders` +
+            (skipped ? ` (${skipped} skipped — order no longer eligible).` : ".")
+        );
+      }
+      fetchFilteredStock();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to match reels");
+    } finally {
+      setIsMatchingAll(false);
+    }
+  };
+
   const clearAllFilters = () => {
     setStatusFilter("ALL");
     setGsmFilter("ALL");
@@ -243,6 +283,19 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
       header: "Allocation Demand",
       cell: ({ row }) => {
         const oi = row.original.orderItem;
+        const origin = row.original.originOrder;
+        if (!oi && origin && row.original.status === StockStatus.AVAILABLE) {
+          return (
+            <div>
+              <div className="font-mono font-bold text-amber-600 text-xs">
+                Cut for {origin.orderNumber}
+              </div>
+              <div className="text-[11px] text-slate-400">
+                {origin.clientName} · awaiting match
+              </div>
+            </div>
+          );
+        }
         if (!oi) return <span className="text-slate-400 text-xs italic">Unallocated Buffer</span>;
         return (
           <div>
@@ -293,6 +346,14 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
               <DropdownMenuLabel className="text-xs font-bold font-mono">
                 Stock Item
               </DropdownMenuLabel>
+              {isAvailable && isPlannerOrAdmin && item.originOrder && (
+                <DropdownMenuItem
+                  className="text-xs gap-2 text-emerald-700 font-semibold"
+                  onClick={() => handleMatchToOrigin(item)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Allocate to {item.originOrder.orderNumber}
+                </DropdownMenuItem>
+              )}
               {isAvailable && isPlannerOrAdmin && (
                 <DropdownMenuItem
                   className="text-xs gap-2 text-sky-600 font-semibold"
@@ -342,6 +403,18 @@ export function StockList({ initialData, initialStats, userRole }: StockListProp
         </div>
 
         <div className="flex items-center gap-2.5">
+          {isPlannerOrAdmin && stats.availableCount > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isMatchingAll}
+              onClick={handleMatchAll}
+              className="h-10 px-5 rounded-full font-bold text-xs gap-1.5"
+            >
+              <Link2 className="h-4 w-4" />
+              {isMatchingAll ? "Matching..." : "Match reels to their orders"}
+            </Button>
+          )}
           {isPlannerOrAdmin && (
             <Button
               asChild

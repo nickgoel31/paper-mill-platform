@@ -20,8 +20,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+type Destination = "AUTO_DISPATCH" | "INVENTORY";
+
 interface CompleteRunScreenProps {
   run: any;
+  /** The mill's default routing for finished reels. */
+  defaultDestination?: Destination;
 }
 
 const WASTAGE_REASONS = [
@@ -31,8 +35,13 @@ const WASTAGE_REASONS = [
   { id: "OTHER", label: "Setup / Roll Tail" },
 ];
 
-export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
+export function CompleteRunScreen({
+  run,
+  defaultDestination = "AUTO_DISPATCH",
+}: CompleteRunScreenProps) {
   const router = useRouter();
+  const [destination, setDestination] = React.useState<Destination>(defaultDestination);
+  const toInventory = destination === "INVENTORY";
 
   // Theoretical calculated total planned weight and trim waste
   const totalPlannedKg = Number(run.totalPlannedKg) || 0;
@@ -69,6 +78,7 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
         actualKg: actualTotalKg,
         trimWasteKg: trimWasteKg,
         wastageReason: selectedReason,
+        destination,
         actionId,
       });
 
@@ -140,11 +150,15 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
           <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 grid grid-cols-2 gap-4 text-center font-mono">
             <div>
               <span className="text-xs text-slate-500 font-sans uppercase">CUSTOMER ORDERS</span>
-              <div className="text-xl font-bold text-white">Updated to Produced</div>
+              <div className="text-xl font-bold text-white">
+                {toInventory ? "Awaiting allocation" : "Updated to Produced"}
+              </div>
             </div>
             <div>
               <span className="text-xs text-slate-500 font-sans uppercase">FINISHED REELS</span>
-              <div className="text-xl font-bold text-amber-400">Allocated to Bays</div>
+              <div className="text-xl font-bold text-amber-400">
+                {toInventory ? "Stored in Inventory" : "Allocated to Bays"}
+              </div>
             </div>
           </div>
 
@@ -253,6 +267,46 @@ export function CompleteRunScreen({ run }: CompleteRunScreenProps) {
                 }`}
               >
                 {r.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Where do the finished reels go? Defaults to the mill setting. */}
+      <div className="p-6 rounded-3xl bg-slate-950 border-2 border-slate-800 space-y-3">
+        <label className="text-sm font-bold uppercase tracking-wider text-slate-400">
+          WHERE DO THE FINISHED REELS GO?
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {(
+            [
+              {
+                id: "AUTO_DISPATCH",
+                label: "Allocate to Orders",
+                hint: "Reels go straight to their sales orders, ready for dispatch.",
+              },
+              {
+                id: "INVENTORY",
+                label: "Store in Inventory",
+                hint: "Reels are stored; match them to orders later from Stock.",
+              },
+            ] as { id: Destination; label: string; hint: string }[]
+          ).map((d) => {
+            const isSelected = destination === d.id;
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDestination(d.id)}
+                className={`p-4 rounded-2xl border-2 text-left transition-all select-none ${
+                  isSelected
+                    ? "bg-emerald-400/10 border-emerald-400 text-emerald-300 ring-2 ring-emerald-400/20"
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700"
+                }`}
+              >
+                <div className="font-bold text-base">{d.label}</div>
+                <div className="text-xs font-normal mt-1 opacity-80">{d.hint}</div>
               </button>
             );
           })}

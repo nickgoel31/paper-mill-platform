@@ -65,6 +65,11 @@ enum StockStatus {
   DISPATCHED
 }
 
+enum PostProductionMode {
+  AUTO_DISPATCH
+  INVENTORY
+}
+
 enum InvoiceStatus {
   DRAFT
   ISSUED
@@ -98,6 +103,7 @@ model Tenant {
   phone     String?
   email     String?
   isActive  Boolean  @default(true)
+  postProductionMode PostProductionMode @default(AUTO_DISPATCH)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -453,6 +459,7 @@ model StockItem {
   tenantId        String?
   orderItemId     String?
   productionRunId String?
+  originOrderItemId String?
   widthInch       Decimal
   gsm             Int
   quantityKg      Decimal
@@ -469,6 +476,7 @@ model StockItem {
   @@index([status])
   @@index([gsm, widthInch])
   @@index([orderItemId])
+  @@index([originOrderItemId])
   @@index([productionRunId])
 }
 

@@ -1,6 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
 import { authConfig } from "@/lib/auth.config";
+import { VIEW_AS_COOKIE, verifyViewAsCookie } from "@/lib/view-as";
 
 const { auth } = NextAuth(authConfig);
 
@@ -11,7 +12,7 @@ const { auth } = NextAuth(authConfig);
  *  - injecting the request-scoped tenant headers the Prisma isolation layer reads
  *    (`x-tenant-id`, `x-user-id`, `x-is-platform`)
  */
-export default auth((req) => {
+export default auth(async (req) => {
   const { nextUrl } = req;
   const p = nextUrl.pathname;
   const session = req.auth;
@@ -47,10 +48,25 @@ export default auth((req) => {
   }
 
   const isPlatform = user!.isPlatform === true;
-  const tenantId = user!.tenantId ?? null;
+  let tenantId = user!.tenantId ?? null;
   const onPlatform = p === "/platform" || p.startsWith("/platform/");
 
-  if (isPlatform && !onPlatform && !p.startsWith("/api/")) {
+  // Platform staff can step into a mill ("view as mill"). The mill comes from a
+  // signed cookie bound to this user; on mill routes the request then runs as a
+  // normal mill-scoped request, on /platform routes it stays platform-scoped.
+  let viewingMill = false;
+  if (isPlatform && !onPlatform) {
+    const viewTenant = await verifyViewAsCookie(
+      req.cookies.get(VIEW_AS_COOKIE)?.value,
+      String(user!.id ?? "")
+    );
+    if (viewTenant) {
+      tenantId = viewTenant;
+      viewingMill = true;
+    }
+  }
+
+  if (isPlatform && !onPlatform && !viewingMill && !p.startsWith("/api/")) {
     return NextResponse.redirect(new URL("/platform", nextUrl));
   }
   if (!isPlatform && onPlatform) {
@@ -59,7 +75,7 @@ export default auth((req) => {
 
   const headers = new Headers(req.headers);
   headers.set("x-user-id", String(user!.id ?? ""));
-  headers.set("x-is-platform", isPlatform ? "1" : "0");
+  headers.set("x-is-platform", isPlatform && !viewingMill ? "1" : "0");
   if (tenantId) headers.set("x-tenant-id", tenantId);
   else headers.delete("x-tenant-id");
 

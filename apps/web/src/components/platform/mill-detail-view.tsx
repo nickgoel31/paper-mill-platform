@@ -7,11 +7,13 @@ import { toast } from "sonner";
 import {
   updateTenant,
   setTenantActive,
+  setTenantPostProductionMode,
   createTenantUser,
   updateTenantUser,
   resetTenantUserPassword,
 } from "@/server/services/platform-service";
-import { Role } from "@/generated/prisma/browser";
+import { Role, PostProductionMode } from "@/generated/prisma/browser";
+import { EnterMillButton } from "@/components/platform/enter-mill-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -43,7 +45,21 @@ type Tenant = {
   phone: string | null;
   email: string | null;
   isActive: boolean;
+  postProductionMode: PostProductionMode;
 };
+
+const MODE_OPTIONS: { value: PostProductionMode; label: string; hint: string }[] = [
+  {
+    value: PostProductionMode.AUTO_DISPATCH,
+    label: "Auto-allocate to orders",
+    hint: "When a run completes, reels are allocated to their sales orders and are ready for dispatch.",
+  },
+  {
+    value: PostProductionMode.INVENTORY,
+    label: "Store in inventory",
+    hint: "Reels are stored as available stock. Staff match them to sales orders manually before dispatch.",
+  },
+];
 type MillUser = {
   id: string;
   name: string;
@@ -151,20 +167,59 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
             </span>
           )}
         </div>
-        <Button
-          variant={tenant.isActive ? "outline" : "default"}
-          disabled={busy}
-          className="rounded-xl"
-          onClick={() =>
-            run(
-              () => setTenantActive(tenant.id, !tenant.isActive),
-              tenant.isActive ? "Mill disabled." : "Mill enabled."
-            )
-          }
-        >
-          {tenant.isActive ? "Disable mill" : "Enable mill"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <EnterMillButton tenantId={tenant.id} disabled={!tenant.isActive} size="default" />
+          <Button
+            variant={tenant.isActive ? "outline" : "default"}
+            disabled={busy}
+            className="rounded-xl"
+            onClick={() =>
+              run(
+                () => setTenantActive(tenant.id, !tenant.isActive),
+                tenant.isActive ? "Mill disabled." : "Mill enabled."
+              )
+            }
+          >
+            {tenant.isActive ? "Disable mill" : "Enable mill"}
+          </Button>
+        </div>
       </div>
+
+      <section className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-900">After production</h2>
+          <p className="text-xs text-slate-500">
+            What happens to finished reels when a production run is completed. Operators can still
+            override this per run. Changing it only affects runs completed from now on.
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {MODE_OPTIONS.map((opt) => {
+            const selected = tenant.postProductionMode === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                disabled={busy || selected}
+                onClick={() =>
+                  run(
+                    () => setTenantPostProductionMode(tenant.id, opt.value),
+                    `Mode set to "${opt.label}".`
+                  )
+                }
+                className={`text-left p-4 rounded-xl border-2 transition-colors ${
+                  selected
+                    ? "border-emerald-500 bg-emerald-50"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                }`}
+              >
+                <div className="text-sm font-bold text-slate-900">{opt.label}</div>
+                <div className="text-xs text-slate-500 mt-1">{opt.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <form onSubmit={onSaveMill} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
         <h2 className="text-sm font-bold text-slate-900">Mill details</h2>

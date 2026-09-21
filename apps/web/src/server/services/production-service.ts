@@ -2,8 +2,16 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, RunStatus, OrderStatus, StockStatus, Prisma } from "@/generated/prisma/browser";
+import {
+  Role,
+  RunStatus,
+  OrderStatus,
+  StockStatus,
+  PostProductionMode,
+  Prisma,
+} from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
+import { getPostProductionMode } from "./tenant-mode-service";
 import {
   QueryParams,
   parsePaginationParams,
@@ -382,8 +390,12 @@ export async function completeProductionRun(input: {
   trimWasteKg: number;
   wastageReason?: string;
   actionId?: string;
+  /** Where finished reels go. Defaults to the mill's `postProductionMode`. */
+  destination?: PostProductionMode;
 }) {
-  const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
+  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.OPERATOR);
+  const destination = input.destination ?? (await getPostProductionMode(tenantId));
+  const toInventory = destination === PostProductionMode.INVENTORY;
 
   const run = await db.productionRun.findFirst({
     where: { id: input.runId },
@@ -468,7 +480,13 @@ export async function completeProductionRun(input: {
         const widthM = Number(cut.widthInch) * 0.0254;
         const cutWeightKg = widthM * lengthM * (run.gsm / 1000.0) * cut.count;
 
-        if (item) {
+        // AUTO_DISPATCH: the reel is allocated to its order item right away.
+        // INVENTORY: the reel is stored AVAILABLE and matched to an order later
+        // (see allocateStockToOrderItem); `originOrderItemId` remembers what it
+        // was cut for so the UI can suggest that match.
+        const allocateNow = !!item && !toInventory;
+
+        if (item && allocateNow) {
           const prev = producedPerItem.get(item.id) || 0;
           producedPerItem.set(item.id, prev + cutWeightKg);
         }
@@ -482,9 +500,10 @@ export async function completeProductionRun(input: {
             widthInch: cut.widthInch,
             gsm: run.gsm,
             quantityKg: new Prisma.Decimal(cutWeightKg.toFixed(3)),
-            status: item ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
+            status: allocateNow ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
             location: `BAY-${run.machine.code}-01`,
-            orderItemId: item ? item.id : null,
+            orderItemId: allocateNow ? item!.id : null,
+            originOrderItemId: item ? item.id : null,
             productionRunId: input.runId,
           },
         });

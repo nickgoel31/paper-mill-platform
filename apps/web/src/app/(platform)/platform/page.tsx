@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listTenants } from "@/server/services/platform-service";
 import { Button } from "@/components/ui/button";
+import { EnterMillButton } from "@/components/platform/enter-mill-button";
 import {
   Table,
   TableBody,
@@ -71,9 +72,12 @@ export default async function PlatformHomePage() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Link href={`/platform/mills/${t.id}`} className="text-slate-400 hover:text-slate-700">
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
+                  <div className="flex items-center justify-end gap-2">
+                    <EnterMillButton tenantId={t.id} disabled={!t.isActive} />
+                    <Link href={`/platform/mills/${t.id}`} className="text-slate-400 hover:text-slate-700">
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

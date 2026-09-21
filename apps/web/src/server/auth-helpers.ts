@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { Role } from "@/generated/prisma/browser";
 import { isPlatformEmail } from "@/lib/platform";
+import { headers } from "next/headers";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized: You must be logged in.") {
@@ -23,15 +24,17 @@ type SessionUser = {
   role: Role;
   tenantId: string | null;
   isPlatform: boolean;
+  /** True when platform staff are acting inside a mill via "view as mill". */
+  viewingAs?: boolean;
 };
 
-async function requireSessionUser(): Promise<SessionUser> {
+async function requireSessionUser(opts?: { ignoreViewAs?: boolean }): Promise<SessionUser> {
   const session = await auth();
   if (!session || !session.user) {
     throw new UnauthorizedError();
   }
   const u = session.user as any;
-  return {
+  const user: SessionUser = {
     id: u.id as string,
     name: u.name,
     email: u.email,
@@ -39,6 +42,23 @@ async function requireSessionUser(): Promise<SessionUser> {
     tenantId: (u.tenantId ?? null) as string | null,
     isPlatform: u.isPlatform === true || isPlatformEmail(u.email),
   };
+
+  // "View as mill": middleware verified the signed cookie and turned this into a
+  // mill-scoped request (x-is-platform: 0 + x-tenant-id). Platform staff then act
+  // as that mill's admin. Client-sent copies of these headers are overwritten by
+  // middleware, so they can be trusted here.
+  if (user.isPlatform && !opts?.ignoreViewAs) {
+    try {
+      const h = await headers();
+      const viewTenant = h.get("x-tenant-id");
+      if (h.get("x-is-platform") === "0" && viewTenant) {
+        return { ...user, role: Role.ADMIN, tenantId: viewTenant, isPlatform: false, viewingAs: true };
+      }
+    } catch {
+      // no request context
+    }
+  }
+  return user;
 }
 
 /**
@@ -74,11 +94,22 @@ export async function requireTenantId(): Promise<string> {
 
 /** Ensure the request is from TWJ-Labs platform staff. */
 export async function requirePlatform(): Promise<SessionUser> {
-  const user = await requireSessionUser();
+  // Ignore "view as mill": the real account is what must be platform staff, so
+  // the switcher / exit actions keep working from inside a mill.
+  const user = await requireSessionUser({ ignoreViewAs: true });
   if (!user.isPlatform) {
     throw new ForbiddenError("Platform staff only.");
   }
   return user;
+}
+
+/** The acting user, with "view as mill" applied. Null when anonymous. */
+export async function getEffectiveUser(): Promise<SessionUser | null> {
+  try {
+    return await requireSessionUser();
+  } catch {
+    return null;
+  }
 }
 
 /** Server helper to get the current session user or null. */

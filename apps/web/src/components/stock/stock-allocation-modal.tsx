@@ -35,6 +35,8 @@ interface StockAllocationModalProps {
     gsm: number;
     quantityKg: number;
     location?: string | null;
+    /** Order this reel was cut for; preselected when still eligible. */
+    originOrder?: { orderItemId: string } | null;
   } | null;
   onSuccess: () => void;
 }
@@ -58,7 +60,10 @@ export function StockAllocationModal({
         .then((items) => {
           setEligibleItems(items);
           if (items.length > 0) {
-            setSelectedOrderItemId(items[0].id);
+            const origin = stockItem.originOrder?.orderItemId;
+            setSelectedOrderItemId(
+              origin && items.some((it) => it.id === origin) ? origin : items[0].id
+            );
           }
         })
         .catch((err) => {

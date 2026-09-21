@@ -91,7 +91,38 @@ export async function getStockItems(params: StockQueryParams) {
     }),
   ]);
 
-  return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
+  // `originOrderItemId` is a plain column (no relation), so resolve the order
+  // each reel was cut for in one extra query.
+  const originIds = Array.from(
+    new Set(rows.map((r) => r.originOrderItemId).filter((v): v is string => !!v))
+  );
+  const origins = originIds.length
+    ? await db.orderItem.findMany({
+        where: { id: { in: originIds } },
+        select: {
+          id: true,
+          order: {
+            select: { orderNumber: true, client: { select: { name: true } } },
+          },
+        },
+      })
+    : [];
+  const originById = new Map(origins.map((o) => [o.id, o]));
+  const withOrigin = rows.map((r) => {
+    const o = r.originOrderItemId ? originById.get(r.originOrderItemId) : undefined;
+    return {
+      ...r,
+      originOrder: o
+        ? {
+            orderItemId: o.id,
+            orderNumber: o.order.orderNumber,
+            clientName: o.order.client.name,
+          }
+        : null,
+    };
+  });
+
+  return buildPaginatedResponse(withOrigin, total, Math.floor(skip / take) + 1, take);
 }
 
 export async function getStockSummaryStats() {
@@ -383,10 +414,9 @@ export async function allocateStockToOrderItem(
       const demand = Number(it.quantityKg);
       const tol = Number(it.tolerancePercent || 5.0);
       const minAcceptable = demand * (1.0 - tol / 100.0);
-      const prod =
-        it.id === orderItemId
-          ? Number(it.producedKg) + stockKg
-          : Number(it.producedKg || 0);
+      // producedKg already includes this reel: the increment above has been
+      // applied by the time this query runs, so don't add stockKg again.
+      const prod = Number(it.producedKg || 0);
       return prod >= minAcceptable;
     });
 
@@ -425,6 +455,56 @@ export async function allocateStockToOrderItem(
   revalidatePath("/orders");
   revalidatePath(`/orders/${orderItem.orderId}`);
   return result;
+}
+
+/**
+ * Inventory-mode helper: allocate AVAILABLE reels back to the order item they were
+ * cut for. With no ids, tries every AVAILABLE reel that has an origin order item.
+ * Reels whose order is no longer eligible (cancelled, dispatched) are skipped.
+ */
+export async function allocateStockToOriginOrders(stockItemIds?: string[]) {
+  await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
+
+  const reels = await db.stockItem.findMany({
+    where: {
+      status: StockStatus.AVAILABLE,
+      originOrderItemId: { not: null },
+      ...(stockItemIds?.length ? { id: { in: stockItemIds } } : {}),
+    },
+    select: { id: true, originOrderItemId: true },
+  });
+
+  const eligible = new Set(
+    (
+      await db.orderItem.findMany({
+        where: {
+          id: { in: reels.map((r) => r.originOrderItemId!) },
+          order: {
+            status: {
+              in: [OrderStatus.CONFIRMED, OrderStatus.PLANNED, OrderStatus.IN_PRODUCTION],
+            },
+          },
+        },
+        select: { id: true },
+      })
+    ).map((i) => i.id)
+  );
+
+  let allocated = 0;
+  let skipped = 0;
+  for (const reel of reels) {
+    if (!eligible.has(reel.originOrderItemId!)) {
+      skipped++;
+      continue;
+    }
+    try {
+      await allocateStockToOrderItem(reel.id, reel.originOrderItemId!);
+      allocated++;
+    } catch {
+      skipped++;
+    }
+  }
+  return { allocated, skipped };
 }
 
 export async function deallocateStock(stockItemId: string, reason?: string) {
