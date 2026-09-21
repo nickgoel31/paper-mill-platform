@@ -20,7 +20,12 @@ export interface TenantContext {
   userId?: string;
 }
 
-const tenantALS = new AsyncLocalStorage<TenantContext>();
+// Pinned on globalThis so every bundled copy of this module shares ONE store.
+// When the bundler ends up with the route and the Prisma layer holding separate
+// copies of a module-level store, `runWithTenantContext` in one is invisible to
+// `resolveTenantContext` in the other and every query fails with "No tenant context".
+const g = globalThis as { __tenantALS?: AsyncLocalStorage<TenantContext> };
+const tenantALS = (g.__tenantALS ??= new AsyncLocalStorage<TenantContext>());
 
 export function runWithTenantContext<T>(ctx: TenantContext, fn: () => T): T {
   return tenantALS.run(ctx, fn);

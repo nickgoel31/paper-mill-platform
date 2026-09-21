@@ -27,11 +27,23 @@ export default auth(async (req) => {
     p.startsWith("/static") ||
     p.startsWith("/images") ||
     p === "/manifest.json";
-  if (isPublic) return NextResponse.next();
-
   const user = session?.user as
     | { id?: string; isPlatform?: boolean; tenantId?: string | null }
     | undefined;
+
+  if (isPublic) {
+    // The AI agent route stays public (it answers 401 itself), but for a logged-in
+    // mill user still attach the tenant headers so the isolation layer has a scope
+    // even if the route's AsyncLocalStorage context is lost mid-request.
+    if (p.startsWith("/api/ai-agent") && user && user.isPlatform !== true && user.tenantId) {
+      const h = new Headers(req.headers);
+      h.set("x-user-id", String(user.id ?? ""));
+      h.set("x-is-platform", "0");
+      h.set("x-tenant-id", user.tenantId);
+      return NextResponse.next({ request: { headers: h } });
+    }
+    return NextResponse.next();
+  }
   const loggedIn = !!user;
 
   if (p === "/login") {
