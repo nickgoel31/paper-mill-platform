@@ -15,6 +15,7 @@ import {
   LucideIcon,
   TrendingDown,
   BarChart3,
+  ScrollText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -194,6 +195,13 @@ export const navConfig: NavItem[] = [
     title: "Settings",
     href: "/settings",
     icon: Settings,
+    section: "settings",
+    allowedRoles: [Role.ADMIN],
+  },
+  {
+    title: "Activity Log",
+    href: "/logs",
+    icon: ScrollText,
     section: "settings",
     allowedRoles: [Role.ADMIN],
   },
