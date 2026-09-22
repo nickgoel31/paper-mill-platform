@@ -39,6 +39,8 @@ export interface SolverItemInput {
   tolerance_percent: number;
   priority: "URGENT" | "NORMAL" | "STOCK";
   delivery_date?: string | null;
+  /** When the sales order was booked — drives FIFO run sequencing among same-priority patterns. */
+  order_date?: string | null;
 }
 
 export interface SolverOptions {
@@ -758,6 +760,10 @@ function attemptRun(
     }
   }
 
+  // Run sequence: URGENT-containing patterns always first, irrespective of
+  // order date. Within the same priority tier, FIFO by whichever order was
+  // booked earliest among the pattern's cuts (order_date) — falling back to
+  // delivery_date for older payloads that don't send order_date yet.
   const priorityOf = new Map(group.map((g) => [g.order_item_id, g]));
   const rank = (p: PatternResult) => {
     let urgent = 0;
@@ -765,7 +771,8 @@ function attemptRun(
     for (const c of p.cuts) {
       const it = priorityOf.get(c.order_item_id);
       if (it?.priority === "URGENT") urgent = 1;
-      const t = it?.delivery_date ? Date.parse(it.delivery_date) : NaN;
+      const dateStr = it?.order_date || it?.delivery_date;
+      const t = dateStr ? Date.parse(dateStr) : NaN;
       if (!Number.isNaN(t) && t < earliest) earliest = t;
     }
     return { urgent, earliest };

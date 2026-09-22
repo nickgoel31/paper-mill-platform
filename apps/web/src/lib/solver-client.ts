@@ -75,6 +75,7 @@ export interface SolverItemInput {
   tolerance_percent: number;
   priority: "URGENT" | "NORMAL" | "STOCK";
   delivery_date?: string | null;
+  order_date?: string | null;
 }
 
 export interface SolverOptionsInput {

@@ -76,6 +76,7 @@ interface DemandItem {
   tolerancePercent: number;
   producedKg: number;
   deliveryDate: Date | string | null;
+  orderDate: Date | string | null;
   priority: OrderPriority;
 }
 
@@ -274,6 +275,7 @@ export function DecklePlanningWorkspace({
         tolerance_percent: it.tolerancePercent,
         priority: it.priority,
         delivery_date: it.deliveryDate ? new Date(it.deliveryDate).toISOString().split("T")[0] : null,
+        order_date: it.orderDate ? new Date(it.orderDate).toISOString().split("T")[0] : null,
       })),
       options: {
         objective,

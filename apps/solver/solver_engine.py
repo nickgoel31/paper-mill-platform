@@ -445,10 +445,20 @@ def solve_production_run(
             )
             seq += 1
 
-    active_patterns.sort(
-        key=lambda p: any(item_lookup[c.order_item_id].priority == ItemPriority.URGENT for c in p.cuts),
-        reverse=True,
-    )
+    # Run sequence: URGENT-containing patterns first (irrespective of order
+    # date), then everything else in FIFO order by the oldest order date
+    # among each pattern's cuts (undated items sort last within their tier).
+    def _pattern_sort_key(p: PatternModel):
+        has_urgent = any(item_lookup[c.order_item_id].priority == ItemPriority.URGENT for c in p.cuts)
+        order_dates = [
+            item_lookup[c.order_item_id].order_date
+            for c in p.cuts
+            if item_lookup[c.order_item_id].order_date
+        ]
+        earliest_date = min(order_dates) if order_dates else "9999-99-99"
+        return (0 if has_urgent else 1, earliest_date)
+
+    active_patterns.sort(key=_pattern_sort_key)
     for idx, p in enumerate(active_patterns):
         p.sequence = idx + 1
 

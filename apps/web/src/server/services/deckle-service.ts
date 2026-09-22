@@ -106,6 +106,7 @@ export async function getPendingDemandItems() {
         select: {
           id: true,
           orderNumber: true,
+          orderDate: true,
           deliveryDate: true,
           priority: true,
           status: true,
@@ -135,6 +136,7 @@ export async function getPendingDemandItems() {
     tolerancePercent: Number(it.tolerancePercent),
     producedKg: Number(it.producedKg || 0),
     deliveryDate: it.order.deliveryDate,
+    orderDate: it.order.orderDate,
     priority: it.order.priority,
   }));
 }

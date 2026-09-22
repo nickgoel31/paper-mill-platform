@@ -37,6 +37,7 @@ class OrderItemModel(BaseModel):
     tolerance_percent: float = Field(ge=0, le=50, default=5.0)
     priority: ItemPriority = Field(default=ItemPriority.NORMAL)
     delivery_date: Optional[str] = None
+    order_date: Optional[str] = None
 
 class SolverOptions(BaseModel):
     objective: SolverObjective = Field(default=SolverObjective.MIN_TRIM)
