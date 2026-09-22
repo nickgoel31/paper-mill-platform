@@ -3,8 +3,9 @@
 import * as React from "react";
 import Image from "next/image";
 import { Role } from "@/generated/prisma/browser";
-import { Search, Bell, UserCircle2 } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import { MobileSidebarDrawer } from "@/components/layout/mobile-nav/mobile-sidebar-drawer";
+import { useAiSidebar } from "@/components/ai/ai-sidebar-context";
 
 interface TopbarProps {
   userName: string;
@@ -14,6 +15,7 @@ interface TopbarProps {
 
 export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
   const [search, setSearch] = React.useState("");
+  const { setOpen: setAiOpen } = useAiSidebar();
 
   // Extract first name (e.g. "Josie", "Ramesh", "Nick")
   const firstName = userName ? userName.split(" ")[0] : "Josie";
@@ -53,25 +55,23 @@ export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
             </div>
           </div>
 
-          {/* Bell Notification Button */}
+          {/* PaperMill AI Launcher */}
           <button
             type="button"
-            className="h-11 w-11 rounded-2xl bg-slate-100/70 hover:bg-slate-200/60 border border-transparent flex items-center justify-center text-slate-600 transition-colors relative"
-            aria-label="Notifications"
+            onClick={() => setAiOpen(true)}
+            className="group relative h-11 shrink-0 flex items-center gap-1.5 px-4 sm:px-5 rounded-2xl text-white text-xs sm:text-sm font-bold tracking-tight overflow-hidden transition-transform active:scale-95"
+            style={{
+              background:
+                "radial-gradient(120% 150% at 30% 20%, #a78bfa 0%, #7c3aed 45%, #5b21b6 100%)",
+              boxShadow: "0 4px 16px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
+            }}
+            aria-label="Open PaperMill AI"
+            title="Ask PaperMill AI"
           >
-            <Bell className="w-4 h-4 stroke-[2]" />
+            <span className="hidden sm:inline">PaperMill AI</span>
+            <span className="sm:hidden">AI</span>
+            <Sparkles className="w-4 h-4 shrink-0 transition-transform group-hover:rotate-12 duration-300" />
           </button>
-
-          {/* User Profile Icon */}
-          <div className="relative shrink-0">
-            <div
-              className="h-11 w-11 rounded-2xl bg-slate-100/70 border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-500"
-              aria-label={userName}
-              title={userName}
-            >
-              <UserCircle2 className="w-6 h-6 stroke-[1.5]" />
-            </div>
-          </div>
         </div>
       </div>
     </header>

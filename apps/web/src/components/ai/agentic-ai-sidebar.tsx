@@ -25,6 +25,7 @@ import {
   AgentProductionRunsCard,
   AgentCardBoundary,
 } from "@/components/ai/agent-data-cards";
+import { useAiSidebar } from "@/components/ai/ai-sidebar-context";
 
 interface AttachedFile {
   name: string;
@@ -44,7 +45,7 @@ interface ChatMessage {
 }
 
 // PaperMill AI mark — 4-pointed spark on the app's gradient
-function PaperMillAiIcon({ className = "w-5 h-5" }: { className?: string }) {
+export function PaperMillAiIcon({ className = "w-5 h-5" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none">
       <defs>
@@ -115,7 +116,7 @@ const HEADLINE_ROTATIONS = [
 ];
 
 export function AgenticAiSidebar() {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const { open: isOpen, setOpen: setIsOpen } = useAiSidebar();
   const [isExpanded, setIsExpanded] = React.useState(false);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = React.useState("");
@@ -273,23 +274,6 @@ export function AgenticAiSidebar() {
 
   return (
     <>
-      {/* ------------------------------------------------------------------- */}
-      {/* 1. FLOATING LAUNCHER BUTTON (Bottom-Right Corner)            */}
-      {/* ------------------------------------------------------------------- */}
-      {!isOpen && (
-        <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-50">
-          <button
-            type="button"
-            onClick={() => setIsOpen(true)}
-            className="group flex items-center gap-2.5 h-12 sm:h-13 px-5 rounded-full bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 shadow-[0_4px_20px_rgba(0,0,0,0.08)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.12)] transition-all duration-200 cursor-pointer active:scale-95"
-            aria-label="Open PaperMill AI"
-          >
-            <PaperMillAiIcon className="w-5 h-5 transition-transform group-hover:rotate-12 duration-300" />
-            <span className="text-sm font-medium tracking-tight text-slate-900">Ask PaperMill AI</span>
-          </button>
-        </div>
-      )}
-
       {/* ------------------------------------------------------------------- */}
       {/* 2. BACKDROP OVERLAY (Mobile)                                        */}
       {/* ------------------------------------------------------------------- */}

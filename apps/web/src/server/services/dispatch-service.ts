@@ -206,6 +206,15 @@ export interface ConfirmDispatchInput {
   dispatchedAt?: string;
   remarks?: string;
   loadedQuantities: Record<string, number>; // orderItemId -> loadedKg
+  // Export/logistics document fields.
+  consigneeName?: string;
+  consigneeAddress?: string;
+  voucherNumber?: string;
+  termsOfPayment?: string;
+  termsOfDelivery?: string;
+  dispatchThrough?: string;
+  destination?: string;
+  vesselFlightNo?: string;
 }
 
 export async function confirmDispatch(input: ConfirmDispatchInput) {
@@ -294,6 +303,14 @@ export async function confirmDispatch(input: ConfirmDispatchInput) {
         dispatchedAt: dispatchTime,
         totalDispatchedKg: new Prisma.Decimal(totalLoadedKg.toFixed(3)),
         remarks: input.remarks || null,
+        consigneeName: input.consigneeName || null,
+        consigneeAddress: input.consigneeAddress || null,
+        voucherNumber: input.voucherNumber || null,
+        termsOfPayment: input.termsOfPayment || null,
+        termsOfDelivery: input.termsOfDelivery || null,
+        dispatchThrough: input.dispatchThrough || null,
+        destination: input.destination || null,
+        vesselFlightNo: input.vesselFlightNo || null,
         createdById: userId,
       },
     });
@@ -382,10 +399,11 @@ export interface DispatchHistoryQueryParams extends QueryParams {
   dateTo?: string;
 }
 
-export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
-  const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
-
-  const where: Prisma.DispatchWhereInput = {
+function buildDispatchWhere(
+  params: DispatchHistoryQueryParams,
+  search?: string
+): Prisma.DispatchWhereInput {
+  return {
     ...(search
       ? {
           OR: [
@@ -415,6 +433,33 @@ export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
         }
       : {}),
   };
+}
+
+const DISPATCH_HISTORY_INCLUDE = {
+  loadBatch: {
+    include: {
+      truck: true,
+      transporter: true,
+      orders: {
+        include: {
+          order: {
+            include: {
+              client: { select: { id: true, name: true, city: true, state: true, phone: true } },
+            },
+          },
+        },
+      },
+    },
+  },
+  invoices: {
+    select: { id: true, invoiceNumber: true, totalAmount: true, status: true },
+  },
+  createdBy: { select: { name: true } },
+} satisfies Prisma.DispatchInclude;
+
+export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
+  const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
+  const where = buildDispatchWhere(params, search);
 
   const [total, rows] = await Promise.all([
     db.dispatch.count({ where }),
@@ -423,31 +468,24 @@ export async function getDispatchHistory(params: DispatchHistoryQueryParams) {
       skip,
       take,
       orderBy: { [sortBy === "createdAt" ? "dispatchedAt" : sortBy]: sortOrder },
-      include: {
-        loadBatch: {
-          include: {
-            truck: true,
-            transporter: true,
-            orders: {
-              include: {
-                order: {
-                  include: {
-                    client: { select: { id: true, name: true, city: true, phone: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-        invoices: {
-          select: { id: true, invoiceNumber: true, totalAmount: true, status: true },
-        },
-        createdBy: { select: { name: true } },
-      },
+      include: DISPATCH_HISTORY_INCLUDE,
     }),
   ]);
 
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
+}
+
+/** Unpaginated export of dispatch history matching the same filters as `getDispatchHistory`. */
+export async function getDispatchHistoryForExport(params: DispatchHistoryQueryParams) {
+  const { search } = parsePaginationParams(params);
+  const where = buildDispatchWhere(params, search);
+
+  return db.dispatch.findMany({
+    where,
+    take: 5000,
+    orderBy: { dispatchedAt: "desc" },
+    include: DISPATCH_HISTORY_INCLUDE,
+  });
 }
 
 export async function markDispatchDelivered(dispatchId: string) {

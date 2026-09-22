@@ -759,22 +759,20 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             </Button>
           )}
 
-          {hasActiveFilters && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isExporting}
-              onClick={handleExportCsv}
-              className="h-9 text-xs text-slate-700 border-slate-200 hover:bg-slate-50 rounded-xl gap-1.5 font-bold"
-            >
-              {isExporting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5" />
-              )}
-              Export CSV
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isExporting}
+            onClick={handleExportCsv}
+            className="h-9 text-xs text-slate-700 border-slate-200 hover:bg-slate-50 rounded-xl gap-1.5 font-bold"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Export CSV
+          </Button>
 
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Stock Items Found

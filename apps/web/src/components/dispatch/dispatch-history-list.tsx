@@ -19,10 +19,12 @@ import {
 import { toast } from "sonner";
 import {
   getDispatchHistory,
+  getDispatchHistoryForExport,
   markDispatchDelivered,
 } from "@/server/services/dispatch-service";
 import { createInvoicesFromDispatch } from "@/server/services/invoice-service";
 import { formatWeightKg } from "@/lib/utils";
+import { objectsToCsv, downloadCsv } from "@/lib/csv";
 import {
   Truck,
   FileText,
@@ -34,6 +36,8 @@ import {
   X,
   Printer,
   Calendar,
+  Download,
+  Loader2,
 } from "lucide-react";
 
 interface DispatchRow {
@@ -88,6 +92,7 @@ export function DispatchHistoryList({ initialData }: DispatchHistoryListProps) {
   const [search, setSearch] = React.useState("");
   const [vehicleFilter, setVehicleFilter] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isExporting, setIsExporting] = React.useState(false);
 
   const fetchData = React.useCallback(
     async (newPage: number, searchTerm: string) => {
@@ -126,6 +131,72 @@ export function DispatchHistoryList({ initialData }: DispatchHistoryListProps) {
       fetchData(page, search);
     } catch (err: any) {
       toast.error(err.message || "Failed to generate invoices");
+    }
+  };
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const rawRows = await getDispatchHistoryForExport({
+        search: search || undefined,
+        vehicleNumber: vehicleFilter || undefined,
+      });
+      if (rawRows.length === 0) {
+        toast.warning("No dispatches match the current filters.");
+        return;
+      }
+      const exportRows = (rawRows as any[]).map((d) => {
+        const clients = Array.from(new Set(d.loadBatch.orders.map((o: any) => o.order.client.name)));
+        const orderNumbers = Array.from(new Set(d.loadBatch.orders.map((o: any) => o.order.orderNumber)));
+        return {
+          date: new Date(d.dispatchedAt).toISOString().slice(0, 10),
+          dispatchDocNo: d.dispatchNumber,
+          buyer: clients.join(" / "),
+          voucherNo: d.voucherNumber || "",
+          termsOfPayment: d.termsOfPayment || "",
+          termsOfDelivery: d.termsOfDelivery || "",
+          consignee: d.consigneeName || "",
+          consigneeAddress: d.consigneeAddress || "",
+          dispatchThrough: d.dispatchThrough || "",
+          destination: d.destination || "",
+          vesselFlightNo: d.vesselFlightNo || "",
+          gatePassNumber: d.gatePassNumber || "",
+          vehicleNumber: d.vehicleNumber,
+          driverName: d.driverName,
+          driverPhone: d.driverPhone,
+          batchNumber: d.loadBatch.batchNumber,
+          orderNumbers: orderNumbers.join(" / "),
+          totalDispatchedKg: Number(d.totalDispatchedKg),
+          deliveryStatus: d.loadBatch.status,
+        };
+      });
+      const csv = objectsToCsv(exportRows, [
+        { key: "date", header: "Date" },
+        { key: "buyer", header: "Buyer" },
+        { key: "consignee", header: "Consignee" },
+        { key: "consigneeAddress", header: "Consignee Address" },
+        { key: "voucherNo", header: "Voucher No." },
+        { key: "termsOfPayment", header: "Terms of Payment" },
+        { key: "driverPhone", header: "Mobile Number" },
+        { key: "termsOfDelivery", header: "Terms of Delivery" },
+        { key: "dispatchDocNo", header: "Dispatch Doc. No" },
+        { key: "dispatchThrough", header: "Dispatch Through" },
+        { key: "destination", header: "Destination" },
+        { key: "vesselFlightNo", header: "Vessel/Flight No." },
+        { key: "gatePassNumber", header: "gatePassNumber" },
+        { key: "vehicleNumber", header: "vehicleNumber" },
+        { key: "driverName", header: "driverName" },
+        { key: "batchNumber", header: "batchNumber" },
+        { key: "orderNumbers", header: "orderNumbers" },
+        { key: "totalDispatchedKg", header: "totalDispatchedKg" },
+        { key: "deliveryStatus", header: "deliveryStatus" },
+      ]);
+      downloadCsv(`dispatch-export-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      toast.success(`Exported ${exportRows.length} dispatch(es) to CSV.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to export dispatch history to CSV");
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -355,6 +426,21 @@ export function DispatchHistoryList({ initialData }: DispatchHistoryListProps) {
               <X className="h-3.5 w-3.5 mr-1" /> Reset
             </Button>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isExporting}
+            onClick={handleExportCsv}
+            className="h-8 text-xs font-bold gap-1.5 ml-auto"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Export CSV
+          </Button>
         </div>
       </Card>
 

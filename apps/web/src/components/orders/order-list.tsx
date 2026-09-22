@@ -26,7 +26,8 @@ import {
 import { toast } from "sonner";
 import { OrderStatus, OrderPriority, Role, PaperSize } from "@/generated/prisma/browser";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
-import { canTransition, importOrdersCsv } from "@/server/services/order-service";
+import { canTransition, importOrdersCsv, getOrdersForExport } from "@/server/services/order-service";
+import { objectsToCsv, downloadCsv } from "@/lib/csv";
 import {
   offlineGetOrders,
   offlineGetOrderSummaryStats,
@@ -55,6 +56,8 @@ import {
   ArrowUpRight,
   TrendingUp,
   Package,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { WorkflowBanner } from "@/components/layout/workflow-banner";
 
@@ -136,26 +139,46 @@ export function OrderList({
   const [isLoading, setIsLoading] = React.useState(false);
   const [isOfflineEmpty, setIsOfflineEmpty] = React.useState(false);
   const [showingCached, setShowingCached] = React.useState(false);
+  const [isExporting, setIsExporting] = React.useState(false);
 
   const isAdminOrSales = userRole === Role.ADMIN || userRole === Role.SALES;
   const isPlannerOrAdmin = userRole === Role.ADMIN || userRole === Role.PLANNER;
+
+  const currentFilterParams = React.useCallback(
+    () => ({
+      status: statusFilter === "ALL" ? undefined : [statusFilter as OrderStatus],
+      priority: priorityFilter === "ALL" ? undefined : [priorityFilter as OrderPriority],
+      clientId: clientFilter === "ALL" ? undefined : clientFilter,
+      gsm: gsmFilter === "ALL" ? undefined : Number(gsmFilter),
+      paperSize: sizeFilter === "ALL" ? undefined : (sizeFilter as PaperSize),
+      weightMinKg: weightMin ? Number(weightMin) : undefined,
+      weightMaxKg: weightMax ? Number(weightMax) : undefined,
+      search: searchQuery || undefined,
+      ...(dateField === "ORDER"
+        ? { orderFrom: dateFrom || undefined, orderTo: dateTo || undefined }
+        : { deliveryFrom: dateFrom || undefined, deliveryTo: dateTo || undefined }),
+    }),
+    [
+      statusFilter,
+      priorityFilter,
+      clientFilter,
+      gsmFilter,
+      sizeFilter,
+      weightMin,
+      weightMax,
+      searchQuery,
+      dateField,
+      dateFrom,
+      dateTo,
+    ]
+  );
 
   // Fetch updated records
   const fetchFilteredOrders = React.useCallback(async () => {
     setIsLoading(true);
     try {
       const ordersResult = await offlineGetOrders({
-        status: statusFilter === "ALL" ? undefined : [statusFilter as OrderStatus],
-        priority: priorityFilter === "ALL" ? undefined : [priorityFilter as OrderPriority],
-        clientId: clientFilter === "ALL" ? undefined : clientFilter,
-        gsm: gsmFilter === "ALL" ? undefined : Number(gsmFilter),
-        paperSize: sizeFilter === "ALL" ? undefined : (sizeFilter as PaperSize),
-        weightMinKg: weightMin ? Number(weightMin) : undefined,
-        weightMaxKg: weightMax ? Number(weightMax) : undefined,
-        search: searchQuery || undefined,
-        ...(dateField === "ORDER"
-          ? { orderFrom: dateFrom || undefined, orderTo: dateTo || undefined }
-          : { deliveryFrom: dateFrom || undefined, deliveryTo: dateTo || undefined }),
+        ...currentFilterParams(),
         page,
         pageSize,
       });
@@ -179,21 +202,66 @@ export function OrderList({
     } finally {
       setIsLoading(false);
     }
-  }, [
-    statusFilter,
-    priorityFilter,
-    clientFilter,
-    gsmFilter,
-    sizeFilter,
-    weightMin,
-    weightMax,
-    searchQuery,
-    dateField,
-    dateFrom,
-    dateTo,
-    page,
-    pageSize,
-  ]);
+  }, [currentFilterParams, page, pageSize]);
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const rawRows = await getOrdersForExport(currentFilterParams());
+      if (rawRows.length === 0) {
+        toast.warning("No orders match the current filters.");
+        return;
+      }
+      const exportRows = (rawRows as any[]).flatMap((o) =>
+        o.items.map((it: any) => ({
+          orderNumber: o.orderNumber,
+          orderDate: new Date(o.orderDate).toISOString().slice(0, 10),
+          deliveryDate: o.deliveryDate ? new Date(o.deliveryDate).toISOString().slice(0, 10) : "",
+          status: o.status,
+          priority: o.priority,
+          clientCode: o.client.code,
+          clientName: o.client.name,
+          clientCity: o.client.city,
+          clientState: o.client.state,
+          clientPhone: o.client.phone,
+          widthInch: Number(it.widthInch),
+          gsm: it.gsm,
+          paperType: it.paperType,
+          size: it.size,
+          quantityKg: Number(it.quantityKg),
+          producedKg: Number(it.producedKg),
+          dispatchedKg: Number(it.dispatchedKg),
+          ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : "",
+        }))
+      );
+      const csv = objectsToCsv(exportRows, [
+        { key: "orderNumber", header: "orderNumber" },
+        { key: "orderDate", header: "orderDate" },
+        { key: "deliveryDate", header: "deliveryDate" },
+        { key: "status", header: "status" },
+        { key: "priority", header: "priority" },
+        { key: "clientCode", header: "clientCode" },
+        { key: "clientName", header: "clientName" },
+        { key: "clientCity", header: "clientCity" },
+        { key: "clientState", header: "clientState" },
+        { key: "clientPhone", header: "clientPhone" },
+        { key: "widthInch", header: "widthInch" },
+        { key: "gsm", header: "gsm" },
+        { key: "paperType", header: "paperType" },
+        { key: "size", header: "size" },
+        { key: "quantityKg", header: "quantityKg" },
+        { key: "producedKg", header: "producedKg" },
+        { key: "dispatchedKg", header: "dispatchedKg" },
+        { key: "ratePerKg", header: "ratePerKg" },
+      ]);
+      downloadCsv(`sales-orders-export-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+      toast.success(`Exported ${exportRows.length} order line(s) to CSV.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to export orders to CSV");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   React.useEffect(() => {
     fetchFilteredOrders();
@@ -927,6 +995,21 @@ export function OrderList({
               <X className="h-3.5 w-3.5" /> Clear Filters
             </Button>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isExporting}
+            onClick={handleExportCsv}
+            className="h-9 text-xs text-slate-700 border-slate-200 hover:bg-slate-50 rounded-xl gap-1.5 font-bold"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Export CSV
+          </Button>
 
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Orders Found

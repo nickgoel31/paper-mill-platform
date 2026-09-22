@@ -557,6 +557,15 @@ model Dispatch {
   driverPhone       String
   totalDispatchedKg Decimal
   remarks           String?
+  // Export/logistics document fields (consignee may differ from the buyer/client).
+  consigneeName    String?
+  consigneeAddress String?
+  voucherNumber    String?
+  termsOfPayment   String?
+  termsOfDelivery  String?
+  dispatchThrough  String?
+  destination      String?
+  vesselFlightNo   String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   createdById       String?

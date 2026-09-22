@@ -73,6 +73,31 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
   );
   const [remarks, setRemarks] = React.useState("");
 
+  // Export / logistics document fields — the primary buyer defaults from the
+  // batch's first client, everything else is typed in by dispatch staff.
+  const primaryClient = batch.distinctClients?.[0];
+  const [consigneeName, setConsigneeName] = React.useState(
+    batch.dispatch?.consigneeName || primaryClient?.name || ""
+  );
+  const [consigneeAddress, setConsigneeAddress] = React.useState(
+    batch.dispatch?.consigneeAddress ||
+      (primaryClient
+        ? [primaryClient.addressLine1, primaryClient.addressLine2, primaryClient.city, primaryClient.state, primaryClient.pincode]
+            .filter(Boolean)
+            .join(", ")
+        : "")
+  );
+  const [voucherNumber, setVoucherNumber] = React.useState(batch.dispatch?.voucherNumber || "");
+  const [termsOfPayment, setTermsOfPayment] = React.useState(batch.dispatch?.termsOfPayment || "");
+  const [termsOfDelivery, setTermsOfDelivery] = React.useState(batch.dispatch?.termsOfDelivery || "");
+  const [dispatchThrough, setDispatchThrough] = React.useState(
+    batch.dispatch?.dispatchThrough || "Road / Truck"
+  );
+  const [destination, setDestination] = React.useState(
+    batch.dispatch?.destination || (primaryClient ? `${primaryClient.city}, ${primaryClient.state}` : "")
+  );
+  const [vesselFlightNo, setVesselFlightNo] = React.useState(batch.dispatch?.vesselFlightNo || "");
+
   // Confirmation Modal
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -106,6 +131,14 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
         dispatchedAt: new Date(dispatchedAt).toISOString(),
         remarks,
         loadedQuantities,
+        consigneeName,
+        consigneeAddress,
+        voucherNumber,
+        termsOfPayment,
+        termsOfDelivery,
+        dispatchThrough,
+        destination,
+        vesselFlightNo,
       });
 
       toast.success(
@@ -168,6 +201,64 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
           )}
         </div>
       </div>
+
+      {/* Dispatch / Export Document — standard logistics document columns */}
+      <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden print:border print:shadow-none">
+        <CardHeader className="p-6 pb-4 border-b">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <FileText className="h-4 w-4 text-sky-500" /> Dispatch / Export Document
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Standard logistics document fields — printed on the dispatch advice / packing list.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-slate-100/80 text-[10px] font-bold">
+                <TableHead>Date</TableHead>
+                <TableHead>Buyer</TableHead>
+                <TableHead>Buyer Address</TableHead>
+                <TableHead>Consignee</TableHead>
+                <TableHead>Consignee Address</TableHead>
+                <TableHead>Voucher No.</TableHead>
+                <TableHead>Terms of Payment</TableHead>
+                <TableHead>Mobile Number</TableHead>
+                <TableHead>Terms of Delivery</TableHead>
+                <TableHead>Dispatch Doc. No</TableHead>
+                <TableHead>Dispatch Through</TableHead>
+                <TableHead>Destination</TableHead>
+                <TableHead>Vessel/Flight No.</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow className="text-[11px] font-mono">
+                <TableCell>{new Date(dispatchedAt).toLocaleDateString("en-IN")}</TableCell>
+                <TableCell className="font-semibold">{primaryClient?.name || "—"}</TableCell>
+                <TableCell className="max-w-[160px] truncate" title={consigneeAddress}>
+                  {primaryClient
+                    ? [primaryClient.addressLine1, primaryClient.city, primaryClient.state]
+                        .filter(Boolean)
+                        .join(", ")
+                    : "—"}
+                </TableCell>
+                <TableCell>{consigneeName || "—"}</TableCell>
+                <TableCell className="max-w-[160px] truncate" title={consigneeAddress}>
+                  {consigneeAddress || "—"}
+                </TableCell>
+                <TableCell>{voucherNumber || "—"}</TableCell>
+                <TableCell>{termsOfPayment || "—"}</TableCell>
+                <TableCell>{primaryClient?.phone || "—"}</TableCell>
+                <TableCell>{termsOfDelivery || "—"}</TableCell>
+                <TableCell>{gatePassNumber || "—"}</TableCell>
+                <TableCell>{dispatchThrough || "—"}</TableCell>
+                <TableCell>{destination || "—"}</TableCell>
+                <TableCell>{vesselFlightNo || "—"}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {/* Printable Loading Sheet Document */}
       <Card className="rounded-[26px] border border-slate-100 shadow-sm bg-white overflow-hidden print:border print:shadow-none">
@@ -382,6 +473,84 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
               />
+            </div>
+
+            {/* Export / logistics document fields */}
+            <div className="border-t pt-3 space-y-3">
+              <label className="font-bold text-slate-800 text-[11px] uppercase tracking-wider block">
+                Dispatch / Export Document Fields
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Consignee</label>
+                  <Input
+                    placeholder="If different from buyer"
+                    className="text-xs bg-white"
+                    value={consigneeName}
+                    onChange={(e) => setConsigneeName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Consignee Address</label>
+                  <Input
+                    className="text-xs bg-white"
+                    value={consigneeAddress}
+                    onChange={(e) => setConsigneeAddress(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Voucher No.</label>
+                  <Input
+                    className="font-mono text-xs bg-white"
+                    value={voucherNumber}
+                    onChange={(e) => setVoucherNumber(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Terms of Payment</label>
+                  <Input
+                    placeholder="e.g. Advance / 30 days credit"
+                    className="text-xs bg-white"
+                    value={termsOfPayment}
+                    onChange={(e) => setTermsOfPayment(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Terms of Delivery</label>
+                  <Input
+                    placeholder="e.g. Ex-works / FOB / CIF"
+                    className="text-xs bg-white"
+                    value={termsOfDelivery}
+                    onChange={(e) => setTermsOfDelivery(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Dispatch Through</label>
+                  <Input
+                    placeholder="e.g. Road / Rail / Sea / Air"
+                    className="text-xs bg-white"
+                    value={dispatchThrough}
+                    onChange={(e) => setDispatchThrough(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Destination</label>
+                  <Input
+                    className="text-xs bg-white"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-700">Vessel/Flight No.</label>
+                  <Input
+                    placeholder="If applicable"
+                    className="font-mono text-xs bg-white"
+                    value={vesselFlightNo}
+                    onChange={(e) => setVesselFlightNo(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Rule E: WhatsApp Fanout Notification Preview */}

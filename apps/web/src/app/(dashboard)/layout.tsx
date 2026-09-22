@@ -4,6 +4,7 @@ import { listMillsForSwitcher } from "@/server/services/platform-service";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { AgenticAiSidebar } from "@/components/ai/agentic-ai-sidebar";
+import { AiSidebarProvider } from "@/components/ai/ai-sidebar-context";
 import { ViewAsBanner } from "@/components/platform/view-as-banner";
 import { Role } from "@/generated/prisma/browser";
 
@@ -33,28 +34,30 @@ export default async function DashboardLayout({
     : null;
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#F7F7F5]">
-      {viewingMills && (
-        <ViewAsBanner currentMillId={user.tenantId} mills={viewingMills} />
-      )}
-      <div className="flex flex-1 min-h-0">
-        <Sidebar
-          userRole={userRole}
-          userName={userName}
-          userEmail={userEmail}
-        />
-        <div className="flex-1 flex flex-col min-w-0">
-          <Topbar
+    <AiSidebarProvider>
+      <div className="flex flex-col min-h-screen bg-[#F7F7F5]">
+        {viewingMills && (
+          <ViewAsBanner currentMillId={user.tenantId} mills={viewingMills} />
+        )}
+        <div className="flex flex-1 min-h-0">
+          <Sidebar
+            userRole={userRole}
             userName={userName}
             userEmail={userEmail}
-            userRole={userRole}
           />
-          <main className="flex-1 p-3 sm:p-6 overflow-y-auto max-w-full">{children}</main>
-        </div>
+          <div className="flex-1 flex flex-col min-w-0">
+            <Topbar
+              userName={userName}
+              userEmail={userEmail}
+              userRole={userRole}
+            />
+            <main className="flex-1 p-3 sm:p-6 overflow-y-auto max-w-full">{children}</main>
+          </div>
 
-        {/* Floating Agentic AI Assistant & Right Sidebar Drawer */}
-        <AgenticAiSidebar />
+          {/* PaperMill AI Sidebar Drawer — opened from the topbar button */}
+          <AgenticAiSidebar />
+        </div>
       </div>
-    </div>
+    </AiSidebarProvider>
   );
 }

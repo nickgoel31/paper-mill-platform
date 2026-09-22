@@ -180,10 +180,8 @@ function dateRange(from?: string, to?: string) {
   };
 }
 
-export async function getOrders(params: OrderQueryParams) {
-  const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
-
-  const where: Prisma.OrderWhereInput = {
+function buildOrderWhere(params: OrderQueryParams, search?: string): Prisma.OrderWhereInput {
+  return {
     ...(search
       ? {
           OR: [
@@ -229,6 +227,11 @@ export async function getOrders(params: OrderQueryParams) {
       ? { orderDate: dateRange(params.orderFrom, params.orderTo) }
       : {}),
   };
+}
+
+export async function getOrders(params: OrderQueryParams) {
+  const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
+  const where = buildOrderWhere(params, search);
 
   const [total, rows] = await Promise.all([
     db.order.count({ where }),
@@ -249,6 +252,24 @@ export async function getOrders(params: OrderQueryParams) {
   ]);
 
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
+}
+
+/** Unpaginated export of orders matching the same filters as `getOrders`. */
+export async function getOrdersForExport(params: OrderQueryParams) {
+  const { search } = parsePaginationParams(params);
+  const where = buildOrderWhere(params, search);
+
+  return db.order.findMany({
+    where,
+    take: 5000,
+    orderBy: { orderDate: "desc" },
+    include: {
+      client: {
+        select: { id: true, name: true, code: true, city: true, state: true, phone: true },
+      },
+      items: true,
+    },
+  });
 }
 
 export async function getOrderSummaryStats() {
