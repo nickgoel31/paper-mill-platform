@@ -166,13 +166,23 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
   const isPlannerOrAdmin = userRole === Role.ADMIN || userRole === Role.PLANNER;
   const isAdmin = userRole === Role.ADMIN;
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
-  const [deleteTarget, setDeleteTarget] = React.useState<{ mode: "single" | "bulk"; id?: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ mode: "single" | "bulk" | "all"; id?: string } | null>(null);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = React.useState("");
   const [isDeleting, setIsDeleting] = React.useState(false);
 
   const toggleSelected = (id: string) =>
     setSelectedIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleSelectAllOnPage = () =>
+    setSelectedIds((prev) => {
+      const pageIds = data.map((r) => r.id);
+      const allSelected = pageIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      pageIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
       return next;
     });
 
@@ -188,13 +198,23 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           next.delete(deleteTarget.id!);
           return next;
         });
-      } else {
+      } else if (deleteTarget.mode === "bulk") {
         const res = await deleteStockItems(Array.from(selectedIds));
         toast.success(`${res.deleted} item(s) deleted.`);
         if (res.skipped.length > 0) {
           toast.warning(`${res.skipped.length} item(s) skipped: ${res.skipped.map((s) => s.reason).slice(0, 1)}`);
         }
         setSelectedIds(new Set());
+      } else {
+        // "all" — every item matching the current filters, across all pages
+        const allRows = await getStockItemsForExport(currentFilterParams());
+        const res = await deleteStockItems(allRows.map((r: any) => r.id));
+        toast.success(`${res.deleted} item(s) deleted.`);
+        if (res.skipped.length > 0) {
+          toast.warning(`${res.skipped.length} item(s) skipped (allocated/dispatched reels aren't deletable).`);
+        }
+        setSelectedIds(new Set());
+        setDeleteAllConfirmText("");
       }
       setDeleteTarget(null);
       fetchFilteredStock();
@@ -399,7 +419,13 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
       ? [
           {
             id: "select",
-            header: "",
+            header: () => (
+              <Checkbox
+                checked={data.length > 0 && data.every((r) => selectedIds.has(r.id))}
+                onCheckedChange={() => toggleSelectAllOnPage()}
+                aria-label="Select all on this page"
+              />
+            ),
             cell: ({ row }: any) => (
               <Checkbox
                 checked={selectedIds.has(row.original.id)}
@@ -876,6 +902,17 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             </Button>
           )}
 
+          {isAdmin && total > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget({ mode: "all" })}
+              className="h-9 text-xs text-rose-700 border-rose-300 bg-rose-50 hover:bg-rose-100 rounded-xl gap-1.5 font-bold"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete All ({total}{hasActiveFilters ? " matching filters" : ""})
+            </Button>
+          )}
+
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Stock Items Found
           </span>
@@ -991,22 +1028,62 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
       )}
 
       {/* Delete Confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteTarget(null);
+            setDeleteAllConfirmText("");
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-rose-600">
-              {deleteTarget?.mode === "bulk" ? `Delete ${selectedIds.size} Stock Item(s)?` : "Delete Stock Item?"}
+              {deleteTarget?.mode === "all"
+                ? `Delete ALL ${total} Stock Item(s)?`
+                : deleteTarget?.mode === "bulk"
+                ? `Delete ${selectedIds.size} Stock Item(s)?`
+                : "Delete Stock Item?"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              This permanently removes the reel(s) from inventory. Only AVAILABLE reels can be deleted —
-              allocated or dispatched ones will be skipped. This cannot be undone.
+              {deleteTarget?.mode === "all"
+                ? `This permanently removes every stock item currently matching your filters (${total} item(s)) from inventory. Only AVAILABLE reels are actually deletable — allocated or dispatched ones will be skipped. This cannot be undone.`
+                : "This permanently removes the reel(s) from inventory. Only AVAILABLE reels can be deleted — allocated or dispatched ones will be skipped. This cannot be undone."}
             </DialogDescription>
           </DialogHeader>
+          {deleteTarget?.mode === "all" && (
+            <div className="space-y-1.5 py-1">
+              <label className="text-xs font-semibold text-slate-700">
+                Type <span className="font-mono font-bold">DELETE ALL</span> to confirm
+              </label>
+              <Input
+                value={deleteAllConfirmText}
+                onChange={(e) => setDeleteAllConfirmText(e.target.value)}
+                placeholder="DELETE ALL"
+                className="h-9 text-xs font-mono"
+              />
+            </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteAllConfirmText("");
+              }}
+              disabled={isDeleting}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={isDeleting} className="gap-1.5">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting || (deleteTarget?.mode === "all" && deleteAllConfirmText !== "DELETE ALL")}
+              className="gap-1.5"
+            >
               {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               Delete
             </Button>
