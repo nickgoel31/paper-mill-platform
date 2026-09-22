@@ -31,7 +31,8 @@ const NEW_ITEM_DEFAULTS = {
   remark: "",
   quantityKg: 3000,
   tolerancePercent: 5.0,
-  ratePerKg: 34.0,
+  ratePerKg: null as number | null,
+  amount: null as number | null,
 };
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -41,14 +42,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Form,
   FormControl,
@@ -131,7 +124,11 @@ export function OrderForm({
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent || 5.0),
     ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
-  })) || [{ ...NEW_ITEM_DEFAULTS, widthUnit: defaultUnit, quantityKg: 5000, ratePerKg: 35.0 }];
+    // Restate the line's original commercial amount for editing; it was
+    // originally typed in directly, not derived, so re-derive it here just
+    // for display continuity.
+    amount: it.ratePerKg ? Number(it.ratePerKg) * Number(it.quantityKg) : null,
+  })) || [{ ...NEW_ITEM_DEFAULTS, widthUnit: defaultUnit, quantityKg: 5000 }];
 
   const form = useForm<any>({
     resolver: zodResolver(orderFormSchema),
@@ -176,12 +173,13 @@ export function OrderForm({
     );
   }, [watchedItems]);
 
+  // Sum of the amounts the user typed in directly — never derived from
+  // quantity × rate.
   const totalValueINR = React.useMemo(() => {
-    return (watchedItems || []).reduce((acc: number, item: any) => {
-      const kg = Number(item?.quantityKg) || 0;
-      const rate = Number(item?.ratePerKg) || 0;
-      return acc + kg * rate;
-    }, 0);
+    return (watchedItems || []).reduce(
+      (acc: number, item: any) => acc + (Number(item?.amount) || 0),
+      0
+    );
   }, [watchedItems]);
 
   const distinctGsms = React.useMemo(() => {
@@ -223,6 +221,7 @@ export function OrderForm({
         existing.quantityKg = (Number(existing.quantityKg) || 0) + (Number(it.quantityKg) || 0);
         const reels = (Number(existing.numberOfReels) || 0) + (Number(it.numberOfReels) || 0);
         existing.numberOfReels = reels > 0 ? reels : null;
+        existing.amount = (Number(existing.amount) || 0) + (Number(it.amount) || 0) || null;
         if (it.remark && !existing.remark) existing.remark = it.remark;
       }
     });
@@ -230,9 +229,22 @@ export function OrderForm({
     toast.success("Duplicate line items merged successfully.");
   };
 
-  const onSubmit = async (values: OrderFormInput) => {
+  const onSubmit = async (formValues: OrderFormInput) => {
     setIsSubmitting(true);
     try {
+      // The mill types the commercial amount directly; back it out into
+      // ratePerKg only for storage/invoicing, never the other way around.
+      const values: OrderFormInput = {
+        ...formValues,
+        items: (formValues.items as any[]).map((it) => ({
+          ...it,
+          ratePerKg:
+            it.amount != null && it.quantityKg > 0
+              ? Number((Number(it.amount) / Number(it.quantityKg)).toFixed(4))
+              : it.ratePerKg ?? null,
+        })),
+      } as OrderFormInput;
+
       if (isEditing) {
         const result = await offlineUpdateOrder(initialOrder.id, values);
         if (result.queued) {
@@ -523,337 +535,312 @@ export function OrderForm({
               </div>
             </div>
 
-            {/* Line Items Table */}
-            <div className="rounded-xl border border-slate-100 overflow-x-auto">
-              <Table>
-                <TableHeader className="bg-slate-50/70">
-                  <TableRow>
-                    <TableHead className="w-12 text-center text-[10px] font-bold font-mono">#</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[130px]">Width *</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">GSM *</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[150px]">Paper Type *</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[110px]">Size</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Qty (Reels)</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Tolerance (%)</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Rate / KG (₹)</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[160px]">Remark</TableHead>
-                    <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Line Total (₹)</TableHead>
-                    <TableHead className="w-12"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fields.map((field, idx) => {
-                    const currentItem = watchedItems?.[idx];
-                    const currentWidth = Number(currentItem?.widthInch) || 0;
-                    const currentWidthUnit = (currentItem?.widthUnit as LengthUnit) || LengthUnit.INCH;
-                    const currentWidthInches = toInches(currentWidth, currentWidthUnit);
-                    const currentGsm = Number(currentItem?.gsm) || 0;
-                    const currentKg = Number(currentItem?.quantityKg) || 0;
-                    const currentRate = Number(currentItem?.ratePerKg) || 0;
-                    const lineAmount = currentKg * currentRate;
+            {/* Line Items — one spacious card per reel size, not a cramped table */}
+            <div className="space-y-4">
+              {fields.map((field, idx) => {
+                const currentItem = watchedItems?.[idx];
+                const currentWidth = Number(currentItem?.widthInch) || 0;
+                const currentWidthUnit = (currentItem?.widthUnit as LengthUnit) || LengthUnit.INCH;
+                const currentWidthInches = toInches(currentWidth, currentWidthUnit);
+                const isExceedingDeckle = currentWidthInches > maxDeckle;
 
-                    const isExceedingDeckle = currentWidthInches > maxDeckle;
+                return (
+                  <div
+                    key={field.id}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4 sm:p-5 space-y-4"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-900 bg-white border border-slate-200 rounded-lg px-2.5 py-1 font-mono">
+                        Reel Size #{idx + 1}
+                      </span>
+                      {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(idx)}
+                          className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
 
-                    return (
-                      <TableRow key={field.id} className="hover:bg-slate-50/50">
-                        <TableCell className="text-center font-mono text-xs text-slate-400 font-bold">
-                          {idx + 1}
-                        </TableCell>
-
-                        {/* Width + unit */}
-                        <TableCell>
-                          <div className="flex items-center gap-1.5">
-                            <FormField
-                              control={form.control}
-                              name={`items.${idx}.widthInch`}
-                              render={({ field: itField }) => (
-                                <FormItem className="flex-1">
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      {...itField}
-                                      className={`h-9 text-xs rounded-xl font-mono ${
-                                        isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-slate-50/70 border-slate-200"
-                                      }`}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                            <FormField
-                              control={form.control}
-                              name={`items.${idx}.widthUnit`}
-                              render={({ field: itField }) => (
-                                <Select onValueChange={itField.onChange} value={itField.value}>
-                                  <SelectTrigger className="h-9 w-[70px] text-[11px] rounded-xl bg-slate-50/70 border-slate-200 shrink-0">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent className="rounded-xl">
-                                    <SelectItem value={LengthUnit.INCH} className="text-xs">in</SelectItem>
-                                    <SelectItem value={LengthUnit.CM} className="text-xs">cm</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              )}
-                            />
-                          </div>
-                          {isExceedingDeckle && (
-                            <p className="text-[10px] text-rose-500 mt-1">
-                              = {currentWidthInches.toFixed(2)}" — exceeds {maxDeckle.toFixed(2)}" max deckle
-                            </p>
-                          )}
-                        </TableCell>
-
-                        {/* GSM */}
-                        <TableCell>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {/* Width + unit */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Width *</FormLabel>
+                        <div className="flex items-center gap-1.5 mt-1">
                           <FormField
                             control={form.control}
-                            name={`items.${idx}.gsm`}
+                            name={`items.${idx}.widthInch`}
                             render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input
-                                      type="number"
-                                      {...itField}
-                                      className="h-9 text-xs rounded-xl font-mono bg-slate-50/70 border-slate-200"
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      GSM
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Paper Type */}
-                        <TableCell>
-                          <div className="space-y-1.5">
-                            <FormField
-                              control={form.control}
-                              name={`items.${idx}.paperType`}
-                              render={({ field: itField }) => (
-                                <FormItem>
-                                  <Select
-                                    onValueChange={itField.onChange}
-                                    value={itField.value}
-                                  >
-                                    <FormControl>
-                                      <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200">
-                                        <SelectValue placeholder="Type" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent className="rounded-xl">
-                                      {PAPER_TYPES.map((pt) => (
-                                        <SelectItem key={pt} value={pt} className="text-xs">
-                                          {PAPER_TYPE_LABELS[pt]}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                        </TableCell>
-
-                        {/* Size */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.size`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <Select
-                                  onValueChange={itField.onChange}
-                                  value={itField.value}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200">
-                                      <SelectValue placeholder="Size" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent className="rounded-xl">
-                                    {PAPER_SIZES.map((sz) => (
-                                      <SelectItem key={sz} value={sz} className="text-xs">
-                                        {PAPER_SIZE_LABELS[sz]}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Qty (Reels) */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.numberOfReels`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input
-                                      type="number"
-                                      step="1"
-                                      min="0"
-                                      placeholder="—"
-                                      value={itField.value ?? ""}
-                                      onChange={(e) =>
-                                        itField.onChange(
-                                          e.target.value ? Math.floor(Number(e.target.value)) : null
-                                        )
-                                      }
-                                      className="h-9 text-xs rounded-xl font-mono bg-slate-50/70 border-slate-200 w-24"
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      reels
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Quantity (KG) */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.quantityKg`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input
-                                      type="number"
-                                      step="1"
-                                      {...itField}
-                                      className="h-9 text-xs rounded-xl font-mono font-bold text-slate-900 bg-slate-50/70 border-slate-200"
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      kg
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Tolerance */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.tolerancePercent`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input
-                                      type="number"
-                                      step="0.1"
-                                      {...itField}
-                                      className="h-9 text-xs rounded-xl font-mono bg-slate-50/70 border-slate-200"
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      %
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Rate / KG */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.ratePerKg`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      value={itField.value ?? ""}
-                                      onChange={(e) =>
-                                        itField.onChange(
-                                          e.target.value ? Number(e.target.value) : null
-                                        )
-                                      }
-                                      className="h-9 text-xs rounded-xl font-mono bg-slate-50/70 border-slate-200"
-                                    />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      ₹/kg
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </TableCell>
-
-                        {/* Remark */}
-                        <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.remark`}
-                            render={({ field: itField }) => (
-                              <FormItem>
+                              <FormItem className="flex-1">
                                 <FormControl>
                                   <Input
-                                    placeholder="e.g. jointless, tight winding"
-                                    value={itField.value ?? ""}
-                                    onChange={(e) => itField.onChange(e.target.value)}
-                                    className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200"
+                                    type="number"
+                                    step="0.01"
+                                    {...itField}
+                                    className={`h-10 text-sm rounded-xl font-mono ${
+                                      isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-white border-slate-200"
+                                    }`}
                                   />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
                             )}
                           />
-                        </TableCell>
+                          <FormField
+                            control={form.control}
+                            name={`items.${idx}.widthUnit`}
+                            render={({ field: itField }) => (
+                              <Select onValueChange={itField.onChange} value={itField.value}>
+                                <SelectTrigger className="h-10 w-[72px] text-xs rounded-xl bg-white border-slate-200 shrink-0">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-xl">
+                                  <SelectItem value={LengthUnit.INCH} className="text-xs">in</SelectItem>
+                                  <SelectItem value={LengthUnit.CM} className="text-xs">cm</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
+                          />
+                        </div>
+                        {isExceedingDeckle && (
+                          <p className="text-[10px] text-rose-500 mt-1">
+                            = {currentWidthInches.toFixed(2)}" — exceeds {maxDeckle.toFixed(2)}" max deckle
+                          </p>
+                        )}
+                      </div>
 
-                        {/* Line Total */}
-                        <TableCell className="text-right font-mono font-bold text-xs text-slate-900">
-                          {formatCurrencyINR(lineAmount)}
-                        </TableCell>
-
-                        {/* Remove */}
-                        <TableCell className="text-center">
-                          {fields.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => remove(idx)}
-                              className="h-7 w-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                      {/* GSM */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">GSM *</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.gsm`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    {...itField}
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    GSM
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                        />
+                      </div>
+
+                      {/* Paper Type */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Paper Type *</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.paperType`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <Select onValueChange={itField.onChange} value={itField.value}>
+                                <FormControl>
+                                  <SelectTrigger className="h-10 text-sm rounded-xl bg-white border-slate-200">
+                                    <SelectValue placeholder="Type" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent className="rounded-xl">
+                                  {PAPER_TYPES.map((pt) => (
+                                    <SelectItem key={pt} value={pt} className="text-xs">
+                                      {PAPER_TYPE_LABELS[pt]}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Size */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Size</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.size`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <Select onValueChange={itField.onChange} value={itField.value}>
+                                <FormControl>
+                                  <SelectTrigger className="h-10 text-sm rounded-xl bg-white border-slate-200">
+                                    <SelectValue placeholder="Size" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent className="rounded-xl">
+                                  {PAPER_SIZES.map((sz) => (
+                                    <SelectItem key={sz} value={sz} className="text-xs">
+                                      {PAPER_SIZE_LABELS[sz]}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      {/* Qty (Reels) */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Qty (Reels)</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.numberOfReels`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    placeholder="—"
+                                    value={itField.value ?? ""}
+                                    onChange={(e) =>
+                                      itField.onChange(
+                                        e.target.value ? Math.floor(Number(e.target.value)) : null
+                                      )
+                                    }
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    reels
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Quantity (KG) */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.quantityKg`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    step="1"
+                                    {...itField}
+                                    className="h-10 text-sm rounded-xl font-mono font-bold text-slate-900 bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    kg
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Tolerance */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Tolerance (%)</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.tolerancePercent`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    step="0.1"
+                                    {...itField}
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    %
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Amount — manually entered, never auto-calculated */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Amount (₹) *</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.amount`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Enter total amount"
+                                    value={itField.value ?? ""}
+                                    onChange={(e) =>
+                                      itField.onChange(e.target.value ? Number(e.target.value) : null)
+                                    }
+                                    className="h-10 text-sm rounded-xl font-mono font-bold text-emerald-700 bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    ₹
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Remark */}
+                    <div>
+                      <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Remark</FormLabel>
+                      <FormField
+                        control={form.control}
+                        name={`items.${idx}.remark`}
+                        render={({ field: itField }) => (
+                          <FormItem className="mt-1">
+                            <FormControl>
+                              <Input
+                                placeholder="e.g. jointless, tight winding"
+                                value={itField.value ?? ""}
+                                onChange={(e) => itField.onChange(e.target.value)}
+                                className="h-10 text-sm rounded-xl bg-white border-slate-200"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

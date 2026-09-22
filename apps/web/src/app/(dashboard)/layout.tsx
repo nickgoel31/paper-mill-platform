@@ -28,7 +28,9 @@ export default async function DashboardLayout({
   const userRole = user.role || Role.SALES;
   const userName = user.name || "Factory Staff";
   const userEmail = user.email || "";
-  const viewingMills = user.viewingAs ? await listMillsForSwitcher() : null;
+  const viewingMills = user.viewingAs
+    ? await listMillsForSwitcher().catch(() => null)
+    : null;
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F7F7F5]">

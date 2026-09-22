@@ -24,7 +24,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
+import { OrderStatus, OrderPriority, Role, PaperSize } from "@/generated/prisma/browser";
+import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 import { canTransition, importOrdersCsv } from "@/server/services/order-service";
 import {
   offlineGetOrders,
@@ -124,6 +125,9 @@ export function OrderList({
   const [priorityFilter, setPriorityFilter] = React.useState<string>("ALL");
   const [clientFilter, setClientFilter] = React.useState<string>("ALL");
   const [gsmFilter, setGsmFilter] = React.useState<string>("ALL");
+  const [sizeFilter, setSizeFilter] = React.useState<string>("ALL");
+  const [weightMin, setWeightMin] = React.useState<string>("");
+  const [weightMax, setWeightMax] = React.useState<string>("");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   // Date filter: which date the range applies to, and the (inclusive) range itself.
   const [dateField, setDateField] = React.useState<"ORDER" | "DELIVERY">("ORDER");
@@ -145,6 +149,9 @@ export function OrderList({
         priority: priorityFilter === "ALL" ? undefined : [priorityFilter as OrderPriority],
         clientId: clientFilter === "ALL" ? undefined : clientFilter,
         gsm: gsmFilter === "ALL" ? undefined : Number(gsmFilter),
+        paperSize: sizeFilter === "ALL" ? undefined : (sizeFilter as PaperSize),
+        weightMinKg: weightMin ? Number(weightMin) : undefined,
+        weightMaxKg: weightMax ? Number(weightMax) : undefined,
         search: searchQuery || undefined,
         ...(dateField === "ORDER"
           ? { orderFrom: dateFrom || undefined, orderTo: dateTo || undefined }
@@ -177,6 +184,9 @@ export function OrderList({
     priorityFilter,
     clientFilter,
     gsmFilter,
+    sizeFilter,
+    weightMin,
+    weightMax,
     searchQuery,
     dateField,
     dateFrom,
@@ -212,6 +222,9 @@ export function OrderList({
     setPriorityFilter("ALL");
     setClientFilter("ALL");
     setGsmFilter("ALL");
+    setSizeFilter("ALL");
+    setWeightMin("");
+    setWeightMax("");
     setSearchQuery("");
     setDateFrom("");
     setDateTo("");
@@ -237,6 +250,9 @@ export function OrderList({
     priorityFilter !== "ALL" ||
     clientFilter !== "ALL" ||
     gsmFilter !== "ALL" ||
+    sizeFilter !== "ALL" ||
+    weightMin !== "" ||
+    weightMax !== "" ||
     dateFrom !== "" ||
     dateTo !== "" ||
     searchQuery.trim() !== "";
@@ -785,6 +801,51 @@ export function OrderList({
               <SelectItem value="220">220 GSM</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Paper Size Filter */}
+          <Select value={sizeFilter} onValueChange={setSizeFilter}>
+            <SelectTrigger className="h-9 text-xs w-[120px] bg-slate-50/70 border-slate-200 rounded-xl">
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent className="rounded-xl">
+              <SelectItem value="ALL">All Sizes</SelectItem>
+              {PAPER_SIZES.map((sz) => (
+                <SelectItem key={sz} value={sz}>
+                  {PAPER_SIZE_LABELS[sz]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Weight Range Filter */}
+          <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/70 px-2 py-1">
+            <Package className="h-4 w-4 text-sky-500 shrink-0" />
+            <Input
+              type="number"
+              min={0}
+              placeholder="Min kg"
+              value={weightMin}
+              onChange={(e) => {
+                setWeightMin(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Minimum weight (kg)"
+              className="h-7 text-xs w-[85px] bg-white border-slate-200 rounded-lg"
+            />
+            <span className="text-xs text-slate-400">to</span>
+            <Input
+              type="number"
+              min={0}
+              placeholder="Max kg"
+              value={weightMax}
+              onChange={(e) => {
+                setWeightMax(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Maximum weight (kg)"
+              className="h-7 text-xs w-[85px] bg-white border-slate-200 rounded-lg"
+            />
+          </div>
 
           {/* Date Range Filter */}
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-2 py-1">

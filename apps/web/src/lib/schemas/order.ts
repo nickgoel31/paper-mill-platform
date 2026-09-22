@@ -44,6 +44,14 @@ export const orderItemSchema = z.object({
     .min(0, "Rate per kg cannot be negative")
     .optional()
     .nullable(),
+  // Manually typed total for this line (₹). Not derived from quantity × rate —
+  // the mill enters the commercial amount they've agreed with the client
+  // directly. `ratePerKg` above is back-computed from this for storage/invoicing.
+  amount: z.coerce
+    .number()
+    .min(0, "Amount cannot be negative")
+    .optional()
+    .nullable(),
 });
 
 export const orderFormSchema = z

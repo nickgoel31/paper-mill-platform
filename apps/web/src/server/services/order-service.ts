@@ -160,6 +160,11 @@ export interface OrderQueryParams extends QueryParams {
   deliveryTo?: string;
   orderFrom?: string;
   orderTo?: string;
+  /** Matches orders with at least one line item whose weight falls in this range. */
+  weightMinKg?: number;
+  weightMaxKg?: number;
+  paperSize?: import("@/generated/prisma/browser").PaperSize;
+  paperType?: import("@/generated/prisma/browser").PaperType;
 }
 
 /**
@@ -203,6 +208,20 @@ export async function getOrders(params: OrderQueryParams) {
           },
         }
       : {}),
+    ...(params.weightMinKg != null || params.weightMaxKg != null
+      ? {
+          items: {
+            some: {
+              quantityKg: {
+                ...(params.weightMinKg != null ? { gte: params.weightMinKg } : {}),
+                ...(params.weightMaxKg != null ? { lte: params.weightMaxKg } : {}),
+              },
+            },
+          },
+        }
+      : {}),
+    ...(params.paperSize ? { items: { some: { size: params.paperSize } } } : {}),
+    ...(params.paperType ? { items: { some: { paperType: params.paperType } } } : {}),
     ...(params.deliveryFrom || params.deliveryTo
       ? { deliveryDate: dateRange(params.deliveryFrom, params.deliveryTo) }
       : {}),
