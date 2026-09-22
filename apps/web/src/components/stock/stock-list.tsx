@@ -443,6 +443,23 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         ]
       : []),
     {
+      accessorKey: "id",
+      header: "ID",
+      cell: ({ row }) => (
+        <button
+          type="button"
+          title={row.original.id}
+          onClick={() => {
+            navigator.clipboard?.writeText(row.original.id);
+            toast.success("ID copied.");
+          }}
+          className="font-mono text-[11px] text-slate-500 hover:text-slate-900 hover:underline"
+        >
+          {row.original.id.slice(0, 8)}…
+        </button>
+      ),
+    },
+    {
       accessorKey: "reelNumber",
       header: "Reel No.",
       cell: ({ row }) => (

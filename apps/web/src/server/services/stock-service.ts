@@ -502,25 +502,10 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
   const { reelNumberPrefix } = await getSystemSettings();
 
   const errors: { row: number; message: string }[] = [];
-  const usedReelNumbers = new Set<string>();
 
   // Batch-prefetch everything the per-row loop used to fetch one at a time —
   // this is what made large files slow (up to ~6 sequential DB round-trips
   // per row, each inside its own transaction).
-  const givenReelNumbers = Array.from(
-    new Set(rows.map((r) => r.reelNumber?.trim()).filter((v): v is string => !!v))
-  );
-  const existingReelSet = new Set(
-    givenReelNumbers.length
-      ? (
-          await db.stockItem.findMany({
-            where: { reelNumber: { in: givenReelNumbers } },
-            select: { reelNumber: true },
-          })
-        ).map((r) => r.reelNumber as string)
-      : []
-  );
-
   const givenOrderNumbers = Array.from(
     new Set(rows.map((r) => r.orderNumber?.trim()).filter((v): v is string => !!v))
   );
@@ -586,18 +571,12 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
       if (isNaN(gsm) || gsm <= 0) throw new Error(`Invalid "gsm": "${r.gsm}"`);
       if (isNaN(quantityKg) || quantityKg <= 0) throw new Error(`Invalid "quantityKg": "${r.quantityKg}"`);
 
+      // reelNumber is a free-text label, not a unique identifier — the real
+      // identifier is the database id, so duplicates are allowed here.
       let finalReelNumber = reelNumber;
-      if (finalReelNumber) {
-        if (usedReelNumbers.has(finalReelNumber)) {
-          throw new Error(`Reel number "${finalReelNumber}" is duplicated within this file.`);
-        }
-        if (existingReelSet.has(finalReelNumber)) {
-          throw new Error(`Reel number "${finalReelNumber}" is already in use.`);
-        }
-      } else {
+      if (!finalReelNumber) {
         finalReelNumber = `${autoPrefix}${String(nextAutoSeq!++).padStart(4, "0")}`;
       }
-      usedReelNumbers.add(finalReelNumber);
 
       // Optional allocation: find the matching line (by width + GSM) on the
       // named order. The reel then takes that line's paper type, same as
