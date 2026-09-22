@@ -269,7 +269,11 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
 
   const handleDeallocate = async (stockItemId: string) => {
     try {
-      await deallocateStock(stockItemId);
+      const result = await deallocateStock(stockItemId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Stock unallocated and returned to available inventory.");
       fetchFilteredStock();
     } catch (err: any) {
@@ -280,7 +284,11 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
   const handleMatchToOrigin = async (item: StockItemRow) => {
     if (!item.originOrder) return;
     try {
-      await allocateStockToOrderItem(item.id, item.originOrder.orderItemId);
+      const result = await allocateStockToOrderItem(item.id, item.originOrder.orderItemId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(`Reel allocated to ${item.originOrder.orderNumber}.`);
       fetchFilteredStock();
     } catch (err: any) {

@@ -94,11 +94,15 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
   const handleStatusChange = async (newStatus: OrderStatus, reason?: string) => {
     setIsTransitioning(true);
     try {
-      await transitionOrderStatus({
+      const result = await transitionOrderStatus({
         orderId: order.id,
         newStatus,
         reason,
       });
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(`Order #${order.orderNumber} transitioned to ${newStatus}.`);
       setCancelModalOpen(false);
       router.refresh();

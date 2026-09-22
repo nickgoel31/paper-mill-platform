@@ -1,10 +1,19 @@
 #:schema node_modules/wrangler/config-schema.json
 name = "paper-mill-platform"
 account_id = "1b189b0a1970e13bd394d3d4584a83e4"
-main = ".open-next/worker.js"
+# Thin wrapper around .open-next/worker.js that adds a scheduled() handler
+# for the Cron Trigger below — see worker-entry.ts.
+main = "worker-entry.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 workers_dev = true
+
+# Monthly, 1st of the month at 03:00 UTC: auto-detect the top-ordered
+# width/GSM configurations from the trailing month and refresh Stock
+# Presets (see worker-entry.ts's scheduled() handler and
+# /api/cron/auto-stock-presets).
+[triggers]
+crons = ["0 3 1 * *"]
 
 [assets]
 directory = ".open-next/assets"

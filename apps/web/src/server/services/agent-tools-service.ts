@@ -657,14 +657,18 @@ export async function agentAllocateStockToOrderItem(input: {
 }) {
   try {
     const result = await allocateStockToOrderItem(input.stockItemId, input.orderItemId);
+    if ("error" in result && result.error) {
+      return { success: false, message: result.error, error: result.error };
+    }
+    const { updatedStock, updatedOrderItem } = result.data!;
     revalidatePath("/inventory");
     revalidatePath("/orders");
     revalidateTag(DASHBOARD_TAG);
     return {
       success: true,
-      message: `Allocated reel ${(result.updatedStock as any).reelNumber || result.updatedStock.id} to the order line — order item is now at ${Number(result.updatedOrderItem.producedKg)} kg produced.`,
+      message: `Allocated reel ${(updatedStock as any).reelNumber || updatedStock.id} to the order line — order item is now at ${Number(updatedOrderItem.producedKg)} kg produced.`,
       actionTaken: "ALLOCATE_STOCK",
-      data: result,
+      data: result.data,
     };
   } catch (err: any) {
     return { success: false, message: "Failed to allocate stock to order", error: err.message };

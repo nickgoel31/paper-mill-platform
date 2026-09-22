@@ -2,9 +2,20 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cancelInvoice, recordPayment, deletePayment, sendInvoiceEmail, markEinvoiceGenerated } from "@/server/services/invoice-service";
+
+// jsPDF (~350 KB) stays out of the server bundle: client-only, no SSR.
+const TallyInvoicePdfButton = dynamic(() => import("./tally-invoice-pdf-button"), {
+  ssr: false,
+  loading: () => (
+    <Button variant="outline" size="sm" disabled className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200">
+      Print / Save PDF (A4)
+    </Button>
+  ),
+});
 import { buildTallyInvoiceXml, downloadTallyXml } from "@/lib/tally-export";
 import { buildEinvoiceJson, downloadJson } from "@/lib/einvoice-export";
 import { numberToIndianWords } from "@/lib/number-to-words";
@@ -38,7 +49,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
-  Printer,
   Ban,
   Loader2,
   FileText,
@@ -248,15 +258,7 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => window.print()}
-            className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
-          >
-            <Printer className="h-4 w-4" /> Print / Save PDF (A4)
-          </Button>
+          <TallyInvoicePdfButton invoice={invoice} seller={seller} />
 
           {!isCancelled && canManageBilling && (
             <Button

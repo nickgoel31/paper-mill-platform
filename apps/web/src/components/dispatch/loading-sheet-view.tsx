@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
-  Printer,
   Truck,
   CheckCircle2,
   AlertTriangle,
@@ -128,8 +127,8 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
   };
 
   const handleConfirmSubmit = async () => {
-    if (!vehicleNumber.trim() || !driverName.trim()) {
-      toast.error("Vehicle registration number and Driver name are required.");
+    if (!vehicleNumber.trim()) {
+      toast.error("Vehicle registration number is required.");
       return;
     }
 
@@ -138,8 +137,8 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
       const result = await confirmDispatch({
         loadBatchId: batch.id,
         vehicleNumber,
-        driverName,
-        driverPhone,
+        driverName: driverName.trim() || "Not Provided",
+        driverPhone: driverPhone.trim() || "—",
         gatePassNumber,
         dispatchedAt: new Date(dispatchedAt).toISOString(),
         remarks,
@@ -192,16 +191,6 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
         </div>
 
         <div className="flex items-center gap-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => window.print()}
-            className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
-          >
-            <Printer className="h-4 w-4" /> Print Loading Sheet (A4)
-          </Button>
-
           <LoadingSheetPdfButton
             batch={batch}
             loadedQuantities={loadedQuantities}
@@ -487,24 +476,22 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Driver Name *</label>
+                <label className="font-semibold text-slate-700">Driver Name (Optional)</label>
                 <Input
                   placeholder="Driver full name"
                   className="text-xs bg-white"
                   value={driverName}
                   onChange={(e) => setDriverName(e.target.value)}
-                  required
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-slate-700">Driver Phone *</label>
+                <label className="font-semibold text-slate-700">Driver Phone (Optional)</label>
                 <Input
                   placeholder="+91 98765 43210"
                   className="font-mono text-xs bg-white"
                   value={driverPhone}
                   onChange={(e) => setDriverPhone(e.target.value)}
-                  required
                 />
               </div>
             </div>
@@ -630,7 +617,7 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
             <Button
               type="button"
               size="sm"
-              disabled={isSubmitting || !vehicleNumber.trim() || !driverName.trim()}
+              disabled={isSubmitting || !vehicleNumber.trim()}
               onClick={handleConfirmSubmit}
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
             >

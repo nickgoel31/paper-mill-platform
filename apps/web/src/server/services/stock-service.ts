@@ -858,50 +858,56 @@ export async function updateStockItem(input: {
   return updated;
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function allocateStockToOrderItem(
   stockItemId: string,
   orderItemId: string
 ) {
-  const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
+  try {
+    const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
 
-  const [stock, orderItem] = await Promise.all([
-    db.stockItem.findFirst({ where: { id: stockItemId } }),
-    db.orderItem.findFirst({
-      where: { id: orderItemId },
-      include: { order: true },
-    }),
-  ]);
+    const [stock, orderItem] = await Promise.all([
+      db.stockItem.findFirst({ where: { id: stockItemId } }),
+      db.orderItem.findFirst({
+        where: { id: orderItemId },
+        include: { order: true },
+      }),
+    ]);
 
-  if (!stock) throw new Error("Stock item not found.");
-  if (!orderItem) throw new Error("Target Order item not found.");
+    if (!stock) return { error: "Stock item not found." };
+    if (!orderItem) return { error: "Target Order item not found." };
 
-  if (stock.status !== StockStatus.AVAILABLE) {
-    throw new Error(`Only AVAILABLE stock can be allocated. Current status: ${stock.status}`);
-  }
+    if (stock.status !== StockStatus.AVAILABLE) {
+      return { error: `Only AVAILABLE stock can be allocated. Current status: ${stock.status}` };
+    }
 
-  // Exact matching validation
-  if (
-    Number(stock.widthInch) !== Number(orderItem.widthInch) ||
-    stock.gsm !== orderItem.gsm
-  ) {
-    throw new Error(
-      `Mismatch: Stock (${stock.widthInch}" @ ${stock.gsm} GSM) does not match order item (${orderItem.widthInch}" @ ${orderItem.gsm} GSM).`
-    );
-  }
-  if (stock.paperType !== orderItem.paperType) {
-    throw new Error(
-      `Mismatch: Stock is ${stock.paperType} paper but the order item is ${orderItem.paperType}.`
-    );
-  }
-  if (stock.size !== orderItem.size) {
-    throw new Error(
-      `Mismatch: Stock is ${stock.size} size but the order item is ${orderItem.size}.`
-    );
-  }
+    // Exact matching validation
+    if (
+      Number(stock.widthInch) !== Number(orderItem.widthInch) ||
+      stock.gsm !== orderItem.gsm
+    ) {
+      return {
+        error: `Mismatch: Stock (${stock.widthInch}" @ ${stock.gsm} GSM) does not match order item (${orderItem.widthInch}" @ ${orderItem.gsm} GSM).`,
+      };
+    }
+    if (stock.paperType !== orderItem.paperType) {
+      return {
+        error: `Mismatch: Stock is ${stock.paperType} paper but the order item is ${orderItem.paperType}.`,
+      };
+    }
+    if (stock.size !== orderItem.size) {
+      return {
+        error: `Mismatch: Stock is ${stock.size} size but the order item is ${orderItem.size}.`,
+      };
+    }
 
-  const stockKg = Number(stock.quantityKg);
+    const stockKg = Number(stock.quantityKg);
 
-  const result = await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
     // 1. Move Stock to ALLOCATED
     const updatedStock = await tx.stockItem.update({
       where: { id: stockItemId },
@@ -965,10 +971,13 @@ export async function allocateStockToOrderItem(
     return { updatedStock, updatedOrderItem };
   });
 
-  revalidatePath("/stock");
-  revalidatePath("/orders");
-  revalidatePath(`/orders/${orderItem.orderId}`);
-  return result;
+    revalidatePath("/stock");
+    revalidatePath("/orders");
+    revalidatePath(`/orders/${orderItem.orderId}`);
+    return { data: result };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to allocate stock to order." };
+  }
 }
 
 /**
@@ -1011,36 +1020,42 @@ export async function allocateStockToOriginOrders(stockItemIds?: string[]) {
       skipped++;
       continue;
     }
-    try {
-      await allocateStockToOrderItem(reel.id, reel.originOrderItemId!);
-      allocated++;
-    } catch {
+    const res = await allocateStockToOrderItem(reel.id, reel.originOrderItemId!);
+    if (res && "error" in res && res.error) {
       skipped++;
+    } else {
+      allocated++;
     }
   }
   return { allocated, skipped };
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function deallocateStock(stockItemId: string, reason?: string) {
-  const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
+  try {
+    const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH);
 
-  const stock = await db.stockItem.findFirst({
-    where: { id: stockItemId },
-    include: {
-      orderItem: { include: { order: true } },
-    },
-  });
+    const stock = await db.stockItem.findFirst({
+      where: { id: stockItemId },
+      include: {
+        orderItem: { include: { order: true } },
+      },
+    });
 
-  if (!stock) throw new Error("Stock item not found.");
-  if (stock.status !== StockStatus.ALLOCATED || !stock.orderItemId) {
-    throw new Error("This stock item is not currently allocated to an order.");
-  }
+    if (!stock) return { error: "Stock item not found." };
+    if (stock.status !== StockStatus.ALLOCATED || !stock.orderItemId) {
+      return { error: "This stock item is not currently allocated to an order." };
+    }
 
-  const orderItemId = stock.orderItemId;
-  const orderId = stock.orderItem?.orderId;
-  const stockKg = Number(stock.quantityKg);
+    const orderItemId = stock.orderItemId;
+    const orderId = stock.orderItem?.orderId;
+    const stockKg = Number(stock.quantityKg);
 
-  const result = await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
     // 1. Move Stock back to AVAILABLE
     const updatedStock = await tx.stockItem.update({
       where: { id: stockItemId },
@@ -1105,12 +1120,15 @@ export async function deallocateStock(stockItemId: string, reason?: string) {
     return updatedStock;
   });
 
-  revalidatePath("/stock");
-  if (orderId) {
-    revalidatePath("/orders");
-    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/stock");
+    if (orderId) {
+      revalidatePath("/orders");
+      revalidatePath(`/orders/${orderId}`);
+    }
+    return { data: result };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to deallocate stock." };
   }
-  return result;
 }
 
 // -----------------------------------------------------------------------------

@@ -82,7 +82,11 @@ export function StockAllocationModal({
 
     setIsSubmitting(true);
     try {
-      await allocateStockToOrderItem(stockItem.id, selectedOrderItemId);
+      const result = await allocateStockToOrderItem(stockItem.id, selectedOrderItemId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Stock allocated to order successfully.");
       onSuccess();
       onOpenChange(false);

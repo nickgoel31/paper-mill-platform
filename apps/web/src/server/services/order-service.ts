@@ -385,36 +385,46 @@ export async function getActiveMachineConstraints(tenantId: string) {
 // MUTATIONS (Create, Update, Transition, Cancel)
 // -----------------------------------------------------------------------------
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function createOrder(data: OrderFormInput) {
-  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
-  const validated = orderFormSchema.parse(data);
-
-  // Validate line items against active machines
-  const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
-  if (machines.length === 0) {
-    throw new Error("No active machines configured. Please add a machine before creating orders.");
-  }
-
-  for (const item of validated.items) {
-    const widthIn = itemWidthInches(item);
-    if (widthIn > maxDeckle) {
-      throw new Error(
-        `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}". No machine can cut this reel.`
-      );
+  try {
+    const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
+    const parsed = orderFormSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
     }
-    const compatibleMachines = machines.filter(
-      (m) => item.gsm >= m.minGsm && item.gsm <= m.maxGsm
-    );
-    if (compatibleMachines.length === 0) {
-      throw new Error(
-        `GSM ${item.gsm} cannot be run on any active machine. Active GSM ranges: ${machines
-          .map((m) => `${m.code} (${m.minGsm}â€“${m.maxGsm})`)
-          .join(", ")}.`
-      );
-    }
-  }
+    const validated = parsed.data;
 
-  const order = await db.$transaction(async (tx) => {
+    // Validate line items against active machines
+    const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
+    if (machines.length === 0) {
+      return { error: "No active machines configured. Please add a machine before creating orders." };
+    }
+
+    for (const item of validated.items) {
+      const widthIn = itemWidthInches(item);
+      if (widthIn > maxDeckle) {
+        return {
+          error: `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}". No machine can cut this reel.`,
+        };
+      }
+      const compatibleMachines = machines.filter(
+        (m) => item.gsm >= m.minGsm && item.gsm <= m.maxGsm
+      );
+      if (compatibleMachines.length === 0) {
+        return {
+          error: `GSM ${item.gsm} cannot be run on any active machine. Active GSM ranges: ${machines
+            .map((m) => `${m.code} (${m.minGsm}–${m.maxGsm})`)
+            .join(", ")}.`,
+        };
+      }
+    }
+
+    const order = await db.$transaction(async (tx) => {
     const orderNumber = await generateOrderNumber(tx, validated.orderDate);
 
     const created = await tx.order.create({
@@ -472,9 +482,12 @@ export async function createOrder(data: OrderFormInput) {
     return created;
   });
 
-  revalidatePath("/orders");
-  revalidateTag(DASHBOARD_TAG);
-  return order;
+    revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
+    return { order };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create sales order." };
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -650,41 +663,51 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
   return { created, errors };
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function updateOrder(id: string, data: OrderFormInput) {
-  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
-  const validated = orderFormSchema.parse(data);
-
-  const existing = await db.order.findFirst({
-    where: { id },
-    include: { items: true },
-  });
-
-  if (!existing) {
-    throw new Error("Order not found.");
-  }
-
-  // Domain Rule: An order cannot be edited once it is PLANNED or later
-  if (
-    existing.status !== OrderStatus.DRAFT &&
-    existing.status !== OrderStatus.CONFIRMED
-  ) {
-    throw new Error(
-      `Order #${existing.orderNumber} is in status "${existing.status}" and cannot be edited. It has already been assigned to planning or production. Please cancel and recreate if changes are needed.`
-    );
-  }
-
-  // Validate items against machine constraints
-  const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
-  for (const item of validated.items) {
-    const widthIn = itemWidthInches(item);
-    if (widthIn > maxDeckle) {
-      throw new Error(
-        `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}".`
-      );
+  try {
+    const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
+    const parsed = orderFormSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
     }
-  }
+    const validated = parsed.data;
 
-  const updated = await db.$transaction(async (tx) => {
+    const existing = await db.order.findFirst({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!existing) {
+      return { error: "Order not found." };
+    }
+
+    // Domain Rule: An order cannot be edited once it is PLANNED or later
+    if (
+      existing.status !== OrderStatus.DRAFT &&
+      existing.status !== OrderStatus.CONFIRMED
+    ) {
+      return {
+        error: `Order #${existing.orderNumber} is in status "${existing.status}" and cannot be edited. It has already been assigned to planning or production. Please cancel and recreate if changes are needed.`,
+      };
+    }
+
+    // Validate items against machine constraints
+    const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
+    for (const item of validated.items) {
+      const widthIn = itemWidthInches(item);
+      if (widthIn > maxDeckle) {
+        return {
+          error: `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}".`,
+        };
+      }
+    }
+
+    const updated = await db.$transaction(async (tx) => {
     // Delete existing items and recreate
     await tx.orderItem.deleteMany({ where: { orderId: id } });
 
@@ -734,62 +757,78 @@ export async function updateOrder(id: string, data: OrderFormInput) {
     return res;
   });
 
-  revalidatePath(`/orders/${id}`);
-  revalidatePath("/orders");
-  revalidateTag(DASHBOARD_TAG);
-  return updated;
+    revalidatePath(`/orders/${id}`);
+    revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
+    return { order: updated };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update sales order." };
+  }
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function transitionOrderStatus(input: StatusTransitionInput) {
-  const { userId, role } = await requireRole(
-    Role.ADMIN,
-    Role.SALES,
-    Role.PLANNER,
-    Role.OPERATOR,
-    Role.DISPATCH
-  );
-  const validated = statusTransitionSchema.parse(input);
-
-  const existing = await db.order.findFirst({
-    where: { id: validated.orderId },
-  });
-
-  if (!existing) {
-    throw new Error("Order not found.");
-  }
-
-  const allowed = await canTransition(existing.status, validated.newStatus, role);
-  if (!allowed) {
-    throw new Error(
-      `Role "${role}" is not authorized to transition order #${existing.orderNumber} from "${existing.status}" to "${validated.newStatus}".`
+  try {
+    const { userId, role } = await requireRole(
+      Role.ADMIN,
+      Role.SALES,
+      Role.PLANNER,
+      Role.OPERATOR,
+      Role.DISPATCH
     );
-  }
+    const parsed = statusTransitionSchema.safeParse(input);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
 
-  const updated = await db.$transaction(async (tx) => {
-    const res = await tx.order.update({
+    const existing = await db.order.findFirst({
       where: { id: validated.orderId },
-      data: { status: validated.newStatus },
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Order",
-        entityId: validated.orderId,
-        action: `STATUS_${validated.newStatus}`,
-        before: { status: existing.status },
-        after: { status: res.status, reason: validated.reason || null },
-      },
-      tx
-    );
+    if (!existing) {
+      return { error: "Order not found." };
+    }
 
-    return res;
-  });
+    const allowed = await canTransition(existing.status, validated.newStatus, role);
+    if (!allowed) {
+      return {
+        error: `Role "${role}" is not authorized to transition order #${existing.orderNumber} from "${existing.status}" to "${validated.newStatus}".`,
+      };
+    }
 
-  revalidatePath(`/orders/${validated.orderId}`);
-  revalidatePath("/orders");
-  revalidateTag(DASHBOARD_TAG);
-  return updated;
+    const updated = await db.$transaction(async (tx) => {
+      const res = await tx.order.update({
+        where: { id: validated.orderId },
+        data: { status: validated.newStatus },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Order",
+          entityId: validated.orderId,
+          action: `STATUS_${validated.newStatus}`,
+          before: { status: existing.status },
+          after: { status: res.status, reason: validated.reason || null },
+        },
+        tx
+      );
+
+      return res;
+    });
+
+    revalidatePath(`/orders/${validated.orderId}`);
+    revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
+    return { order: updated };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to transition order status." };
+  }
 }
 
 export async function cancelOrder(id: string, reason?: string) {

@@ -273,6 +273,9 @@ export function OrderForm({
             `Offline — changes to Order #${initialOrder.orderNumber} saved locally and will sync automatically.`
           );
           router.push(`/orders/${initialOrder.id}`);
+        } else if (result.data && "error" in result.data && result.data.error) {
+          toast.error(result.data.error);
+          return;
         } else {
           toast.success(`Order #${initialOrder.orderNumber} updated successfully.`);
           router.push(`/orders/${initialOrder.id}`);
@@ -284,9 +287,13 @@ export function OrderForm({
           // (a fresh server render) can't be opened until this syncs.
           toast.info("Offline — sales order saved locally and will be created once you're back online.");
           router.push("/orders");
+        } else if (result.data && "error" in result.data && result.data.error) {
+          toast.error(result.data.error);
+          return;
         } else {
-          toast.success(`Sales Order #${result.data!.orderNumber} created successfully!`);
-          router.push(`/orders/${result.data!.id}`);
+          const created = (result.data as any).order;
+          toast.success(`Sales Order #${created.orderNumber} created successfully!`);
+          router.push(`/orders/${created.id}`);
         }
       }
       router.refresh();

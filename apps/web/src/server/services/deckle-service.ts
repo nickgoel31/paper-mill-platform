@@ -316,7 +316,10 @@ async function commitProductionRunsImpl(input: CommitRunsInput) {
       );
     }
     for (const a of allocations) {
-      await allocateStockToOrderItem(a.stockItemId, a.orderItemId);
+      const res = await allocateStockToOrderItem(a.stockItemId, a.orderItemId);
+      if ("error" in res && res.error) {
+        throw new Error(res.error);
+      }
     }
   }
 
@@ -588,7 +591,10 @@ export async function assignStockToOrderItem(orderItemId: string) {
 
   const chosen = matches[0];
   const result = await allocateStockToOrderItem(chosen.id, orderItemId);
+  if ("error" in result && result.error) {
+    throw new Error(result.error);
+  }
 
   revalidatePath("/deckle");
-  return { ...result, reelNumber: chosen.reelNumber };
+  return { ...result.data, reelNumber: chosen.reelNumber };
 }
