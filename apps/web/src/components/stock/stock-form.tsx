@@ -116,6 +116,7 @@ export function StockForm({
   // touching that row's weight once they do, until width/GSM changes again.
   const [manualWeight, setManualWeight] = React.useState<Set<string>>(new Set());
   const locationOptions = locations.length > 0 ? locations : COMMON_LOCATIONS;
+  const defaultLocation = locationOptions[0];
 
   const [reels, setReels] = React.useState<ReelEntry[]>([
     {
@@ -126,7 +127,7 @@ export function StockForm({
       paperType: PaperType.NATURAL,
       size: PaperSize.NORMAL,
       quantityKg: "392",
-      location: "BAY-A (Primary Warehouse)",
+      location: defaultLocation,
     },
   ]);
 
@@ -141,7 +142,7 @@ export function StockForm({
         paperType: PaperType.NATURAL,
         size: PaperSize.NORMAL,
         quantityKg: String(preset.standardWeightKg),
-        location: preset.defaultLocation || "BAY-A (Primary Warehouse)",
+        location: preset.defaultLocation || defaultLocation,
       },
     ]);
     toast.success(`Added ${preset.name} (${preset.widthInch}" / ${preset.gsm} GSM)`);
@@ -159,7 +160,7 @@ export function StockForm({
         paperType: lastReel ? lastReel.paperType : PaperType.NATURAL,
         size: lastReel ? lastReel.size : PaperSize.NORMAL,
         quantityKg: lastReel ? lastReel.quantityKg : "500",
-        location: lastReel ? lastReel.location : "BAY-A (Primary Warehouse)",
+        location: lastReel ? lastReel.location : defaultLocation,
       },
     ]);
   };
@@ -269,7 +270,7 @@ export function StockForm({
           paperType: r.paperType,
           size: r.size,
           quantityKg: parseFloat(r.quantityKg),
-          location: r.location || "BAY-A (Primary Warehouse)",
+          location: r.location || defaultLocation,
           orderItemId: r.orderItemId && r.orderItemId !== "none" ? r.orderItemId : undefined,
         });
         createdCount++;

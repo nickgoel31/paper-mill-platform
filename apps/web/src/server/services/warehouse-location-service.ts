@@ -21,6 +21,15 @@ export async function getWarehouseLocationNames(): Promise<string[]> {
   return rows.map((r) => r.name);
 }
 
+/** The first location ever created (oldest), used as the default bay when none is specified. */
+export async function getFirstWarehouseLocationName(): Promise<string | null> {
+  const row = await db.warehouseLocation.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { name: true },
+  });
+  return row?.name || null;
+}
+
 export async function createWarehouseLocation(name: string) {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
   const trimmed = name.trim();

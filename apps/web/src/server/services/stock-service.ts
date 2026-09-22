@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { toInches, fromInches } from "@/lib/units";
 import { getSystemSettings } from "./settings-service";
 import { getGsmWeightMap } from "./gsm-weight-service";
+import { getFirstWarehouseLocationName } from "./warehouse-location-service";
 
 function startOfDay(dateStr: string): Date {
   const d = new Date(dateStr);
@@ -426,6 +427,7 @@ export async function createStockItem(input: {
   }
 
   const { reelNumberPrefix } = await getSystemSettings();
+  const defaultLocation = input.location || (await getFirstWarehouseLocationName()) || "WAREHOUSE-BAY-A";
 
   const created = await db.$transaction(async (tx) => {
     const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
@@ -440,7 +442,7 @@ export async function createStockItem(input: {
         size,
         quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
         status: isAllocated ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
-        location: input.location || "WAREHOUSE-BAY-A",
+        location: defaultLocation,
         remarks: input.remarks?.trim() || null,
         orderItemId: isAllocated ? input.orderItemId : null,
       },
@@ -502,6 +504,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
   );
   const { reelNumberPrefix } = await getSystemSettings();
   const gsmWeightMap = await getGsmWeightMap();
+  const defaultLocation = (await getFirstWarehouseLocationName()) || "WAREHOUSE-BAY-A";
 
   const errors: { row: number; message: string }[] = [];
 
@@ -629,7 +632,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         size,
         quantityKg,
         orderItemId,
-        location: r.location?.trim() || "WAREHOUSE-BAY-A",
+        location: r.location?.trim() || defaultLocation,
         remarks: r.remarks?.trim() || null,
       });
     } catch (err: any) {
