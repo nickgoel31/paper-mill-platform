@@ -5,6 +5,7 @@ import { getAllActiveStockPresets } from "@/server/services/stock-preset-service
 import { getMachineOptions } from "@/server/services/lookup-service";
 import { getSystemSettings } from "@/server/services/settings-service";
 import { getGsmWeightMap } from "@/server/services/gsm-weight-service";
+import { getWarehouseLocationNames } from "@/server/services/warehouse-location-service";
 import { StockForm } from "@/components/stock/stock-form";
 
 export const metadata = {
@@ -14,7 +15,7 @@ export const metadata = {
 export default async function NewStockPage() {
   const { tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH, Role.OPERATOR);
 
-  const [activeMachines, confirmedOrders, stockPresets, settings, gsmWeightMap] = await Promise.all([
+  const [activeMachines, confirmedOrders, stockPresets, settings, gsmWeightMap, locations] = await Promise.all([
     getMachineOptions(tenantId!),
     db.order.findMany({
       where: {
@@ -44,6 +45,7 @@ export default async function NewStockPage() {
     getAllActiveStockPresets(),
     getSystemSettings(),
     getGsmWeightMap(),
+    getWarehouseLocationNames(),
   ]);
 
   return (
@@ -53,6 +55,7 @@ export default async function NewStockPage() {
       recentOrders={JSON.parse(JSON.stringify(confirmedOrders))}
       presets={JSON.parse(JSON.stringify(stockPresets))}
       gsmWeightMap={gsmWeightMap}
+      locations={locations}
     />
   );
 }

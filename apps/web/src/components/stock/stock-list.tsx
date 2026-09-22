@@ -130,9 +130,10 @@ interface StockListProps {
   };
   userRole: Role;
   displayUnit?: "INCH" | "CM";
+  locations?: string[];
 }
 
-export function StockList({ initialData, initialStats, userRole, displayUnit = "INCH" }: StockListProps) {
+export function StockList({ initialData, initialStats, userRole, displayUnit = "INCH", locations = [] }: StockListProps) {
   const [data, setData] = React.useState(initialData.rows);
   const [total, setTotal] = React.useState(initialData.total);
   const [page, setPage] = React.useState(initialData.page);
@@ -1044,6 +1045,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             }
           }}
           stockItem={adjustItem as any}
+          locations={locations}
           onSuccess={() => {
             setAdjustItem(null);
             setIsCreatingStock(false);

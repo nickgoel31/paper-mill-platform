@@ -157,6 +157,7 @@ model Tenant {
   auditLogs     AuditLog[]
   settings      SystemSetting[]
   payments      Payment[]
+  warehouseLocations WarehouseLocation[]
 }
 
 model User {
@@ -187,6 +188,7 @@ model User {
   createdGsmWeightProfiles GsmWeightProfile[]
   auditLogs           AuditLog[]
   recordedPayments    Payment[]
+  createdWarehouseLocations WarehouseLocation[]
 
   @@index([role])
   @@index([email])
@@ -760,6 +762,21 @@ model GsmWeightProfile {
   createdBy User?   @relation(fields: [createdById], references: [id])
 
   @@unique([tenantId, gsm])
+  @@index([tenantId])
+}
+
+model WarehouseLocation {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  tenant    Tenant? @relation(fields: [tenantId], references: [id])
+  createdBy User?   @relation(fields: [createdById], references: [id])
+
+  @@unique([tenantId, name])
   @@index([tenantId])
 }
 

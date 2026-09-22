@@ -708,7 +708,8 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
 export async function adjustStockQuantity(
   stockItemId: string,
   deltaKg: number,
-  reason: string
+  reason: string,
+  newLocation?: string
 ) {
   const { userId } = await requireRole(Role.ADMIN);
 
@@ -733,11 +734,14 @@ export async function adjustStockQuantity(
     );
   }
 
+  const locationChanged = !!newLocation?.trim() && newLocation.trim() !== existing.location;
+
   const updated = await db.$transaction(async (tx) => {
     const item = await tx.stockItem.update({
       where: { id: stockItemId },
       data: {
         quantityKg: new Prisma.Decimal(newKg.toFixed(3)),
+        ...(locationChanged ? { location: newLocation!.trim() } : {}),
       },
     });
 
@@ -747,10 +751,11 @@ export async function adjustStockQuantity(
         entityType: "StockItem",
         entityId: stockItemId,
         action: "MANUAL_ADJUSTMENT",
-        before: { quantityKg: currentKg },
+        before: { quantityKg: currentKg, location: existing.location },
         after: {
           quantityKg: newKg,
           deltaKg,
+          location: locationChanged ? newLocation!.trim() : existing.location,
           reason,
         },
       },

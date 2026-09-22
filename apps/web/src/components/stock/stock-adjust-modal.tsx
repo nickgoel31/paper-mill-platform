@@ -15,6 +15,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { AlertTriangle, Loader2, Edit } from "lucide-react";
 
 interface StockAdjustModalProps {
@@ -27,6 +34,7 @@ interface StockAdjustModalProps {
     quantityKg: number;
     location?: string | null;
   } | null;
+  locations?: string[];
   onSuccess: () => void;
 }
 
@@ -34,33 +42,38 @@ export function StockAdjustModal({
   open,
   onOpenChange,
   stockItem,
+  locations = [],
   onSuccess,
 }: StockAdjustModalProps) {
   const [deltaStr, setDeltaStr] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [locationValue, setLocationValue] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       setDeltaStr("");
       setReason("");
+      setLocationValue(stockItem?.location || "");
     }
-  }, [open]);
+  }, [open, stockItem?.location]);
 
   if (!stockItem) return null;
 
   const currentKg = stockItem.quantityKg;
   const deltaNum = parseFloat(deltaStr) || 0;
   const newKg = currentKg + deltaNum;
-  const isInvalid = !reason.trim() || isNaN(deltaNum) || deltaNum === 0 || newKg < 0;
+  const locationChanged = !!locationValue && locationValue !== (stockItem.location || "");
+  const hasChange = deltaNum !== 0 || locationChanged;
+  const isInvalid = !reason.trim() || isNaN(deltaNum) || !hasChange || newKg < 0;
 
   const handleAdjust = async () => {
     if (isInvalid) return;
 
     setIsSubmitting(true);
     try {
-      await adjustStockQuantity(stockItem.id, deltaNum, reason);
-      toast.success("Stock quantity adjusted with audit log.");
+      await adjustStockQuantity(stockItem.id, deltaNum, reason, locationChanged ? locationValue : undefined);
+      toast.success("Stock updated with audit log.");
       onSuccess();
       onOpenChange(false);
     } catch (err: any) {
@@ -81,7 +94,8 @@ export function StockAdjustModal({
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs">
-            Adjust quantity with a mandatory reason. An audit log entry will be permanently written.
+            Adjust quantity and/or move to a different bay, with a mandatory reason. An audit log
+            entry will be permanently written.
           </DialogDescription>
         </DialogHeader>
 
@@ -139,6 +153,24 @@ export function StockAdjustModal({
               <span>Quantity cannot be reduced below zero.</span>
             </div>
           )}
+
+          {/* Location / Bay */}
+          <div className="space-y-1.5">
+            <label className="font-semibold text-slate-800">Warehouse Bay / Location</label>
+            <Select value={locationValue} onValueChange={setLocationValue}>
+              <SelectTrigger className="h-9 text-xs bg-white">
+                <SelectValue placeholder="Select warehouse bay" />
+              </SelectTrigger>
+              <SelectContent>
+                {locationValue && !locations.includes(locationValue) && (
+                  <SelectItem value={locationValue} className="text-xs">{locationValue} (current)</SelectItem>
+                )}
+                {locations.map((loc) => (
+                  <SelectItem key={loc} value={loc} className="text-xs">{loc}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Mandatory Reason Input */}
           <div className="space-y-1.5">

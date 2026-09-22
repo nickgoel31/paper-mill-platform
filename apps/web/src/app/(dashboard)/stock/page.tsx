@@ -5,6 +5,7 @@ import {
   getStockSummaryStats,
 } from "@/server/services/stock-service";
 import { getSystemSettings } from "@/server/services/settings-service";
+import { getWarehouseLocationNames } from "@/server/services/warehouse-location-service";
 import { StockList } from "@/components/stock/stock-list";
 
 export const metadata = {
@@ -20,10 +21,11 @@ export default async function StockPage() {
     Role.OPERATOR
   );
 
-  const [initialData, stats, settings] = await Promise.all([
+  const [initialData, stats, settings, locations] = await Promise.all([
     getStockItems({ page: 1, pageSize: 20 }),
     getStockSummaryStats(),
     getSystemSettings(),
+    getWarehouseLocationNames(),
   ]);
 
   return (
@@ -32,6 +34,7 @@ export default async function StockPage() {
       initialStats={stats}
       userRole={role}
       displayUnit={settings.measurementUnit}
+      locations={locations}
     />
   );
 }

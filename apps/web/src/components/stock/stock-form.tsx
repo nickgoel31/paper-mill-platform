@@ -87,6 +87,8 @@ interface StockFormProps {
   }>;
   /** `{ gsm: kgPerInch }` from the GSM Weight Chart — used to auto-fill weight from width in real time. */
   gsmWeightMap?: Record<number, number>;
+  /** Warehouse Locations master list (Masters → Warehouse Locations). Falls back to a built-in list if empty. */
+  locations?: string[];
 }
 
 const COMMON_LOCATIONS = [
@@ -106,12 +108,14 @@ export function StockForm({
   recentOrders,
   presets = [],
   gsmWeightMap = {},
+  locations = [],
 }: StockFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   // Reels whose weight the user has typed directly — auto-fill stops
   // touching that row's weight once they do, until width/GSM changes again.
   const [manualWeight, setManualWeight] = React.useState<Set<string>>(new Set());
+  const locationOptions = locations.length > 0 ? locations : COMMON_LOCATIONS;
 
   const [reels, setReels] = React.useState<ReelEntry[]>([
     {
@@ -438,7 +442,7 @@ export function StockForm({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Width */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700">
@@ -568,7 +572,7 @@ export function StockForm({
                         <SelectValue placeholder="Select warehouse bay" />
                       </SelectTrigger>
                       <SelectContent>
-                        {COMMON_LOCATIONS.map((loc) => (
+                        {locationOptions.map((loc) => (
                           <SelectItem key={loc} value={loc} className="text-xs font-medium">
                             {loc}
                           </SelectItem>
