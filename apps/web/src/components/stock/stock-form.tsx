@@ -85,6 +85,8 @@ interface StockFormProps {
     shade: string | null;
     bf: string | null;
   }>;
+  /** `{ gsm: kgPerInch }` from the GSM Weight Chart — used to auto-fill weight from width in real time. */
+  gsmWeightMap?: Record<number, number>;
 }
 
 const COMMON_LOCATIONS = [
@@ -103,9 +105,13 @@ export function StockForm({
   machines,
   recentOrders,
   presets = [],
+  gsmWeightMap = {},
 }: StockFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  // Reels whose weight the user has typed directly — auto-fill stops
+  // touching that row's weight once they do, until width/GSM changes again.
+  const [manualWeight, setManualWeight] = React.useState<Set<string>>(new Set());
 
   const [reels, setReels] = React.useState<ReelEntry[]>([
     {
@@ -163,8 +169,27 @@ export function StockForm({
   };
 
   const updateReel = (id: string, field: keyof ReelEntry, value: string) => {
+    if (field === "quantityKg") {
+      setManualWeight((prev) => new Set(prev).add(id));
+    }
     setReels((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r))
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const next = { ...r, [field]: value };
+        if (
+          (field === "widthInch" || field === "widthUnit" || field === "gsm") &&
+          !manualWeight.has(id)
+        ) {
+          const w = parseFloat(next.widthInch);
+          const g = parseInt(next.gsm, 10);
+          const kgPerInch = gsmWeightMap[g];
+          if (!isNaN(w) && w > 0 && kgPerInch) {
+            const widthInches = toInches(w, next.widthUnit);
+            next.quantityKg = (kgPerInch * widthInches).toFixed(2);
+          }
+        }
+        return next;
+      })
     );
   };
 
@@ -506,8 +531,13 @@ export function StockForm({
 
                   {/* Weight (Kg) */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       Net Weight (Kg) <span className="text-rose-500">*</span>
+                      {gsmWeightMap[parseInt(reel.gsm, 10)] && !manualWeight.has(reel.id) && (
+                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md normal-case">
+                          auto (GSM chart)
+                        </span>
+                      )}
                     </label>
                     <div className="relative">
                       <Input

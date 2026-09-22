@@ -705,9 +705,11 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         open={csvImportOpen}
         onOpenChange={setCsvImportOpen}
         title="Import Stock Reels from CSV"
-        description="One row per reel. Leave reelNumber blank to auto-generate one."
-        requiredColumns={["widthInch", "gsm", "quantityKg"]}
+        description="One row per reel. Leave reelNumber blank to auto-generate one. You can leave either widthInch or quantityKg blank if a GSM Weight Chart entry exists for that GSM — the other is calculated automatically."
+        requiredColumns={["gsm"]}
         optionalColumns={[
+          "widthInch (or leave blank if GSM Weight Chart is set)",
+          "quantityKg (or leave blank if GSM Weight Chart is set)",
           "reelNumber",
           "widthUnit (INCH/CM)",
           "paperType (NATURAL/BY)",

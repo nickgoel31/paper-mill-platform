@@ -98,6 +98,8 @@ interface OrderFormProps {
     minGsm: number;
     maxGsm: number;
   };
+  /** `{ gsm: kgPerInch }` from the GSM Weight Chart — used to auto-fill weight from width × reels in real time. */
+  gsmWeightMap?: Record<number, number>;
 }
 
 export function OrderForm({
@@ -105,10 +107,14 @@ export function OrderForm({
   clients,
   defaultUnit = LengthUnit.INCH,
   machineConstraints,
+  gsmWeightMap = {},
 }: OrderFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const isEditing = !!initialOrder;
+  // Row indexes whose weight the user has typed directly — auto-fill stops
+  // touching that row's weight once they do, until width/GSM/reels changes again.
+  const manualWeightRows = React.useRef<Set<number>>(new Set());
 
   const defaultItems = initialOrder?.items?.map((it: any) => ({
     id: it.id,
@@ -149,6 +155,21 @@ export function OrderForm({
       items: defaultItems,
     },
   });
+
+  // Recompute a row's weight from width × reels × the GSM chart's kg/inch,
+  // unless the user has typed a weight for this row directly.
+  const recalcWeight = (idx: number) => {
+    if (manualWeightRows.current.has(idx)) return;
+    const item = form.getValues(`items.${idx}`);
+    const gsm = Number(item?.gsm);
+    const kgPerInch = gsmWeightMap[gsm];
+    const width = Number(item?.widthInch);
+    if (!kgPerInch || !width || width <= 0) return;
+    const widthInches = toInches(width, item?.widthUnit || LengthUnit.INCH);
+    const reels = Number(item?.numberOfReels) > 0 ? Number(item.numberOfReels) : 1;
+    const weight = Number((kgPerInch * widthInches * reels).toFixed(2));
+    form.setValue(`items.${idx}.quantityKg`, weight, { shouldDirty: true });
+  };
 
   // How many identical rows the "Add Reel Size" button inserts at once.
   const [addQty, setAddQty] = React.useState(1);
@@ -581,6 +602,10 @@ export function OrderForm({
                                     type="number"
                                     step="0.01"
                                     {...itField}
+                                    onChange={(e) => {
+                                      itField.onChange(e);
+                                      recalcWeight(idx);
+                                    }}
                                     className={`h-10 text-sm rounded-xl font-mono ${
                                       isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-white border-slate-200"
                                     }`}
@@ -594,7 +619,13 @@ export function OrderForm({
                             control={form.control}
                             name={`items.${idx}.widthUnit`}
                             render={({ field: itField }) => (
-                              <Select onValueChange={itField.onChange} value={itField.value}>
+                              <Select
+                                onValueChange={(val) => {
+                                  itField.onChange(val);
+                                  recalcWeight(idx);
+                                }}
+                                value={itField.value}
+                              >
                                 <SelectTrigger className="h-10 w-[72px] text-xs rounded-xl bg-white border-slate-200 shrink-0">
                                   <SelectValue />
                                 </SelectTrigger>
@@ -626,6 +657,10 @@ export function OrderForm({
                                   <Input
                                     type="number"
                                     {...itField}
+                                    onChange={(e) => {
+                                      itField.onChange(e);
+                                      recalcWeight(idx);
+                                    }}
                                     className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
@@ -713,11 +748,12 @@ export function OrderForm({
                                     min="0"
                                     placeholder="—"
                                     value={itField.value ?? ""}
-                                    onChange={(e) =>
+                                    onChange={(e) => {
                                       itField.onChange(
                                         e.target.value ? Math.floor(Number(e.target.value)) : null
-                                      )
-                                    }
+                                      );
+                                      recalcWeight(idx);
+                                    }}
                                     className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
@@ -733,7 +769,14 @@ export function OrderForm({
 
                       {/* Quantity (KG) */}
                       <div>
-                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</FormLabel>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500 flex items-center gap-1.5">
+                          Weight (KG) *
+                          {gsmWeightMap[Number(currentItem?.gsm)] && !manualWeightRows.current.has(idx) && (
+                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md normal-case">
+                              auto (GSM chart)
+                            </span>
+                          )}
+                        </FormLabel>
                         <FormField
                           control={form.control}
                           name={`items.${idx}.quantityKg`}
@@ -745,6 +788,10 @@ export function OrderForm({
                                     type="number"
                                     step="1"
                                     {...itField}
+                                    onChange={(e) => {
+                                      manualWeightRows.current.add(idx);
+                                      itField.onChange(e);
+                                    }}
                                     className="h-10 text-sm rounded-xl font-mono font-bold text-slate-900 bg-white border-slate-200"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">

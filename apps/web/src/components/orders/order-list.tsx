@@ -757,9 +757,11 @@ export function OrderList({
         open={csvImportOpen}
         onOpenChange={setCsvImportOpen}
         title="Import Sales Orders from CSV"
-        description="One row per order line. Rows sharing the same orderNumber are combined into one multi-line order; leave it blank to auto-generate one per row."
-        requiredColumns={["clientCode", "widthInch", "gsm", "quantityKg"]}
+        description="One row per order line. Rows sharing the same orderNumber are combined into one multi-line order; leave it blank to auto-generate one per row. You can leave either widthInch or quantityKg blank if a GSM Weight Chart entry exists for that GSM — the other is calculated automatically."
+        requiredColumns={["clientCode", "gsm"]}
         optionalColumns={[
+          "widthInch (or leave blank if GSM Weight Chart is set)",
+          "quantityKg (or leave blank if GSM Weight Chart is set)",
           "orderNumber",
           "orderDate",
           "deliveryDate",

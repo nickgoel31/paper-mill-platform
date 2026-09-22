@@ -10,8 +10,9 @@ import {
   buildPaginatedResponse,
 } from "./base-service";
 import { revalidatePath } from "next/cache";
-import { toInches } from "@/lib/units";
+import { toInches, fromInches } from "@/lib/units";
 import { getSystemSettings } from "./settings-service";
+import { getGsmWeightMap } from "./gsm-weight-service";
 
 function startOfDay(dateStr: string): Date {
   const d = new Date(dateStr);
@@ -500,6 +501,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     Role.SALES
   );
   const { reelNumberPrefix } = await getSystemSettings();
+  const gsmWeightMap = await getGsmWeightMap();
 
   const errors: { row: number; message: string }[] = [];
 
@@ -558,17 +560,33 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     const rowNum = i + 2; // account for the header row
     const r = rows[i];
     try {
-      const widthRaw = parseFloat(r.widthInch);
       const gsm = parseInt(r.gsm, 10);
-      const quantityKg = parseFloat(r.quantityKg);
+      if (isNaN(gsm) || gsm <= 0) throw new Error(`Invalid "gsm": "${r.gsm}"`);
       const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? LengthUnit.CM : LengthUnit.INCH;
       let paperType = (r.paperType || "").toUpperCase() === "BY" ? PaperType.BY : PaperType.NATURAL;
       let size = (r.size || "").toUpperCase() === "BABY" ? PaperSize.BABY : PaperSize.NORMAL;
       const reelNumber = r.reelNumber?.trim() || "";
       const orderNumber = r.orderNumber?.trim() || "";
+      const kgPerInch = gsmWeightMap[gsm];
+
+      let widthRaw = r.widthInch?.trim() ? parseFloat(r.widthInch) : NaN;
+      let quantityKg = r.quantityKg?.trim() ? parseFloat(r.quantityKg) : NaN;
+
+      // If exactly one of width/weight is missing, derive it from the GSM
+      // Weight Chart (kg per inch of width) instead of requiring both.
+      if ((isNaN(widthRaw) || widthRaw <= 0) && !isNaN(quantityKg) && quantityKg > 0) {
+        if (!kgPerInch) {
+          throw new Error(`"widthInch" is missing and no GSM Weight Chart entry exists for ${gsm} GSM to derive it.`);
+        }
+        widthRaw = fromInches(quantityKg / kgPerInch, widthUnit);
+      } else if ((isNaN(quantityKg) || quantityKg <= 0) && !isNaN(widthRaw) && widthRaw > 0) {
+        if (!kgPerInch) {
+          throw new Error(`"quantityKg" is missing and no GSM Weight Chart entry exists for ${gsm} GSM to derive it.`);
+        }
+        quantityKg = Number((kgPerInch * toInches(widthRaw, widthUnit)).toFixed(3));
+      }
 
       if (isNaN(widthRaw) || widthRaw <= 0) throw new Error(`Invalid "widthInch": "${r.widthInch}"`);
-      if (isNaN(gsm) || gsm <= 0) throw new Error(`Invalid "gsm": "${r.gsm}"`);
       if (isNaN(quantityKg) || quantityKg <= 0) throw new Error(`Invalid "quantityKg": "${r.quantityKg}"`);
 
       // reelNumber is a free-text label, not a unique identifier — the real

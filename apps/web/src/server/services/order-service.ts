@@ -18,8 +18,9 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getMachineConstraints } from "./lookup-service";
 import { DASHBOARD_TAG } from "./cache-tags";
-import { toInches } from "@/lib/units";
+import { toInches, fromInches } from "@/lib/units";
 import { formatWidthInch } from "@/lib/utils";
+import { getGsmWeightMap } from "./gsm-weight-service";
 
 /** widthInch on the line as typed -> canonical inches, for storage/validation. */
 function itemWidthInches(item: { widthInch: number; widthUnit: import("@/generated/prisma/browser").LengthUnit }) {
@@ -491,6 +492,7 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
   const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
 
   const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
+  const gsmWeightMap = await getGsmWeightMap();
   if (machines.length === 0) {
     return {
       created: 0,
@@ -544,19 +546,44 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
         : OrderPriority.NORMAL;
 
       const items = group.rows.map((r, idx) => {
-        const widthRaw = parseFloat(r.widthInch);
         const gsm = parseInt(r.gsm, 10);
-        const quantityKg = parseFloat(r.quantityKg);
-        if (isNaN(widthRaw) || widthRaw <= 0) {
-          throw new Error(`Invalid "widthInch" on line ${idx + 1} of this order: "${r.widthInch}"`);
-        }
         if (isNaN(gsm) || gsm <= 0) {
           throw new Error(`Invalid "gsm" on line ${idx + 1} of this order: "${r.gsm}"`);
+        }
+        const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? "CM" : "INCH";
+        const numberOfReelsForCalc =
+          r.numberOfReels?.trim() && parseInt(r.numberOfReels, 10) > 0 ? parseInt(r.numberOfReels, 10) : 1;
+        const kgPerInch = gsmWeightMap[gsm];
+
+        let widthRaw = r.widthInch?.trim() ? parseFloat(r.widthInch) : NaN;
+        let quantityKg = r.quantityKg?.trim() ? parseFloat(r.quantityKg) : NaN;
+
+        // If exactly one of width/weight is missing, derive it from the GSM
+        // Weight Chart (kg per inch of width) instead of requiring both.
+        if ((isNaN(widthRaw) || widthRaw <= 0) && !isNaN(quantityKg) && quantityKg > 0) {
+          if (!kgPerInch) {
+            throw new Error(
+              `Line ${idx + 1}: "widthInch" is missing and no GSM Weight Chart entry exists for ${gsm} GSM to derive it.`
+            );
+          }
+          const widthInches = quantityKg / (kgPerInch * numberOfReelsForCalc);
+          widthRaw = fromInches(widthInches, widthUnit as any);
+        } else if ((isNaN(quantityKg) || quantityKg <= 0) && !isNaN(widthRaw) && widthRaw > 0) {
+          if (!kgPerInch) {
+            throw new Error(
+              `Line ${idx + 1}: "quantityKg" is missing and no GSM Weight Chart entry exists for ${gsm} GSM to derive it.`
+            );
+          }
+          const widthInches = toInches(widthRaw, widthUnit as any);
+          quantityKg = Number((kgPerInch * widthInches * numberOfReelsForCalc).toFixed(3));
+        }
+
+        if (isNaN(widthRaw) || widthRaw <= 0) {
+          throw new Error(`Invalid "widthInch" on line ${idx + 1} of this order: "${r.widthInch}"`);
         }
         if (isNaN(quantityKg) || quantityKg <= 0) {
           throw new Error(`Invalid "quantityKg" on line ${idx + 1} of this order: "${r.quantityKg}"`);
         }
-        const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? "CM" : "INCH";
         const widthIn = toInches(widthRaw, widthUnit as any);
         if (widthIn > maxDeckle) {
           throw new Error(
