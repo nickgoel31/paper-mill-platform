@@ -640,41 +640,54 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     }
   }
 
-  // Insert in chunks (one transaction per chunk instead of per row) — a bad
-  // row inside a chunk only rolls back that chunk, not the whole file.
+  // Cloudflare D1 doesn't support real transactions (Prisma silently runs
+  // $transaction as individual auto-committed queries on D1), so a loop of
+  // per-row `create()` calls is still one network round-trip per row no
+  // matter how it's wrapped. `createMany` compiles to a single multi-row
+  // INSERT statement instead — this is the actual batching.
   let created = 0;
-  const CHUNK_SIZE = 25;
+  const CHUNK_SIZE = 100;
   for (let c = 0; c < validRows.length; c += CHUNK_SIZE) {
     const chunk = validRows.slice(c, c + CHUNK_SIZE);
     try {
-      await db.$transaction(async (tx) => {
-        for (const vr of chunk) {
-          const item = await tx.stockItem.create({
-            data: {
-              reelNumber: vr.reelNumber,
-              widthInch: new Prisma.Decimal(vr.widthInch.toFixed(2)),
-              enteredWidth: new Prisma.Decimal(vr.enteredWidth.toFixed(2)),
-              enteredWidthUnit: vr.enteredWidthUnit,
-              gsm: vr.gsm,
-              paperType: vr.paperType,
-              size: vr.size,
-              quantityKg: new Prisma.Decimal(vr.quantityKg.toFixed(3)),
-              status: vr.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
-              location: vr.location,
-              remarks: vr.remarks,
-              orderItemId: vr.orderItemId,
-            },
-          });
-          if (vr.orderItemId) {
-            await tx.orderItem.update({
-              where: { id: vr.orderItemId },
-              data: { producedKg: { increment: new Prisma.Decimal(vr.quantityKg.toFixed(3)) } },
-            });
-          }
-          void item;
-        }
+      await db.stockItem.createMany({
+        data: chunk.map((vr) => ({
+          reelNumber: vr.reelNumber,
+          widthInch: new Prisma.Decimal(vr.widthInch.toFixed(2)),
+          enteredWidth: new Prisma.Decimal(vr.enteredWidth.toFixed(2)),
+          enteredWidthUnit: vr.enteredWidthUnit,
+          gsm: vr.gsm,
+          paperType: vr.paperType,
+          size: vr.size,
+          quantityKg: new Prisma.Decimal(vr.quantityKg.toFixed(3)),
+          status: vr.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
+          location: vr.location,
+          remarks: vr.remarks,
+          orderItemId: vr.orderItemId,
+        })),
       });
       created += chunk.length;
+
+      // Sum producedKg increments per order item (one update per distinct
+      // order item touched in this chunk, run in parallel) instead of one
+      // update per row.
+      const incrementByOrderItem = new Map<string, number>();
+      for (const vr of chunk) {
+        if (vr.orderItemId) {
+          incrementByOrderItem.set(
+            vr.orderItemId,
+            (incrementByOrderItem.get(vr.orderItemId) || 0) + vr.quantityKg
+          );
+        }
+      }
+      await Promise.all(
+        Array.from(incrementByOrderItem.entries()).map(([orderItemId, kg]) =>
+          db.orderItem.update({
+            where: { id: orderItemId },
+            data: { producedKg: { increment: new Prisma.Decimal(kg.toFixed(3)) } },
+          })
+        )
+      );
     } catch (err: any) {
       for (const vr of chunk) {
         errors.push({ row: vr.rowNum, message: err.message || "Failed to import this batch" });
