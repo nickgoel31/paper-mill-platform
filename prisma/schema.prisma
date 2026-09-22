@@ -78,6 +78,7 @@ enum StockStatus {
   AVAILABLE
   ALLOCATED
   DISPATCHED
+  REJECTED
 }
 
 enum TrimMode {

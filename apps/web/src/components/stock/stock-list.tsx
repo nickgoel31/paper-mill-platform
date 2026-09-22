@@ -51,7 +51,7 @@ import {
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
 import { objectsToCsv, downloadCsv } from "@/lib/csv";
 import { StockAllocationModal } from "./stock-allocation-modal";
-import { StockAdjustModal } from "./stock-adjust-modal";
+import { StockEditModal } from "./stock-edit-modal";
 import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import {
   Layers,
@@ -160,7 +160,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
 
   // Modals state
   const [allocateItem, setAllocateItem] = React.useState<StockItemRow | null>(null);
-  const [adjustItem, setAdjustItem] = React.useState<StockItemRow | null>(null);
+  const [editItem, setEditItem] = React.useState<StockItemRow | null>(null);
   const [isCreatingStock, setIsCreatingStock] = React.useState(false);
   const [csvImportOpen, setCsvImportOpen] = React.useState(false);
 
@@ -412,6 +412,13 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             DISPATCHED
           </span>
         );
+      case StockStatus.REJECTED:
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+            REJECTED
+          </span>
+        );
       default:
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
@@ -627,9 +634,9 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
               {isPlannerOrAdmin && (
                 <DropdownMenuItem
                   className="text-xs gap-2"
-                  onClick={() => setAdjustItem(item)}
+                  onClick={() => setEditItem(item)}
                 >
-                  <Edit className="h-3.5 w-3.5 text-slate-500" /> Adjust Quantity / Bay
+                  <Edit className="h-3.5 w-3.5 text-slate-500" /> Edit Stock Item
                 </DropdownMenuItem>
               )}
               {isAdmin && (
@@ -820,6 +827,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
               <SelectItem value="AVAILABLE">Available</SelectItem>
               <SelectItem value="ALLOCATED">Allocated</SelectItem>
               <SelectItem value="DISPATCHED">Dispatched</SelectItem>
+              <SelectItem value="REJECTED">Rejected</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1034,21 +1042,17 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         />
       )}
 
-      {/* Adjust / Create Modal */}
-      {(adjustItem || isCreatingStock) && (
-        <StockAdjustModal
-          open={!!adjustItem || isCreatingStock}
+      {/* Edit Modal */}
+      {editItem && (
+        <StockEditModal
+          open={!!editItem}
           onOpenChange={(isOpen) => {
-            if (!isOpen) {
-              setAdjustItem(null);
-              setIsCreatingStock(false);
-            }
+            if (!isOpen) setEditItem(null);
           }}
-          stockItem={adjustItem as any}
+          stockItem={editItem as any}
           locations={locations}
           onSuccess={() => {
-            setAdjustItem(null);
-            setIsCreatingStock(false);
+            setEditItem(null);
             fetchFilteredStock();
           }}
         />

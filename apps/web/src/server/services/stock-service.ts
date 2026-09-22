@@ -769,6 +769,92 @@ export async function adjustStockQuantity(
   return updated;
 }
 
+// -----------------------------------------------------------------------------
+// FULL EDIT — every field, including manually setting status to
+// AVAILABLE / ALLOCATED / REJECTED. DISPATCHED reels are historical
+// (tied to a real dispatch/invoice) and can't be edited or targeted here.
+// -----------------------------------------------------------------------------
+
+export async function updateStockItem(input: {
+  id: string;
+  reelNumber?: string | null;
+  widthInch: number;
+  widthUnit: LengthUnit;
+  gsm: number;
+  paperType: PaperType;
+  size: PaperSize;
+  quantityKg: number;
+  status: StockStatus;
+  location: string;
+  remarks?: string | null;
+  reason: string;
+}) {
+  const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
+
+  if (!input.reason?.trim()) {
+    throw new Error("A reason is required to edit a stock item.");
+  }
+  if (input.status === StockStatus.DISPATCHED) {
+    throw new Error("Status can't be set to DISPATCHED manually — that only happens through the dispatch workflow.");
+  }
+  if (input.quantityKg <= 0) throw new Error("Quantity must be greater than zero.");
+  if (input.widthInch <= 0) throw new Error("Width must be greater than zero.");
+
+  const existing = await db.stockItem.findFirst({ where: { id: input.id } });
+  if (!existing) throw new Error("Stock item not found.");
+  if (existing.status === StockStatus.DISPATCHED) {
+    throw new Error("This reel has already been dispatched — it's a historical record and can't be edited.");
+  }
+
+  const widthInches = toInches(input.widthInch, input.widthUnit);
+  const stillAllocated = input.status === StockStatus.ALLOCATED;
+  const releasingAllocation = existing.status === StockStatus.ALLOCATED && existing.orderItemId && !stillAllocated;
+
+  const updated = await db.$transaction(async (tx) => {
+    if (releasingAllocation) {
+      await tx.orderItem.update({
+        where: { id: existing.orderItemId! },
+        data: { producedKg: { decrement: existing.quantityKg } },
+      });
+    }
+
+    const item = await tx.stockItem.update({
+      where: { id: input.id },
+      data: {
+        reelNumber: input.reelNumber?.trim() || null,
+        widthInch: new Prisma.Decimal(widthInches.toFixed(2)),
+        enteredWidth: new Prisma.Decimal(input.widthInch.toFixed(2)),
+        enteredWidthUnit: input.widthUnit,
+        gsm: input.gsm,
+        paperType: input.paperType,
+        size: input.size,
+        quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
+        status: input.status,
+        location: input.location,
+        remarks: input.remarks?.trim() || null,
+        orderItemId: stillAllocated ? existing.orderItemId : null,
+      },
+    });
+
+    await logAudit(
+      {
+        userId,
+        entityType: "StockItem",
+        entityId: input.id,
+        action: "UPDATE",
+        before: existing,
+        after: { ...item, reason: input.reason },
+      },
+      tx
+    );
+
+    return item;
+  });
+
+  revalidatePath("/stock");
+  return updated;
+}
+
 export async function allocateStockToOrderItem(
   stockItemId: string,
   orderItemId: string
