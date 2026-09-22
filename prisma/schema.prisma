@@ -102,6 +102,14 @@ enum NotificationStatus {
   FAILED
 }
 
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  UPI
+  OTHER
+}
+
 // -----------------------------------------------------------------------------
 // MODELS
 // -----------------------------------------------------------------------------
@@ -144,6 +152,7 @@ model Tenant {
   notifications WhatsAppNotification[]
   auditLogs     AuditLog[]
   settings      SystemSetting[]
+  payments      Payment[]
 }
 
 model User {
@@ -173,6 +182,7 @@ model User {
   createdStockPresets StockPreset[]
   createdGsmWeightProfiles GsmWeightProfile[]
   auditLogs           AuditLog[]
+  recordedPayments    Payment[]
 
   @@index([role])
   @@index([email])
@@ -589,6 +599,7 @@ model Invoice {
   loadBatchId   String?       @unique
   dispatchId    String?
   invoiceDate   DateTime      @default(now())
+  dueDate       DateTime?
   subtotal      Decimal
   cgst          Decimal       @default(0)
   sgst          Decimal       @default(0)
@@ -596,10 +607,16 @@ model Invoice {
   totalAmount   Decimal
   status        InvoiceStatus @default(DRAFT)
   pdfUrl        String?
+  irn           String?
+  ackNumber     String?
+  ackDate       DateTime?
+  qrCodeData    String?
+  einvoiceStatus String       @default("NOT_GENERATED")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   createdById   String?
 
+  payments    Payment[]
   tenant      Tenant?        @relation(fields: [tenantId], references: [id])
   client      Client        @relation(fields: [clientId], references: [id])
   loadBatch   LoadBatch?    @relation(fields: [loadBatchId], references: [id])
@@ -621,6 +638,7 @@ model InvoiceLine {
   invoiceId   String
   orderItemId String?
   description String
+  hsnCode     String   @default("4804")
   quantityKg  Decimal
   ratePerKg   Decimal
   amount      Decimal
@@ -632,6 +650,27 @@ model InvoiceLine {
 
   @@index([invoiceId])
   @@index([orderItemId])
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  tenantId        String?
+  invoiceId       String
+  amount          Decimal
+  paymentDate     DateTime      @default(now())
+  method          PaymentMethod @default(BANK_TRANSFER)
+  referenceNumber String?
+  notes           String?
+  recordedById    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id])
+  invoice    Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  recordedBy User?    @relation(fields: [recordedById], references: [id])
+
+  @@index([invoiceId])
+  @@index([tenantId])
 }
 
 model WhatsAppNotification {

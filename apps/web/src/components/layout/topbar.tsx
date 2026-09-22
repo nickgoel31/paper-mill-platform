@@ -6,6 +6,7 @@ import { Role } from "@/generated/prisma/browser";
 import { Search, Sparkles } from "lucide-react";
 import { MobileSidebarDrawer } from "@/components/layout/mobile-nav/mobile-sidebar-drawer";
 import { useAiSidebar } from "@/components/ai/ai-sidebar-context";
+import { ShinyButton } from "@/components/ui/shiny-button";
 
 interface TopbarProps {
   userName: string;
@@ -56,22 +57,16 @@ export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
           </div>
 
           {/* PaperMill AI Launcher */}
-          <button
-            type="button"
+          <ShinyButton
             onClick={() => setAiOpen(true)}
-            className="group relative h-11 shrink-0 flex items-center gap-1.5 px-4 sm:px-5 rounded-2xl text-white text-xs sm:text-sm font-bold tracking-tight overflow-hidden transition-transform active:scale-95"
-            style={{
-              background:
-                "radial-gradient(120% 150% at 30% 20%, #a78bfa 0%, #7c3aed 45%, #5b21b6 100%)",
-              boxShadow: "0 4px 16px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.25)",
-            }}
+            className="h-11 shrink-0 px-4 sm:px-5 text-xs sm:text-sm font-bold tracking-tight active:scale-95"
             aria-label="Open PaperMill AI"
             title="Ask PaperMill AI"
           >
             <span className="hidden sm:inline">PaperMill AI</span>
             <span className="sm:hidden">AI</span>
-            <Sparkles className="w-4 h-4 shrink-0 transition-transform group-hover:rotate-12 duration-300" />
-          </button>
+            <Sparkles className="w-4 h-4 shrink-0" />
+          </ShinyButton>
         </div>
       </div>
     </header>

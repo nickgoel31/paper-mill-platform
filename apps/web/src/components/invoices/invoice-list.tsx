@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { InvoiceStatus } from "@/generated/prisma/browser";
-import { getInvoices, getInvoiceSummaryStats, createManualInvoice } from "@/server/services/invoice-service";
+import { getInvoices, getInvoiceSummaryStats, createManualInvoice, getReceivablesAging } from "@/server/services/invoice-service";
 import { formatCurrencyINR, formatWeightKg } from "@/lib/utils";
 import {
   Receipt,
@@ -66,6 +66,8 @@ interface InvoiceRow {
   totalAmount: any;
   status: InvoiceStatus;
   pdfUrl: string | null;
+  amountPaid?: number;
+  balanceDue?: number;
   client: {
     id: string;
     name: string;
@@ -108,6 +110,7 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
   const [pageSize, setPageSize] = React.useState(initialData.pageSize);
   const [totalPages, setTotalPages] = React.useState(initialData.totalPages);
   const [stats, setStats] = React.useState(initialStats);
+  const [arTotal, setArTotal] = React.useState<number | null>(null);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
   const [isLoading, setIsLoading] = React.useState(false);
@@ -185,6 +188,12 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
   React.useEffect(() => {
     fetchData(page, search);
   }, [fetchData, page, search]);
+
+  React.useEffect(() => {
+    getReceivablesAging()
+      .then((r) => setArTotal(r.totalOutstanding))
+      .catch(() => setArTotal(null));
+  }, [data]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,6 +300,25 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => renderStatusBadge(row.getValue("status")),
+    },
+    {
+      id: "balanceDue",
+      header: () => <div className="text-right">Balance Due</div>,
+      cell: ({ row }) => {
+        const item = row.original;
+        if (item.status !== InvoiceStatus.ISSUED) {
+          return <div className="text-right text-xs text-slate-300">—</div>;
+        }
+        const balance = item.balanceDue ?? Number(item.totalAmount);
+        const isPaid = balance <= 0.5;
+        return (
+          <div className="text-right">
+            <div className={`font-mono font-bold text-xs ${isPaid ? "text-emerald-600" : "text-amber-600"}`}>
+              {isPaid ? "PAID" : formatCurrencyINR(balance)}
+            </div>
+          </div>
+        );
+      },
     },
     {
       id: "actions",
@@ -441,8 +469,8 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
         </DialogContent>
       </Dialog>
 
-      {/* 2. 3 PERFORMANCE KPI CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+      {/* 2. PERFORMANCE KPI CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Card 1: HERO DARK CARD (Invoiced This Month) */}
         <div className="relative overflow-hidden rounded-[26px] bg-[#161622] text-white p-6 shadow-xl flex flex-col justify-between min-h-[160px]">
           <div className="absolute -right-8 -top-8 w-32 h-32 bg-[#d4f842]/10 rounded-full blur-2xl pointer-events-none" />
@@ -511,6 +539,28 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
           <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
             <span className="text-xs text-slate-500">Per dispatch shipment</span>
             <span className="text-xs font-semibold text-slate-700">Average Weight Metric</span>
+          </div>
+        </div>
+
+        {/* Card 4: Outstanding Receivables */}
+        <div className="relative overflow-hidden rounded-[26px] bg-white border border-slate-100 p-6 shadow-sm flex flex-col justify-between min-h-[160px] hover:shadow-md transition-shadow">
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+                Outstanding Receivables
+              </span>
+              <div className="text-2xl sm:text-3xl font-bold tracking-tight text-amber-600 mt-1 font-mono">
+                {arTotal === null ? "—" : formatCurrencyINR(arTotal)}
+              </div>
+            </div>
+            <div className="w-7 h-7 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
+              <Receipt className="w-3.5 h-3.5" />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+            <span className="text-xs text-slate-500">Unpaid across issued invoices</span>
+            <span className="text-xs font-semibold text-slate-700">Accounts Receivable</span>
           </div>
         </div>
       </div>

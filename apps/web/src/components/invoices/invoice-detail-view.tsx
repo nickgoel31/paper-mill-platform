@@ -4,14 +4,22 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { cancelInvoice } from "@/server/services/invoice-service";
+import { cancelInvoice, recordPayment, deletePayment, sendInvoiceEmail, markEinvoiceGenerated } from "@/server/services/invoice-service";
 import { buildTallyInvoiceXml, downloadTallyXml } from "@/lib/tally-export";
+import { buildEinvoiceJson, downloadJson } from "@/lib/einvoice-export";
 import { numberToIndianWords } from "@/lib/number-to-words";
 import { formatCurrencyINR, formatWeightKg } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -37,6 +45,10 @@ import {
   Building2,
   Receipt,
   Download,
+  Mail,
+  CircleDollarSign,
+  Trash2,
+  BadgeCheck,
 } from "lucide-react";
 import { Role } from "@/generated/prisma/browser";
 
@@ -64,9 +76,102 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isEmailing, setIsEmailing] = React.useState(false);
+
+  const [paymentModalOpen, setPaymentModalOpen] = React.useState(false);
+  const [payAmount, setPayAmount] = React.useState("");
+  const [payMethod, setPayMethod] = React.useState("BANK_TRANSFER");
+  const [payReference, setPayReference] = React.useState("");
+  const [payNotes, setPayNotes] = React.useState("");
+  const [isPaying, setIsPaying] = React.useState(false);
+
+  const [einvoiceModalOpen, setEinvoiceModalOpen] = React.useState(false);
+  const [irnInput, setIrnInput] = React.useState("");
+  const [ackNumberInput, setAckNumberInput] = React.useState("");
+  const [ackDateInput, setAckDateInput] = React.useState("");
+  const [qrCodeInput, setQrCodeInput] = React.useState("");
+  const [isMarkingEinvoice, setIsMarkingEinvoice] = React.useState(false);
 
   const isAdmin = userRole === Role.ADMIN;
+  const canManageBilling = userRole === Role.ADMIN || userRole === Role.DISPATCH || userRole === Role.SALES;
   const isCancelled = invoice.status === "CANCELLED";
+
+  const payments: any[] = invoice.payments || [];
+  const amountPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+
+  const handleRecordPayment = async () => {
+    const amt = Number(payAmount);
+    if (!amt || amt <= 0) {
+      toast.error("Enter a valid payment amount.");
+      return;
+    }
+    setIsPaying(true);
+    try {
+      await recordPayment({
+        invoiceId: invoice.id,
+        amount: amt,
+        method: payMethod as any,
+        referenceNumber: payReference || undefined,
+        notes: payNotes || undefined,
+      });
+      toast.success("Payment recorded.");
+      setPaymentModalOpen(false);
+      setPayAmount("");
+      setPayReference("");
+      setPayNotes("");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to record payment");
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    try {
+      await deletePayment(paymentId);
+      toast.success("Payment removed.");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to remove payment");
+    }
+  };
+
+  const handleEmailInvoice = async () => {
+    setIsEmailing(true);
+    try {
+      await sendInvoiceEmail(invoice.id);
+      toast.success(`Invoice emailed to ${invoice.client.email}.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send email");
+    } finally {
+      setIsEmailing(false);
+    }
+  };
+
+  const handleMarkEinvoice = async () => {
+    if (!irnInput.trim() || !ackNumberInput.trim()) {
+      toast.error("IRN and Acknowledgement Number are required.");
+      return;
+    }
+    setIsMarkingEinvoice(true);
+    try {
+      await markEinvoiceGenerated({
+        invoiceId: invoice.id,
+        irn: irnInput,
+        ackNumber: ackNumberInput,
+        ackDate: ackDateInput || new Date().toISOString(),
+        qrCodeData: qrCodeInput || undefined,
+      });
+      toast.success("E-invoice details saved.");
+      setEinvoiceModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save e-invoice details");
+    } finally {
+      setIsMarkingEinvoice(false);
+    }
+  };
 
   const handleCancelSubmit = async () => {
     if (!cancelReason.trim()) return;
@@ -89,6 +194,7 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
   const sgst = Number(invoice.sgst || 0);
   const igst = Number(invoice.igst || 0);
   const totalAmount = Number(invoice.totalAmount);
+  const balanceDue = totalAmount - amountPaid;
   const totalWeightKg = invoice.lines.reduce(
     (acc: number, l: any) => acc + Number(l.quantityKg),
     0
@@ -118,6 +224,22 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
               >
                 {invoice.status}
               </Badge>
+              {!isCancelled && (
+                <Badge
+                  className={
+                    balanceDue <= 0.5
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-mono text-xs"
+                      : "bg-amber-100 text-amber-800 border-amber-300 font-mono text-xs"
+                  }
+                >
+                  {balanceDue <= 0.5 ? "PAID" : `DUE ${formatCurrencyINR(balanceDue)}`}
+                </Badge>
+              )}
+              {invoice.einvoiceStatus === "GENERATED" && (
+                <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-mono text-xs gap-1">
+                  <BadgeCheck className="h-3 w-3" /> E-INVOICE FILED
+                </Badge>
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
               Client: <strong>{invoice.client.name}</strong> • Total: <strong>{formatCurrencyINR(totalAmount)}</strong>
@@ -125,7 +247,7 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Button
             type="button"
             variant="outline"
@@ -135,6 +257,30 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
           >
             <Printer className="h-4 w-4" /> Print / Save PDF (A4)
           </Button>
+
+          {!isCancelled && canManageBilling && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isEmailing}
+              onClick={handleEmailInvoice}
+              className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
+            >
+              {isEmailing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Email Invoice
+            </Button>
+          )}
+
+          {!isCancelled && canManageBilling && balanceDue > 0.5 && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setPaymentModalOpen(true)}
+              className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+            >
+              <CircleDollarSign className="h-4 w-4" /> Record Payment
+            </Button>
+          )}
 
           <Button
             type="button"
@@ -158,6 +304,49 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
           >
             <Download className="h-4 w-4" /> Export to Tally (XML)
           </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const json = buildEinvoiceJson({
+                invoiceNumber: invoice.invoiceNumber,
+                invoiceDate: invoice.invoiceDate,
+                client: invoice.client,
+                seller: { name: seller.name, gstin: seller.gstin, address: seller.address, state: seller.state },
+                lines: invoice.lines.map((l: any) => ({
+                  description: l.description,
+                  hsnCode: l.hsnCode || "4804",
+                  quantityKg: Number(l.quantityKg),
+                  ratePerKg: Number(l.ratePerKg),
+                  amount: Number(l.amount),
+                })),
+                subtotal: Number(invoice.subtotal),
+                cgst: Number(invoice.cgst),
+                sgst: Number(invoice.sgst),
+                igst: Number(invoice.igst),
+                totalAmount: Number(invoice.totalAmount),
+              });
+              downloadJson(`${invoice.invoiceNumber}-einvoice.json`, json);
+              toast.success("E-invoice JSON downloaded — upload it on your GSP/NIC e-invoice portal to get the IRN.");
+            }}
+            className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
+          >
+            <FileText className="h-4 w-4" /> E-Invoice JSON
+          </Button>
+
+          {!isCancelled && canManageBilling && invoice.einvoiceStatus !== "GENERATED" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEinvoiceModalOpen(true)}
+              className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-sky-200 text-sky-700 hover:bg-sky-50"
+            >
+              <BadgeCheck className="h-4 w-4" /> Record IRN
+            </Button>
+          )}
 
           {!isCancelled && isAdmin && (
             <Button
@@ -201,6 +390,16 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
               <div className="text-xs text-muted-foreground">
                 DATE: {new Date(invoice.invoiceDate).toLocaleDateString("en-IN")}
               </div>
+              {invoice.dueDate && (
+                <div className="text-xs text-muted-foreground">
+                  DUE: {new Date(invoice.dueDate).toLocaleDateString("en-IN")}
+                </div>
+              )}
+              {invoice.einvoiceStatus === "GENERATED" && (
+                <div className="text-[10px] text-sky-700 font-bold pt-1">
+                  IRN: {invoice.irn}
+                </div>
+              )}
             </div>
           </div>
 
@@ -259,7 +458,7 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
                   <TableCell className="font-semibold text-slate-900 font-sans">
                     {line.description}
                   </TableCell>
-                  <TableCell className="text-center font-bold">4804</TableCell>
+                  <TableCell className="text-center font-bold">{line.hsnCode || "4804"}</TableCell>
                   <TableCell className="text-right font-bold">
                     {formatWeightKg(line.quantityKg)}
                   </TableCell>
@@ -338,6 +537,42 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
             </div>
           </div>
 
+          {/* Payments Received */}
+          {payments.length > 0 && (
+            <div className="p-6 pt-4 border-t print:hidden">
+              <span className="text-[10px] text-muted-foreground font-sans uppercase font-bold block mb-2">
+                PAYMENTS RECEIVED ({formatCurrencyINR(amountPaid)} of {formatCurrencyINR(totalAmount)})
+              </span>
+              <div className="space-y-1.5">
+                {payments.map((p: any) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between text-xs bg-slate-50 border rounded-lg px-3 py-2"
+                  >
+                    <div className="flex items-center gap-3 font-mono">
+                      <span className="font-bold text-emerald-700">{formatCurrencyINR(Number(p.amount))}</span>
+                      <span className="text-slate-500">{p.method.replace("_", " ")}</span>
+                      {p.referenceNumber && <span className="text-slate-400">Ref: {p.referenceNumber}</span>}
+                      <span className="text-slate-400">{new Date(p.paymentDate).toLocaleDateString("en-IN")}</span>
+                      {p.recordedBy?.name && <span className="text-slate-400">by {p.recordedBy.name}</span>}
+                    </div>
+                    {isAdmin && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-slate-400 hover:text-rose-600"
+                        onClick={() => handleDeletePayment(p.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Declarations & Signatures */}
           <div className="p-6 pt-4 border-t grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
             <div className="text-[11px] text-muted-foreground space-y-1">
@@ -411,6 +646,111 @@ export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailVi
               ) : (
                 "Confirm Invoice Cancellation"
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Payment Modal */}
+      <Dialog open={paymentModalOpen} onOpenChange={setPaymentModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Record Payment</DialogTitle>
+            <DialogDescription className="text-xs">
+              Outstanding balance: <strong>{formatCurrencyINR(balanceDue)}</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Amount (₹) *</label>
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Method</label>
+              <Select value={payMethod} onValueChange={setPayMethod}>
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="CHEQUE">Cheque</SelectItem>
+                  <SelectItem value="UPI">UPI</SelectItem>
+                  <SelectItem value="OTHER">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Reference No.</label>
+              <Input
+                placeholder="UTR / Cheque No. / Txn ID"
+                value={payReference}
+                onChange={(e) => setPayReference(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Notes</label>
+              <Input
+                placeholder="Optional"
+                value={payNotes}
+                onChange={(e) => setPayNotes(e.target.value)}
+                className="text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setPaymentModalOpen(false)} disabled={isPaying}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleRecordPayment} disabled={isPaying} className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+              {isPaying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CircleDollarSign className="h-3.5 w-3.5" />}
+              Save Payment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record E-Invoice IRN Modal */}
+      <Dialog open={einvoiceModalOpen} onOpenChange={setEinvoiceModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold">Record E-Invoice IRN</DialogTitle>
+            <DialogDescription className="text-xs">
+              After uploading the E-Invoice JSON to your GSP/NIC portal, paste the IRN and Ack. details it returns.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">IRN *</label>
+              <Input value={irnInput} onChange={(e) => setIrnInput(e.target.value)} className="text-xs font-mono" />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Acknowledgement Number *</label>
+              <Input value={ackNumberInput} onChange={(e) => setAckNumberInput(e.target.value)} className="text-xs font-mono" />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">Acknowledgement Date</label>
+              <Input type="date" value={ackDateInput} onChange={(e) => setAckDateInput(e.target.value)} className="text-xs" />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-700">QR Code Data (optional)</label>
+              <Input value={qrCodeInput} onChange={(e) => setQrCodeInput(e.target.value)} className="text-xs font-mono" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEinvoiceModalOpen(false)} disabled={isMarkingEinvoice}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleMarkEinvoice} disabled={isMarkingEinvoice} className="gap-1.5">
+              {isMarkingEinvoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BadgeCheck className="h-3.5 w-3.5" />}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

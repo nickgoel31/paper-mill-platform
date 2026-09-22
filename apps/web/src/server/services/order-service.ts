@@ -492,7 +492,10 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
 
   const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
   if (machines.length === 0) {
-    throw new Error("No active machines configured. Please add a machine before importing orders.");
+    return {
+      created: 0,
+      errors: [{ row: 0, message: "No active machines configured. Please add a machine before importing orders." }],
+    };
   }
 
   // Group rows by orderNumber (case-insensitive); a blank one is its own group.
