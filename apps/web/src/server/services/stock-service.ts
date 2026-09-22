@@ -372,6 +372,7 @@ export async function createStockItem(input: {
   gsm: number;
   quantityKg: number;
   location?: string;
+  remarks?: string;
   orderItemId?: string;
   paperType?: PaperType;
   size?: PaperSize;
@@ -436,6 +437,7 @@ export async function createStockItem(input: {
         quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
         status: isAllocated ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
         location: input.location || "WAREHOUSE-BAY-A",
+        remarks: input.remarks?.trim() || null,
         orderItemId: isAllocated ? input.orderItemId : null,
       },
     });
@@ -497,8 +499,72 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
   const { reelNumberPrefix } = await getSystemSettings();
 
   const errors: { row: number; message: string }[] = [];
-  let created = 0;
   const usedReelNumbers = new Set<string>();
+
+  // Batch-prefetch everything the per-row loop used to fetch one at a time —
+  // this is what made large files slow (up to ~6 sequential DB round-trips
+  // per row, each inside its own transaction).
+  const givenReelNumbers = Array.from(
+    new Set(rows.map((r) => r.reelNumber?.trim()).filter((v): v is string => !!v))
+  );
+  const existingReelSet = new Set(
+    givenReelNumbers.length
+      ? (
+          await db.stockItem.findMany({
+            where: { reelNumber: { in: givenReelNumbers } },
+            select: { reelNumber: true },
+          })
+        ).map((r) => r.reelNumber as string)
+      : []
+  );
+
+  const givenOrderNumbers = Array.from(
+    new Set(rows.map((r) => r.orderNumber?.trim()).filter((v): v is string => !!v))
+  );
+  const orderMap = new Map(
+    givenOrderNumbers.length
+      ? (
+          await db.order.findMany({
+            where: { orderNumber: { in: givenOrderNumbers } },
+            include: { items: true },
+          })
+        ).map((o) => [o.orderNumber, o] as const)
+      : []
+  );
+
+  // Auto reel numbers all share the same "REEL-YYMM-" prefix for the whole
+  // import (same date), so the starting sequence only needs one query — the
+  // rest are assigned in-memory instead of one query per row.
+  const now = new Date();
+  const autoPrefix = `${reelNumberPrefix || "REEL"}-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, "0")}-`;
+  let nextAutoSeq: number | null = null;
+  const needsAutoNumber = rows.some((r) => !r.reelNumber?.trim());
+  if (needsAutoNumber) {
+    const latest = await db.stockItem.findFirst({
+      where: { reelNumber: { startsWith: autoPrefix } },
+      orderBy: { reelNumber: "desc" },
+      select: { reelNumber: true },
+    });
+    const lastSeqStr = latest?.reelNumber?.split("-").pop();
+    const parsed = lastSeqStr ? parseInt(lastSeqStr, 10) : NaN;
+    nextAutoSeq = !isNaN(parsed) ? parsed + 1 : 1;
+  }
+
+  interface ValidRow {
+    rowNum: number;
+    reelNumber: string;
+    widthInch: number;
+    enteredWidth: number;
+    enteredWidthUnit: LengthUnit;
+    gsm: number;
+    paperType: PaperType;
+    size: PaperSize;
+    quantityKg: number;
+    orderItemId: string | null;
+    location: string;
+    remarks: string | null;
+  }
+  const validRows: ValidRow[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const rowNum = i + 2; // account for the header row
@@ -522,19 +588,20 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         if (usedReelNumbers.has(finalReelNumber)) {
           throw new Error(`Reel number "${finalReelNumber}" is duplicated within this file.`);
         }
-        const existing = await db.stockItem.findFirst({ where: { reelNumber: finalReelNumber } });
-        if (existing) throw new Error(`Reel number "${finalReelNumber}" is already in use.`);
+        if (existingReelSet.has(finalReelNumber)) {
+          throw new Error(`Reel number "${finalReelNumber}" is already in use.`);
+        }
+      } else {
+        finalReelNumber = `${autoPrefix}${String(nextAutoSeq!++).padStart(4, "0")}`;
       }
+      usedReelNumbers.add(finalReelNumber);
 
       // Optional allocation: find the matching line (by width + GSM) on the
       // named order. The reel then takes that line's paper type, same as
       // allocating an existing reel does.
       let orderItemId: string | null = null;
       if (orderNumber) {
-        const order = await db.order.findFirst({
-          where: { orderNumber },
-          include: { items: true },
-        });
+        const order = orderMap.get(orderNumber);
         if (!order) throw new Error(`No order found with number "${orderNumber}".`);
 
         const widthInches = toInches(widthRaw, widthUnit);
@@ -551,45 +618,77 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         size = match.size;
       }
 
-      await db.$transaction(async (tx) => {
-        if (!finalReelNumber) {
-          finalReelNumber = await generateReelNumber(tx, reelNumberPrefix);
-        }
-        const item = await tx.stockItem.create({
-          data: {
-            reelNumber: finalReelNumber,
-            widthInch: new Prisma.Decimal(toInches(widthRaw, widthUnit).toFixed(2)),
-            enteredWidth: new Prisma.Decimal(widthRaw.toFixed(2)),
-            enteredWidthUnit: widthUnit,
-            gsm,
-            paperType,
-            size,
-            quantityKg: new Prisma.Decimal(quantityKg.toFixed(3)),
-            status: orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
-            location: r.location?.trim() || "WAREHOUSE-BAY-A",
-            orderItemId,
-          },
-        });
-        if (orderItemId) {
-          await tx.orderItem.update({
-            where: { id: orderItemId },
-            data: { producedKg: { increment: new Prisma.Decimal(quantityKg.toFixed(3)) } },
-          });
-        }
-        await logAudit(
-          { userId, entityType: "StockItem", entityId: item.id, action: "CREATE", after: { source: "CSV import" } },
-          tx
-        );
+      validRows.push({
+        rowNum,
+        reelNumber: finalReelNumber,
+        widthInch: toInches(widthRaw, widthUnit),
+        enteredWidth: widthRaw,
+        enteredWidthUnit: widthUnit,
+        gsm,
+        paperType,
+        size,
+        quantityKg,
+        orderItemId,
+        location: r.location?.trim() || "WAREHOUSE-BAY-A",
+        remarks: r.remarks?.trim() || null,
       });
-
-      usedReelNumbers.add(finalReelNumber);
-      created++;
     } catch (err: any) {
       errors.push({ row: rowNum, message: err.message || "Failed to import row" });
     }
   }
 
-  if (created > 0) revalidatePath("/stock");
+  // Insert in chunks (one transaction per chunk instead of per row) — a bad
+  // row inside a chunk only rolls back that chunk, not the whole file.
+  let created = 0;
+  const CHUNK_SIZE = 25;
+  for (let c = 0; c < validRows.length; c += CHUNK_SIZE) {
+    const chunk = validRows.slice(c, c + CHUNK_SIZE);
+    try {
+      await db.$transaction(async (tx) => {
+        for (const vr of chunk) {
+          const item = await tx.stockItem.create({
+            data: {
+              reelNumber: vr.reelNumber,
+              widthInch: new Prisma.Decimal(vr.widthInch.toFixed(2)),
+              enteredWidth: new Prisma.Decimal(vr.enteredWidth.toFixed(2)),
+              enteredWidthUnit: vr.enteredWidthUnit,
+              gsm: vr.gsm,
+              paperType: vr.paperType,
+              size: vr.size,
+              quantityKg: new Prisma.Decimal(vr.quantityKg.toFixed(3)),
+              status: vr.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
+              location: vr.location,
+              remarks: vr.remarks,
+              orderItemId: vr.orderItemId,
+            },
+          });
+          if (vr.orderItemId) {
+            await tx.orderItem.update({
+              where: { id: vr.orderItemId },
+              data: { producedKg: { increment: new Prisma.Decimal(vr.quantityKg.toFixed(3)) } },
+            });
+          }
+          void item;
+        }
+      });
+      created += chunk.length;
+    } catch (err: any) {
+      for (const vr of chunk) {
+        errors.push({ row: vr.rowNum, message: err.message || "Failed to import this batch" });
+      }
+    }
+  }
+
+  if (created > 0) {
+    await logAudit({
+      userId,
+      entityType: "StockItem",
+      entityId: "bulk-import",
+      action: "CREATE",
+      after: { source: "CSV import", count: created },
+    });
+    revalidatePath("/stock");
+  }
   return { created, errors };
 }
 
@@ -905,4 +1004,62 @@ export async function deallocateStock(stockItemId: string, reason?: string) {
     revalidatePath(`/orders/${orderId}`);
   }
   return result;
+}
+
+// -----------------------------------------------------------------------------
+// DELETE (ADMIN ONLY) — only AVAILABLE reels; an allocated/dispatched reel
+// must be deallocated or reversed through the normal flow first.
+// -----------------------------------------------------------------------------
+
+export async function deleteStockItem(id: string) {
+  const { userId } = await requireRole(Role.ADMIN);
+
+  const item = await db.stockItem.findFirst({ where: { id } });
+  if (!item) throw new Error("Stock item not found.");
+  if (item.status !== StockStatus.AVAILABLE) {
+    throw new Error(
+      `Reel ${item.reelNumber || id} is ${item.status} — only AVAILABLE reels can be deleted. Deallocate it first.`
+    );
+  }
+
+  await db.stockItem.delete({ where: { id } });
+  await logAudit({
+    userId,
+    entityType: "StockItem",
+    entityId: id,
+    action: "DELETE",
+    before: { reelNumber: item.reelNumber, quantityKg: Number(item.quantityKg) },
+  });
+
+  revalidatePath("/stock");
+}
+
+export async function deleteStockItems(ids: string[]) {
+  const { userId } = await requireRole(Role.ADMIN);
+  if (!ids || ids.length === 0) throw new Error("No stock items selected.");
+
+  const items = await db.stockItem.findMany({ where: { id: { in: ids } } });
+  const deletable = items.filter((i) => i.status === StockStatus.AVAILABLE);
+  const blocked = items.filter((i) => i.status !== StockStatus.AVAILABLE);
+
+  if (deletable.length > 0) {
+    await db.stockItem.deleteMany({ where: { id: { in: deletable.map((i) => i.id) } } });
+    await logAudit({
+      userId,
+      entityType: "StockItem",
+      entityId: "bulk-delete",
+      action: "DELETE",
+      before: { count: deletable.length },
+    });
+  }
+
+  revalidatePath("/stock");
+  return {
+    deleted: deletable.length,
+    skipped: blocked.map((i) => ({
+      id: i.id,
+      label: i.reelNumber || i.id,
+      reason: `${i.status} reels can't be deleted — deallocate first.`,
+    })),
+  };
 }

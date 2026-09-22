@@ -12,7 +12,7 @@ export const metadata = {
 };
 
 export default async function InvoicesPage() {
-  const { tenantId } = await requireRole(Role.ADMIN, Role.DISPATCH, Role.SALES, Role.PLANNER);
+  const { tenantId, role } = await requireRole(Role.ADMIN, Role.DISPATCH, Role.SALES, Role.PLANNER);
 
   const [initialData, stats, clients] = await Promise.all([
     getInvoices({ page: 1, pageSize: 20 }),
@@ -25,6 +25,7 @@ export default async function InvoicesPage() {
       initialData={JSON.parse(JSON.stringify(initialData))}
       initialStats={stats}
       clients={clients}
+      userRole={role}
     />
   );
 }

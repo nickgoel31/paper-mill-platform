@@ -23,6 +23,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { StockStatus, Role, PaperType, PaperSize } from "@/generated/prisma/browser";
 import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
@@ -36,6 +45,8 @@ import {
   allocateStockToOrderItem,
   allocateStockToOriginOrders,
   importStockItemsCsv,
+  deleteStockItem,
+  deleteStockItems,
 } from "@/server/services/stock-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
 import { objectsToCsv, downloadCsv } from "@/lib/csv";
@@ -61,6 +72,7 @@ import {
   Download,
   CalendarDays,
   Loader2,
+  Trash2,
 } from "lucide-react";
 
 interface StockItemRow {
@@ -73,6 +85,7 @@ interface StockItemRow {
   quantityKg: any;
   status: StockStatus;
   location: string | null;
+  remarks?: string | null;
   createdAt: Date | string;
   productionRun?: {
     id: string;
@@ -151,6 +164,46 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
   const [csvImportOpen, setCsvImportOpen] = React.useState(false);
 
   const isPlannerOrAdmin = userRole === Role.ADMIN || userRole === Role.PLANNER;
+  const isAdmin = userRole === Role.ADMIN;
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = React.useState<{ mode: "single" | "bulk"; id?: string } | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.mode === "single" && deleteTarget.id) {
+        await deleteStockItem(deleteTarget.id);
+        toast.success("Stock item deleted.");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteTarget.id!);
+          return next;
+        });
+      } else {
+        const res = await deleteStockItems(Array.from(selectedIds));
+        toast.success(`${res.deleted} item(s) deleted.`);
+        if (res.skipped.length > 0) {
+          toast.warning(`${res.skipped.length} item(s) skipped: ${res.skipped.map((s) => s.reason).slice(0, 1)}`);
+        }
+        setSelectedIds(new Set());
+      }
+      setDeleteTarget(null);
+      fetchFilteredStock();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const currentFilterParams = React.useCallback(
     () => ({
@@ -268,6 +321,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         quantityKg: Number(r.quantityKg),
         status: r.status,
         location: r.location || "",
+        remarks: r.remarks || "",
         allocatedOrderNumber: r.orderItem?.order?.orderNumber || "",
         createdAt: new Date(r.createdAt).toISOString().slice(0, 10),
       }));
@@ -280,6 +334,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         { key: "quantityKg", header: "quantityKg" },
         { key: "status", header: "status" },
         { key: "location", header: "location" },
+        { key: "remarks", header: "remarks" },
         { key: "allocatedOrderNumber", header: "allocatedOrderNumber" },
         { key: "createdAt", header: "createdAt" },
       ]);
@@ -340,6 +395,21 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
   };
 
   const columns: ColumnDef<StockItemRow>[] = [
+    ...(isAdmin
+      ? [
+          {
+            id: "select",
+            header: "",
+            cell: ({ row }: any) => (
+              <Checkbox
+                checked={selectedIds.has(row.original.id)}
+                onCheckedChange={() => toggleSelected(row.original.id)}
+                aria-label="Select row"
+              />
+            ),
+          } as ColumnDef<StockItemRow>,
+        ]
+      : []),
     {
       accessorKey: "reelNumber",
       header: "Reel No.",
@@ -400,6 +470,15 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
       cell: ({ row }) => (
         <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">
           {row.getValue("location") || "Bay-General"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "remarks",
+      header: "Remarks",
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-500 truncate max-w-[180px] inline-block align-middle">
+          {row.original.remarks || "—"}
         </span>
       ),
     },
@@ -503,6 +582,17 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
                   <Edit className="h-3.5 w-3.5 text-slate-500" /> Adjust Quantity / Bay
                 </DropdownMenuItem>
               )}
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs gap-2 text-rose-600 font-semibold"
+                    onClick={() => setDeleteTarget({ mode: "single", id: item.id })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -574,6 +664,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           "paperType (NATURAL/BY)",
           "size (BABY/NORMAL)",
           "location",
+          "remarks",
           "orderNumber (allocates to that order's matching line)",
         ]}
         onImport={importStockItemsCsv}
@@ -774,6 +865,17 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             Export CSV
           </Button>
 
+          {isAdmin && selectedIds.size > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget({ mode: "bulk" })}
+              className="h-9 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 rounded-xl gap-1.5 font-bold"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Stock Items Found
           </span>
@@ -887,6 +989,30 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           }}
         />
       )}
+
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-rose-600">
+              {deleteTarget?.mode === "bulk" ? `Delete ${selectedIds.size} Stock Item(s)?` : "Delete Stock Item?"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This permanently removes the reel(s) from inventory. Only AVAILABLE reels can be deleted —
+              allocated or dispatched ones will be skipped. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={isDeleting} className="gap-1.5">
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

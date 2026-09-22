@@ -127,6 +127,29 @@ export async function processNotificationQueue(batchSize: number = 25) {
   };
 }
 
+async function getTenantWhatsAppCredentials(tenantId: string | null | undefined) {
+  if (!tenantId) return { credentials: null, millName: undefined as string | undefined };
+  const tenant = await db.tenant.findFirst({
+    where: { id: tenantId },
+    select: {
+      name: true,
+      whatsappEnabled: true,
+      whatsappAccessToken: true,
+      whatsappPhoneNumberId: true,
+      whatsappApiVersion: true,
+    },
+  });
+  if (!tenant || !tenant.whatsappEnabled) return { credentials: null, millName: tenant?.name };
+  return {
+    credentials: {
+      accessToken: tenant.whatsappAccessToken,
+      phoneNumberId: tenant.whatsappPhoneNumberId,
+      apiVersion: tenant.whatsappApiVersion,
+    },
+    millName: tenant.name,
+  };
+}
+
 async function processTenantNotificationQueue(batchSize: number = 25) {
   // 1. Fetch pending queued notifications or failed with attempts < 3
   const pending = await db.whatsAppNotification.findMany({
@@ -154,11 +177,14 @@ async function processTenantNotificationQueue(batchSize: number = 25) {
         continue; // Already processed
       }
 
-      // 3. Send message
+      // 3. Send message using this mill's own WhatsApp Cloud API credentials, if configured
+      const { credentials, millName } = await getTenantWhatsAppCredentials(notif.tenantId);
       const res = await sendWhatsAppMessage({
         phoneNumber: notif.phoneNumber,
         templateName: notif.templateName,
         payload: (notif.payload as Record<string, any>) || {},
+        credentials,
+        millName,
       });
 
       if (res.success) {
@@ -220,10 +246,13 @@ export async function retryNotification(notificationId: string) {
 
   if (!notif) throw new Error("Notification not found.");
 
+  const { credentials, millName } = await getTenantWhatsAppCredentials(notif.tenantId);
   const res = await sendWhatsAppMessage({
     phoneNumber: notif.phoneNumber,
     templateName: notif.templateName,
     payload: (notif.payload as Record<string, any>) || {},
+    credentials,
+    millName,
   });
 
   const updated = await db.whatsAppNotification.update({

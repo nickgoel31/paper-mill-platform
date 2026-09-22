@@ -772,3 +772,67 @@ export async function cancelOrder(id: string, reason?: string) {
     reason,
   });
 }
+
+// -----------------------------------------------------------------------------
+// DELETE (ADMIN ONLY) — only orders nothing has been produced/dispatched
+// against yet; anything past that must be cancelled instead, never deleted.
+// -----------------------------------------------------------------------------
+
+function isOrderDeletable(order: { items: { producedKg: any; dispatchedKg: any }[] }): boolean {
+  return !order.items.some((it) => Number(it.producedKg || 0) > 0 || Number(it.dispatchedKg || 0) > 0);
+}
+
+export async function deleteOrder(id: string) {
+  const { userId } = await requireRole(Role.ADMIN);
+
+  const order = await db.order.findFirst({ where: { id }, include: { items: true } });
+  if (!order) throw new Error("Order not found.");
+  if (!isOrderDeletable(order)) {
+    throw new Error(
+      `Order ${order.orderNumber} has production or dispatch recorded against it and can't be deleted — cancel it instead.`
+    );
+  }
+
+  await db.order.delete({ where: { id } });
+  await logAudit({
+    userId,
+    entityType: "Order",
+    entityId: id,
+    action: "DELETE",
+    before: { orderNumber: order.orderNumber, status: order.status },
+  });
+
+  revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
+}
+
+export async function deleteOrders(ids: string[]) {
+  const { userId } = await requireRole(Role.ADMIN);
+  if (!ids || ids.length === 0) throw new Error("No orders selected.");
+
+  const orders = await db.order.findMany({ where: { id: { in: ids } }, include: { items: true } });
+  const deletable = orders.filter(isOrderDeletable);
+  const blocked = orders.filter((o) => !isOrderDeletable(o));
+
+  if (deletable.length > 0) {
+    await db.order.deleteMany({ where: { id: { in: deletable.map((o) => o.id) } } });
+    await logAudit({
+      userId,
+      entityType: "Order",
+      entityId: "bulk-delete",
+      action: "DELETE",
+      before: { count: deletable.length, orderNumbers: deletable.map((o) => o.orderNumber) },
+    });
+  }
+
+  revalidatePath("/orders");
+  revalidateTag(DASHBOARD_TAG);
+  return {
+    deleted: deletable.length,
+    skipped: blocked.map((o) => ({
+      id: o.id,
+      label: o.orderNumber,
+      reason: "Has production or dispatch recorded — cancel it instead.",
+    })),
+  };
+}

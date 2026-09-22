@@ -10,16 +10,26 @@ export interface SendWhatsAppResult {
   error?: string;
 }
 
+export interface WhatsAppCredentials {
+  accessToken?: string | null;
+  phoneNumberId?: string | null;
+  apiVersion?: string | null;
+}
+
 export async function sendWhatsAppMessage(input: {
   phoneNumber: string;
   templateName: string;
   payload: Record<string, any>;
   millName?: string;
+  /** Per-tenant WhatsApp Cloud API credentials, configured by TWJ platform admins. Falls back to the global env vars when omitted. */
+  credentials?: WhatsAppCredentials | null;
 }): Promise<SendWhatsAppResult> {
-  const isDryRun =
-    process.env.WHATSAPP_DRY_RUN !== "false" ||
-    !process.env.WHATSAPP_ACCESS_TOKEN ||
-    !process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const accessToken = input.credentials?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = input.credentials?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+
+  // WHATSAPP_DRY_RUN is a global kill switch: even with valid per-tenant
+  // credentials, nothing sends for real until it's explicitly set to "false".
+  const isDryRun = process.env.WHATSAPP_DRY_RUN !== "false" || !accessToken || !phoneNumberId;
 
   // 1. Normalize and validate Indian mobile phone
   const normalizedPhone = normalizeIndianPhoneNumber(input.phoneNumber);
@@ -48,9 +58,9 @@ export async function sendWhatsAppMessage(input: {
   }
 
   // 4. PRODUCTION MODE: Call Meta Graph API
-  const apiVersion = process.env.WHATSAPP_API_VERSION || "v21.0";
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const token = process.env.WHATSAPP_ACCESS_TOKEN;
+  const apiVersion = input.credentials?.apiVersion || process.env.WHATSAPP_API_VERSION || "v21.0";
+  const phoneId = phoneNumberId;
+  const token = accessToken;
 
   const url = `https://graph.facebook.com/${apiVersion}/${phoneId}/messages`;
 

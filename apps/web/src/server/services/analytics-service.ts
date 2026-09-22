@@ -161,24 +161,15 @@ export async function getAnalyticsData(filter?: AnalyticsFilter): Promise<Analyt
     }
   }
 
-  // If revenue from invoices is 0, estimate revenue from orders at standard paper rate ₹33.5/kg
-  if (totalRevenueInr === 0 && totalSalesWeightKg > 0) {
-    totalRevenueInr = totalSalesWeightKg * 33.5 * 1.18; // 18% GST included
-  }
-
   let totalProducedWeightKg = runs.reduce((sum, r) => sum + Number(r.totalActualKg || r.totalPlannedKg), 0);
   let totalDispatchedWeightKg = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + Number(i.dispatchedKg || 0), 0), 0);
-  
-  if (totalProducedWeightKg > 0 && totalDispatchedWeightKg === 0) {
-    totalDispatchedWeightKg = totalProducedWeightKg * 0.95; // realistic fallback
-  }
 
   let totalWastageKg = wastageLogs.reduce((sum, w) => sum + Number(w.wastageKg), 0);
-  
-  // Calculate average trim percent from production runs
+
+  // Calculate average trim percent from production runs (real data only — 0 when none recorded)
   const avgTrim = runs.length > 0
-    ? runs.reduce((s, r) => s + Number(r.totalTrimPercent || 1.8), 0) / runs.length
-    : 1.65;
+    ? runs.reduce((s, r) => s + Number(r.totalTrimPercent || 0), 0) / runs.length
+    : 0;
 
   // 6. Generate Month-on-Month Trends
   const monthsInInterval = eachMonthOfInterval({ start, end });
@@ -194,31 +185,28 @@ export async function getAnalyticsData(filter?: AnalyticsFilter): Promise<Analyt
     const mSalesKg = monthOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + Number(i.quantityKg), 0), 0);
     const mProductionKg = monthRuns.reduce((sum, r) => sum + Number(r.totalActualKg || r.totalPlannedKg), 0);
     const mWastageKg = monthWastage.reduce((sum, w) => sum + Number(w.wastageKg), 0);
-    let mRevenue = monthInvoices.reduce((sum, i) => sum + Number(i.totalAmount), 0);
-
-    if (mRevenue === 0 && mSalesKg > 0) {
-      mRevenue = mSalesKg * 33.5 * 1.18;
-    }
+    const mDispatchedKg = monthOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + Number(i.dispatchedKg || 0), 0), 0);
+    const mRevenue = monthInvoices.reduce((sum, i) => sum + Number(i.totalAmount), 0);
 
     const mTrim = monthRuns.length > 0
-      ? monthRuns.reduce((s, r) => s + Number(r.totalTrimPercent || 1.6), 0) / monthRuns.length
-      : 1.5;
+      ? monthRuns.reduce((s, r) => s + Number(r.totalTrimPercent || 0), 0) / monthRuns.length
+      : 0;
 
     return {
       month: mLabel,
       salesInr: Math.round(mRevenue),
       salesWeightKg: Math.round(mSalesKg),
-      productionKg: Math.round(mProductionKg || mSalesKg * 0.98),
-      wastageKg: Math.round(mWastageKg || (mProductionKg || mSalesKg) * 0.016),
+      productionKg: Math.round(mProductionKg),
+      wastageKg: Math.round(mWastageKg),
       trimLossPercent: Number(mTrim.toFixed(2)),
-      dispatchedKg: Math.round(mProductionKg ? mProductionKg * 0.94 : mSalesKg * 0.94),
+      dispatchedKg: Math.round(mDispatchedKg),
     };
   });
 
-  // 7. Wastage Breakdown by Type
-  const trimKg = wastageLogs.filter((w) => w.wastageType === "TRIM").reduce((s, w) => s + Number(w.wastageKg), 0) || (totalWastageKg * 0.7);
-  const rejectKg = wastageLogs.filter((w) => w.wastageType === "REJECT").reduce((s, w) => s + Number(w.wastageKg), 0) || (totalWastageKg * 0.2);
-  const otherKg = wastageLogs.filter((w) => w.wastageType === "OTHER").reduce((s, w) => s + Number(w.wastageKg), 0) || (totalWastageKg * 0.1);
+  // 7. Wastage Breakdown by Type (real logged data only — no fabricated split)
+  const trimKg = wastageLogs.filter((w) => w.wastageType === "TRIM").reduce((s, w) => s + Number(w.wastageKg), 0);
+  const rejectKg = wastageLogs.filter((w) => w.wastageType === "REJECT").reduce((s, w) => s + Number(w.wastageKg), 0);
+  const otherKg = wastageLogs.filter((w) => w.wastageType === "OTHER").reduce((s, w) => s + Number(w.wastageKg), 0);
   const safeTotalWastage = (trimKg + rejectKg + otherKg) || 1;
 
   const wastageBreakdown = [
@@ -235,19 +223,12 @@ export async function getAnalyticsData(filter?: AnalyticsFilter): Promise<Analyt
     percentage: Number(((weightKg / totalGsmWeight) * 100).toFixed(1)),
   }));
 
-  if (gsmDistribution.length === 0) {
-    gsmDistribution.push(
-      { gsm: "140 GSM", weightKg: 9856, percentage: 70.0 },
-      { gsm: "120 GSM", weightKg: 4224, percentage: 30.0 }
-    );
-  }
-
   // 9. Machine Performance
   const machines = await db.machine.findMany({ where: { deletedAt: null } });
   const machinePerformance = machines.map((m) => {
     const mRuns = runs.filter((r) => r.machineId === m.id);
     const mOutput = mRuns.reduce((s, r) => s + Number(r.totalActualKg || r.totalPlannedKg), 0);
-    const mAvgTrim = mRuns.length > 0 ? mRuns.reduce((s, r) => s + Number(r.totalTrimPercent || 0), 0) / mRuns.length : 1.6;
+    const mAvgTrim = mRuns.length > 0 ? mRuns.reduce((s, r) => s + Number(r.totalTrimPercent || 0), 0) / mRuns.length : 0;
 
     return {
       machineName: m.name,
@@ -263,10 +244,24 @@ export async function getAnalyticsData(filter?: AnalyticsFilter): Promise<Analyt
     .sort((a, b) => b.totalWeightKg - a.totalWeightKg)
     .slice(0, 5);
 
+  // Real month-on-month revenue growth from the trend series just computed
+  let revenueGrowthPercent = 0;
+  if (monthlyTrends.length >= 2) {
+    const prev = monthlyTrends[monthlyTrends.length - 2].salesInr;
+    const last = monthlyTrends[monthlyTrends.length - 1].salesInr;
+    revenueGrowthPercent = prev > 0 ? Number((((last - prev) / prev) * 100).toFixed(1)) : 0;
+  }
+
+  // Real machine utilization: share of active machines that actually ran in the period
+  const machinesWithRuns = new Set(runs.map((r) => r.machineId)).size;
+  const machineUtilizationPercent = machines.length > 0
+    ? Number(((machinesWithRuns / machines.length) * 100).toFixed(1))
+    : 0;
+
   return {
     kpis: {
       totalRevenueInr: Math.round(totalRevenueInr),
-      revenueGrowthPercent: 14.8,
+      revenueGrowthPercent,
       totalSalesWeightKg: Math.round(totalSalesWeightKg),
       totalProducedWeightKg: Math.round(totalProducedWeightKg),
       totalDispatchedWeightKg: Math.round(totalDispatchedWeightKg),
@@ -274,7 +269,7 @@ export async function getAnalyticsData(filter?: AnalyticsFilter): Promise<Analyt
       averageTrimLossPercent: Number(avgTrim.toFixed(2)),
       totalOrdersCount: orders.length,
       activeClientsCount: Object.keys(clientMap).length,
-      machineUtilizationPercent: 91.4,
+      machineUtilizationPercent,
     },
     monthlyTrends,
     wastageBreakdown,

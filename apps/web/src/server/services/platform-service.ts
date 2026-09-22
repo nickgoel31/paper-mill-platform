@@ -159,6 +159,37 @@ export async function updateTenant(id: string, data: TenantInput) {
   return tenant;
 }
 
+export async function updateTenantWhatsAppSettings(
+  id: string,
+  data: {
+    whatsappEnabled: boolean;
+    whatsappAccessToken?: string | null;
+    whatsappPhoneNumberId?: string | null;
+    whatsappApiVersion?: string | null;
+  }
+) {
+  await requirePlatform();
+  const existing = await db.tenant.findFirst({ where: { id } });
+  if (!existing) throw new Error("Mill not found.");
+
+  if (data.whatsappEnabled && (!data.whatsappAccessToken?.trim() || !data.whatsappPhoneNumberId?.trim())) {
+    throw new Error("Access Token and Phone Number ID are required to enable WhatsApp for this mill.");
+  }
+
+  const tenant = await db.tenant.update({
+    where: { id },
+    data: {
+      whatsappEnabled: data.whatsappEnabled,
+      whatsappAccessToken: data.whatsappAccessToken?.trim() || null,
+      whatsappPhoneNumberId: data.whatsappPhoneNumberId?.trim() || null,
+      whatsappApiVersion: data.whatsappApiVersion?.trim() || null,
+    },
+  });
+
+  revalidatePath(`/platform/mills/${id}`);
+  return tenant;
+}
+
 export async function setTenantActive(id: string, isActive: boolean) {
   await requirePlatform();
   await db.tenant.update({ where: { id }, data: { isActive } });

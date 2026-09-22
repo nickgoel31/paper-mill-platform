@@ -132,6 +132,10 @@ model Tenant {
   email     String?
   isActive  Boolean  @default(true)
   postProductionMode PostProductionMode @default(AUTO_DISPATCH)
+  whatsappEnabled       Boolean @default(false)
+  whatsappAccessToken   String?
+  whatsappPhoneNumberId String?
+  whatsappApiVersion    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -514,6 +518,7 @@ model StockItem {
   quantityKg      Decimal
   status          StockStatus @default(AVAILABLE)
   location        String?
+  remarks         String?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 

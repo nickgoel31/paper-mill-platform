@@ -36,59 +36,55 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
   const [searchQuery, setSearchQuery] = React.useState("");
   const [timePeriod, setTimePeriod] = React.useState("Monthly");
 
-  // Summary Metrics calculations using AnalyticsSummary schema
-  const totalProductionMT = (data?.kpis?.totalProducedWeightKg || 842600) / 1000;
-  const totalSalesRevenue = data?.kpis?.totalRevenueInr || 6423000;
-  const avgTrimWastage = (data?.kpis?.totalWastageKg ? data.kpis.totalWastageKg / 1000 : 24.8).toFixed(1);
-  const totalDispatches = (data?.kpis?.totalDispatchedWeightKg || 712400) / 1000;
-  const revenueGrowth = data?.kpis?.revenueGrowthPercent ?? 18.4;
-  const trimLossPercent = data?.kpis?.averageTrimLossPercent ?? 2.8;
+  // Summary Metrics — real data only, 0 when nothing recorded yet (no fabricated fallbacks)
+  const totalProductionMT = (data?.kpis?.totalProducedWeightKg || 0) / 1000;
+  const totalSalesRevenue = data?.kpis?.totalRevenueInr || 0;
+  const avgTrimWastage = ((data?.kpis?.totalWastageKg || 0) / 1000).toFixed(1);
+  const totalDispatches = (data?.kpis?.totalDispatchedWeightKg || 0) / 1000;
+  const revenueGrowth = data?.kpis?.revenueGrowthPercent ?? 0;
+  const trimLossPercent = data?.kpis?.averageTrimLossPercent ?? 0;
+  const machineUtilization = data?.kpis?.machineUtilizationPercent ?? 0;
 
-  // Chart data: Production MoM
+  // Chart data: Production MoM (real monthly trend only; empty when there's no data yet)
   const monthlyProductionData = data?.monthlyTrends?.length
     ? data.monthlyTrends.map((t) => ({
         name: t.month,
         actual: Math.round(t.productionKg / 1000),
-        target: Math.round((t.productionKg * 1.08) / 1000),
       }))
-    : [
-        { name: "Jan", actual: 480, target: 520 },
-        { name: "Feb", actual: 560, target: 540 },
-        { name: "Mar", actual: 720, target: 680 },
-        { name: "Apr", actual: 640, target: 600 },
-        { name: "May", actual: 810, target: 750 },
-        { name: "Jun", actual: 760, target: 780 },
-        { name: "Jul", actual: 920, target: 850 },
-      ];
+    : [];
 
-  // Spline Data: Efficiency & Trim Yield
-  const efficiencyData = [
-    { name: "Mon", yieldRate: 94.2, speedFpm: 88.5 },
-    { name: "Tue", yieldRate: 95.8, speedFpm: 91.2 },
-    { name: "Wed", yieldRate: 93.4, speedFpm: 89.0 },
-    { name: "Thu", yieldRate: 96.5, speedFpm: 94.1 },
-    { name: "Fri", yieldRate: 95.1, speedFpm: 92.4 },
-    { name: "Sat", yieldRate: 97.2, speedFpm: 95.8 },
-    { name: "Sun", yieldRate: 96.8, speedFpm: 93.9 },
-  ];
+  // Real month-on-month production growth (mirrors the revenue-growth calc done server-side)
+  let productionGrowth = 0;
+  if (data?.monthlyTrends && data.monthlyTrends.length >= 2) {
+    const prev = data.monthlyTrends[data.monthlyTrends.length - 2].productionKg;
+    const last = data.monthlyTrends[data.monthlyTrends.length - 1].productionKg;
+    productionGrowth = prev > 0 ? Number((((last - prev) / prev) * 100).toFixed(1)) : 0;
+  }
+  let dispatchGrowth = 0;
+  if (data?.monthlyTrends && data.monthlyTrends.length >= 2) {
+    const prev = data.monthlyTrends[data.monthlyTrends.length - 2].dispatchedKg;
+    const last = data.monthlyTrends[data.monthlyTrends.length - 1].dispatchedKg;
+    dispatchGrowth = prev > 0 ? Number((((last - prev) / prev) * 100).toFixed(1)) : 0;
+  }
 
-  // Client billing / transaction rows (from topClients if available)
+  // Yield-rate trend derived from real per-month trim-loss data (100% - trim loss)
+  const efficiencyData = data?.monthlyTrends?.length
+    ? data.monthlyTrends.map((t) => ({
+        name: t.month,
+        yieldRate: Number((100 - t.trimLossPercent).toFixed(1)),
+      }))
+    : [];
+
+  // Client billing / transaction rows (real top clients only; empty state when none)
   const transactions = data?.topClients?.length
     ? data.topClients.slice(0, 4).map((c, i) => ({
         id: `TX-${8921 - i}`,
         client: c.clientName,
-        grade: `${c.city || "Standard"} Grade`,
+        grade: c.city || "—",
         amount: c.totalRevenueInr,
-        status: i % 2 === 0 ? "Cleared" : "Processing",
-        date: i === 0 ? "Today, 02:45 PM" : i === 1 ? "Today, 11:15 AM" : i === 2 ? "Yesterday" : "07 Sep 2026",
         initial: c.clientName.charAt(0).toUpperCase() || "C",
       }))
-    : [
-        { id: "TX-8921", client: "Apex Packaging Ltd", grade: "Kraft 180 GSM", amount: 485000, status: "Cleared", date: "Today, 02:45 PM", initial: "A" },
-        { id: "TX-8920", client: "Shree Balaji Corrugators", grade: "Duplex 230 GSM", amount: 1240000, status: "Processing", date: "Today, 11:15 AM", initial: "S" },
-        { id: "TX-8919", client: "Vardhman Print & Pack", grade: "Fluting 120 GSM", amount: 320000, status: "Cleared", date: "Yesterday", initial: "V" },
-        { id: "TX-8918", client: "National Paper Tube Co", grade: "Core Board 350 GSM", amount: 780000, status: "Cleared", date: "07 Sep 2026", initial: "N" },
-      ];
+    : [];
 
   return (
     <div className="space-y-6 pb-12 font-sans">
@@ -136,10 +132,10 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
           </div>
 
           <div className="flex items-center justify-between mt-5 pt-3 border-t border-slate-100">
-            <div className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>+6.8%</span>
-              <span className="text-[11px] font-normal text-slate-500 ml-1">efficiency</span>
+            <div className={`flex items-center gap-1 text-xs font-bold ${productionGrowth >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              {productionGrowth >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+              <span>{productionGrowth >= 0 ? "+" : ""}{productionGrowth}%</span>
+              <span className="text-[11px] font-normal text-slate-500 ml-1">vs last month</span>
             </div>
             <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
               <Factory className="w-3.5 h-3.5" />
@@ -188,10 +184,10 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
           </div>
 
           <div className="flex items-center justify-between mt-5 pt-3 border-t border-slate-100">
-            <div className="flex items-center gap-1 text-xs font-bold text-emerald-600">
-              <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>+12.3%</span>
-              <span className="text-[11px] font-normal text-slate-500 ml-1">on schedule</span>
+            <div className={`flex items-center gap-1 text-xs font-bold ${dispatchGrowth >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              {dispatchGrowth >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+              <span>{dispatchGrowth >= 0 ? "+" : ""}{dispatchGrowth}%</span>
+              <span className="text-[11px] font-normal text-slate-500 ml-1">vs last month</span>
             </div>
             <div className="w-7 h-7 rounded-xl bg-slate-50 flex items-center justify-center text-slate-600">
               <Package className="w-3.5 h-3.5" />
@@ -263,13 +259,6 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                   radius={[8, 8, 4, 4]}
                   barSize={22}
                 />
-                <Bar
-                  dataKey="target"
-                  name="Target MT"
-                  fill="#e2e8f0"
-                  radius={[8, 8, 4, 4]}
-                  barSize={22}
-                />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -280,12 +269,10 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#d4f842] border border-[#161622]" />
                 <span className="font-medium text-slate-700">Actual Output</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-slate-200" />
-                <span className="font-medium text-slate-700">Planned Target</span>
-              </div>
             </div>
-            <span className="font-semibold text-emerald-600">+14% vs Q1</span>
+            <span className={`font-semibold ${productionGrowth >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+              {productionGrowth >= 0 ? "+" : ""}{productionGrowth}% vs last month
+            </span>
           </div>
         </div>
 
@@ -294,12 +281,11 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
           <div className="flex items-center justify-between mb-6">
             <div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight">Efficiency Overview</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Speed vs Paper Yield Rate (%)</p>
+              <p className="text-xs text-slate-400 mt-0.5">Paper Yield Rate (%)</p>
             </div>
-            <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-xs font-semibold text-slate-700 transition-colors">
-              <span>Week</span>
-              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-            </button>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs font-semibold text-slate-700">
+              <span>Monthly</span>
+            </div>
           </div>
 
           <div className="h-64 w-full">
@@ -310,10 +296,6 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                   <linearGradient id="efficiencyLimeGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#d4f842" stopOpacity={0.6} />
                     <stop offset="100%" stopColor="#d4f842" stopOpacity={0.02} />
-                  </linearGradient>
-                  <linearGradient id="speedOrangeGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#f97316" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
                 <XAxis
@@ -349,15 +331,6 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                   strokeWidth={3}
                   fill="url(#efficiencyLimeGrad)"
                 />
-                <Area
-                  type="monotone"
-                  dataKey="speedFpm"
-                  name="Speed Index %"
-                  stroke="#f97316"
-                  strokeWidth={2.5}
-                  strokeDasharray="4 4"
-                  fill="url(#speedOrangeGrad)"
-                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -366,11 +339,7 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-full bg-lime-500" />
-                <span className="font-medium text-slate-700">Yield Rate (96.8% Avg)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                <span className="font-medium text-slate-700">Speed Index</span>
+                <span className="font-medium text-slate-700">Yield Rate ({(100 - trimLossPercent).toFixed(1)}% Avg)</span>
               </div>
             </div>
             <span className="font-semibold text-slate-700 font-mono">Target: &gt;95%</span>
@@ -410,7 +379,7 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                         {tx.grade}
                       </span>
                     </div>
-                    <span className="text-xs text-slate-400">{tx.date} • {tx.id}</span>
+                    <span className="text-xs text-slate-400">{tx.id}</span>
                   </div>
                 </div>
 
@@ -418,14 +387,14 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
                   <div className="text-sm font-bold text-slate-900 font-mono">
                     ₹{tx.amount.toLocaleString("en-IN")}
                   </div>
-                  <span className={`text-[11px] font-semibold ${
-                    tx.status === "Cleared" ? "text-emerald-600" : "text-amber-600"
-                  }`}>
-                    {tx.status}
-                  </span>
                 </div>
               </div>
             ))}
+            {transactions.length === 0 && (
+              <div className="text-xs text-slate-400 text-center py-6">
+                No invoiced clients yet in this period.
+              </div>
+            )}
           </div>
         </div>
 
@@ -503,13 +472,13 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
             {/* Float badge indicator */}
             <div className="absolute bottom-3 left-3 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-2">
               <Truck className="w-3.5 h-3.5 text-[#d4f842]" />
-              <span className="text-[11px] font-medium text-white">98.4% On-Time Delivery</span>
+              <span className="text-[11px] font-medium text-white">{machineUtilization}% Machine Utilization</span>
             </div>
           </div>
 
           <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs text-slate-500 mt-2">
             <span>Primary Fleet: GPS Telematics Live</span>
-            <span className="font-semibold text-slate-900">Average Transit: 1.4 Days</span>
+            <span className="font-semibold text-slate-900">{totalDispatches.toFixed(1)} MT Dispatched</span>
           </div>
         </div>
       </div>

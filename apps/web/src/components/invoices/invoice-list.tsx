@@ -31,9 +31,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { InvoiceStatus } from "@/generated/prisma/browser";
-import { getInvoices, getInvoiceSummaryStats, createManualInvoice, getReceivablesAging } from "@/server/services/invoice-service";
+import { InvoiceStatus, Role } from "@/generated/prisma/browser";
+import {
+  getInvoices,
+  getInvoiceSummaryStats,
+  createManualInvoice,
+  getReceivablesAging,
+  deleteInvoice,
+  deleteInvoices,
+} from "@/server/services/invoice-service";
 import { formatCurrencyINR, formatWeightKg } from "@/lib/utils";
 import {
   Receipt,
@@ -53,6 +61,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
+
 import { WorkflowBanner } from "@/components/layout/workflow-banner";
 
 interface InvoiceRow {
@@ -95,6 +104,7 @@ interface InvoiceListProps {
     avgInvoiceValue: number;
   };
   clients: { id: string; name: string; code: string }[];
+  userRole: Role;
 }
 
 interface ManualLine {
@@ -103,7 +113,18 @@ interface ManualLine {
   ratePerKg: string;
 }
 
-export function InvoiceList({ initialData, initialStats, clients }: InvoiceListProps) {
+export function InvoiceList({ initialData, initialStats, clients, userRole }: InvoiceListProps) {
+  const isAdmin = userRole === Role.ADMIN;
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = React.useState<{ mode: "single" | "bulk"; id?: string } | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   const [data, setData] = React.useState(initialData.rows);
   const [total, setTotal] = React.useState(initialData.total);
   const [page, setPage] = React.useState(initialData.page);
@@ -158,6 +179,35 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
       toast.error(err.message || "Failed to create invoice");
     } finally {
       setIsCreating(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.mode === "single" && deleteTarget.id) {
+        await deleteInvoice(deleteTarget.id);
+        toast.success("Invoice deleted.");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteTarget.id!);
+          return next;
+        });
+      } else {
+        const res = await deleteInvoices(Array.from(selectedIds));
+        toast.success(`${res.deleted} invoice(s) deleted.`);
+        if (res.skipped.length > 0) {
+          toast.warning(`${res.skipped.length} invoice(s) skipped: ${res.skipped[0].reason}`);
+        }
+        setSelectedIds(new Set());
+      }
+      setDeleteTarget(null);
+      fetchData(page, search);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -227,6 +277,21 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
   };
 
   const columns: ColumnDef<InvoiceRow>[] = [
+    ...(isAdmin
+      ? [
+          {
+            id: "select",
+            header: "",
+            cell: ({ row }: any) => (
+              <Checkbox
+                checked={selectedIds.has(row.original.id)}
+                onCheckedChange={() => toggleSelected(row.original.id)}
+                aria-label="Select row"
+              />
+            ),
+          } as ColumnDef<InvoiceRow>,
+        ]
+      : []),
     {
       accessorKey: "invoiceNumber",
       header: "Invoice No.",
@@ -349,6 +414,17 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
               >
                 <Printer className="h-3.5 w-3.5 text-slate-500" /> Print Tax Invoice
               </DropdownMenuItem>
+              {isAdmin && item.status === InvoiceStatus.DRAFT && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs gap-2 text-rose-600 font-semibold"
+                    onClick={() => setDeleteTarget({ mode: "single", id: item.id })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         );
@@ -610,6 +686,18 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
             </Button>
           )}
 
+          {isAdmin && selectedIds.size > 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget({ mode: "bulk" })}
+              className="h-9 text-xs font-bold rounded-xl text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Invoices Found
           </span>
@@ -631,6 +719,30 @@ export function InvoiceList({ initialData, initialStats, clients }: InvoiceListP
         }}
         isLoading={isLoading}
       />
+
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-rose-600">
+              {deleteTarget?.mode === "bulk" ? `Delete ${selectedIds.size} Invoice(s)?` : "Delete Invoice?"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This permanently removes the invoice. Only DRAFT invoices can be deleted — issued GST
+              invoices can only be cancelled, for compliance. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={isDeleting} className="gap-1.5">
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

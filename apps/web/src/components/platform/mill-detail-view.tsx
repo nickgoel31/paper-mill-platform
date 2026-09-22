@@ -11,6 +11,7 @@ import {
   createTenantUser,
   updateTenantUser,
   resetTenantUserPassword,
+  updateTenantWhatsAppSettings,
 } from "@/server/services/platform-service";
 import { Role, PostProductionMode } from "@/generated/prisma/browser";
 import { EnterMillButton } from "@/components/platform/enter-mill-button";
@@ -31,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Loader2, KeyRound, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, KeyRound, Plus, MessageCircle } from "lucide-react";
 
 type Tenant = {
   id: string;
@@ -46,6 +47,10 @@ type Tenant = {
   email: string | null;
   isActive: boolean;
   postProductionMode: PostProductionMode;
+  whatsappEnabled: boolean;
+  whatsappAccessToken: string | null;
+  whatsappPhoneNumberId: string | null;
+  whatsappApiVersion: string | null;
 };
 
 const MODE_OPTIONS: { value: PostProductionMode; label: string; hint: string }[] = [
@@ -83,6 +88,7 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
   const [busy, setBusy] = React.useState(false);
   const [addingUser, setAddingUser] = React.useState(false);
   const [resetFor, setResetFor] = React.useState<MillUser | null>(null);
+  const [waEnabled, setWaEnabled] = React.useState(tenant.whatsappEnabled);
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
@@ -116,6 +122,21 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
           email: String(fd.get("email") || ""),
         } as any),
       "Mill updated."
+    );
+  }
+
+  async function onSaveWhatsApp(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await run(
+      () =>
+        updateTenantWhatsAppSettings(tenant.id, {
+          whatsappEnabled: waEnabled,
+          whatsappAccessToken: String(fd.get("whatsappAccessToken") || ""),
+          whatsappPhoneNumberId: String(fd.get("whatsappPhoneNumberId") || ""),
+          whatsappApiVersion: String(fd.get("whatsappApiVersion") || ""),
+        }),
+      "WhatsApp settings saved."
     );
   }
 
@@ -237,6 +258,58 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
         <Button type="submit" disabled={busy} className="rounded-xl">
           {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
           Save
+        </Button>
+      </form>
+
+      <form onSubmit={onSaveWhatsApp} className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-emerald-600" />
+            <h2 className="text-sm font-bold text-slate-900">WhatsApp notifications</h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setWaEnabled((v) => !v)}
+            className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
+              waEnabled
+                ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                : "text-slate-500 bg-slate-50 border-slate-200"
+            }`}
+          >
+            {waEnabled ? "ENABLED" : "DISABLED"}
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">
+          Per-mill WhatsApp Cloud API credentials (Meta Business). Dispatch confirmations and other
+          alerts for this mill send from its own WhatsApp Business number once enabled here. A
+          separate global safety switch (<code className="font-mono">WHATSAPP_DRY_RUN=false</code>)
+          must also be set on the Worker before any mill can send for real — until then, every mill
+          logs a simulated send instead.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <F
+            label="Access Token *"
+            name="whatsappAccessToken"
+            type="password"
+            defaultValue={tenant.whatsappAccessToken ?? ""}
+            placeholder="EAAG..."
+          />
+          <F
+            label="Phone Number ID *"
+            name="whatsappPhoneNumberId"
+            defaultValue={tenant.whatsappPhoneNumberId ?? ""}
+            placeholder="1029384756"
+          />
+          <F
+            label="Graph API Version"
+            name="whatsappApiVersion"
+            defaultValue={tenant.whatsappApiVersion ?? ""}
+            placeholder="v21.0 (default)"
+          />
+        </div>
+        <Button type="submit" disabled={busy} className="rounded-xl">
+          {busy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+          Save WhatsApp Settings
         </Button>
       </form>
 

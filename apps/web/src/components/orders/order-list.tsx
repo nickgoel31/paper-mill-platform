@@ -23,10 +23,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { OrderStatus, OrderPriority, Role, PaperSize } from "@/generated/prisma/browser";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
-import { canTransition, importOrdersCsv, getOrdersForExport } from "@/server/services/order-service";
+import { canTransition, importOrdersCsv, getOrdersForExport, deleteOrder, deleteOrders } from "@/server/services/order-service";
 import { objectsToCsv, downloadCsv } from "@/lib/csv";
 import {
   offlineGetOrders,
@@ -58,6 +67,7 @@ import {
   Package,
   Download,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { WorkflowBanner } from "@/components/layout/workflow-banner";
 
@@ -142,6 +152,46 @@ export function OrderList({
   const [isExporting, setIsExporting] = React.useState(false);
 
   const isAdminOrSales = userRole === Role.ADMIN || userRole === Role.SALES;
+  const isAdmin = userRole === Role.ADMIN;
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
+  const [deleteTarget, setDeleteTarget] = React.useState<{ mode: "single" | "bulk"; id?: string } | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      if (deleteTarget.mode === "single" && deleteTarget.id) {
+        await deleteOrder(deleteTarget.id);
+        toast.success("Order deleted.");
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(deleteTarget.id!);
+          return next;
+        });
+      } else {
+        const res = await deleteOrders(Array.from(selectedIds));
+        toast.success(`${res.deleted} order(s) deleted.`);
+        if (res.skipped.length > 0) {
+          toast.warning(`${res.skipped.length} order(s) skipped: ${res.skipped[0].reason}`);
+        }
+        setSelectedIds(new Set());
+      }
+      setDeleteTarget(null);
+      fetchFilteredOrders();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   const isPlannerOrAdmin = userRole === Role.ADMIN || userRole === Role.PLANNER;
 
   const currentFilterParams = React.useCallback(
@@ -406,6 +456,21 @@ export function OrderList({
 
   // Columns definition
   const columns: ColumnDef<OrderRow>[] = [
+    ...(isAdmin
+      ? [
+          {
+            id: "select",
+            header: "",
+            cell: ({ row }: any) => (
+              <Checkbox
+                checked={selectedIds.has(row.original.id)}
+                onCheckedChange={() => toggleSelected(row.original.id)}
+                aria-label="Select row"
+              />
+            ),
+          } as ColumnDef<OrderRow>,
+        ]
+      : []),
     {
       accessorKey: "orderNumber",
       header: "Order No.",
@@ -596,6 +661,18 @@ export function OrderList({
                     }
                   >
                     <XCircle className="h-3.5 w-3.5" /> Cancel Order
+                  </DropdownMenuItem>
+                </>
+              )}
+
+              {isAdmin && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs gap-2 text-rose-600 font-semibold"
+                    onClick={() => setDeleteTarget({ mode: "single", id: item.id })}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
                   </DropdownMenuItem>
                 </>
               )}
@@ -1011,6 +1088,17 @@ export function OrderList({
             Export CSV
           </Button>
 
+          {isAdmin && selectedIds.size > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteTarget({ mode: "bulk" })}
+              className="h-9 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 rounded-xl gap-1.5 font-bold"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete Selected ({selectedIds.size})
+            </Button>
+          )}
+
           <span className="text-xs text-slate-400 font-mono ml-auto">
             {total} Orders Found
           </span>
@@ -1032,6 +1120,31 @@ export function OrderList({
         }}
         isLoading={isLoading}
       />
+
+      {/* Delete Confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-rose-600">
+              {deleteTarget?.mode === "bulk" ? `Delete ${selectedIds.size} Order(s)?` : "Delete Order?"}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This permanently removes the order and its line items. Only orders with no production
+              or dispatch recorded can be deleted — others will be skipped (cancel those instead).
+              This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleConfirmDelete} disabled={isDeleting} className="gap-1.5">
+              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

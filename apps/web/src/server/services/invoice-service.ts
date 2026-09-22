@@ -734,3 +734,63 @@ export async function markEinvoiceGenerated(input: {
   revalidatePath(`/invoices/${input.invoiceId}`);
   return updated;
 }
+
+// -----------------------------------------------------------------------------
+// DELETE (ADMIN ONLY) — only DRAFT invoices; an ISSUED GST invoice must be
+// cancelled (see cancelInvoice), never hard-deleted, for compliance reasons.
+// -----------------------------------------------------------------------------
+
+export async function deleteInvoice(id: string) {
+  const { userId } = await requireRole(Role.ADMIN);
+
+  const invoice = await db.invoice.findFirst({ where: { id } });
+  if (!invoice) throw new Error("Invoice not found.");
+  if (invoice.status !== InvoiceStatus.DRAFT) {
+    throw new Error(
+      `Invoice ${invoice.invoiceNumber} is ${invoice.status} — issued GST invoices can't be deleted, only cancelled.`
+    );
+  }
+
+  await db.invoice.delete({ where: { id } });
+  await logAudit({
+    userId,
+    entityType: "Invoice",
+    entityId: id,
+    action: "DELETE",
+    before: { invoiceNumber: invoice.invoiceNumber },
+  });
+
+  revalidatePath("/invoices");
+  revalidateTag(DASHBOARD_TAG);
+}
+
+export async function deleteInvoices(ids: string[]) {
+  const { userId } = await requireRole(Role.ADMIN);
+  if (!ids || ids.length === 0) throw new Error("No invoices selected.");
+
+  const invoices = await db.invoice.findMany({ where: { id: { in: ids } } });
+  const deletable = invoices.filter((i) => i.status === InvoiceStatus.DRAFT);
+  const blocked = invoices.filter((i) => i.status !== InvoiceStatus.DRAFT);
+
+  if (deletable.length > 0) {
+    await db.invoice.deleteMany({ where: { id: { in: deletable.map((i) => i.id) } } });
+    await logAudit({
+      userId,
+      entityType: "Invoice",
+      entityId: "bulk-delete",
+      action: "DELETE",
+      before: { count: deletable.length, invoiceNumbers: deletable.map((i) => i.invoiceNumber) },
+    });
+  }
+
+  revalidatePath("/invoices");
+  revalidateTag(DASHBOARD_TAG);
+  return {
+    deleted: deletable.length,
+    skipped: blocked.map((i) => ({
+      id: i.id,
+      label: i.invoiceNumber,
+      reason: "Issued invoices can only be cancelled, not deleted.",
+    })),
+  };
+}
