@@ -239,6 +239,12 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
     [statusFilter, gsmFilter, paperTypeFilter, sizeFilter, locationFilter, dateFrom, dateTo, searchQuery]
   );
 
+  // Jump back to page 1 whenever any filter or the search text changes —
+  // otherwise staying on e.g. page 4 after a search can show zero results.
+  React.useEffect(() => {
+    setPage(1);
+  }, [statusFilter, gsmFilter, paperTypeFilter, sizeFilter, locationFilter, dateFrom, dateTo, searchQuery]);
+
   const fetchFilteredStock = React.useCallback(async () => {
     setIsLoading(true);
     try {
@@ -859,7 +865,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           </div>
 
           <Input
-            placeholder="Search Reel No., Bay, Order #..."
+            placeholder="Search Reel No., Bay, Remarks, GSM, Order #, Client..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-9 text-xs w-[220px] bg-slate-50/70 border-slate-200 rounded-xl"

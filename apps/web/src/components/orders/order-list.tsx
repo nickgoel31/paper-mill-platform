@@ -223,6 +223,24 @@ export function OrderList({
     ]
   );
 
+  // Jump back to page 1 whenever any filter or the search text changes —
+  // otherwise staying on e.g. page 4 after a search can show zero results.
+  React.useEffect(() => {
+    setPage(1);
+  }, [
+    statusFilter,
+    priorityFilter,
+    clientFilter,
+    gsmFilter,
+    sizeFilter,
+    weightMin,
+    weightMax,
+    searchQuery,
+    dateField,
+    dateFrom,
+    dateTo,
+  ]);
+
   // Fetch updated records
   const fetchFilteredOrders = React.useCallback(async () => {
     setIsLoading(true);

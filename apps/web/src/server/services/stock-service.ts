@@ -38,15 +38,18 @@ export interface StockQueryParams extends QueryParams {
 }
 
 function buildStockWhere(params: StockQueryParams, search: string): Prisma.StockItemWhereInput {
+  const searchedGsm = search && /^\d+$/.test(search.trim()) ? parseInt(search.trim(), 10) : null;
   return {
     ...(search
       ? {
           OR: [
             { reelNumber: { contains: search } },
             { location: { contains: search } },
+            { remarks: { contains: search } },
             { productionRun: { runNumber: { contains: search } } },
             { orderItem: { order: { orderNumber: { contains: search } } } },
             { orderItem: { order: { client: { name: { contains: search } } } } },
+            ...(searchedGsm !== null ? [{ gsm: searchedGsm }] : []),
           ],
         }
       : {}),
