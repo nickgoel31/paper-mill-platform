@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
 import { Role } from "@/generated/prisma/browser";
 import { getInvoiceById } from "@/server/services/invoice-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { InvoiceDetailView } from "@/components/invoices/invoice-detail-view";
 
 export const metadata = {
@@ -26,11 +27,24 @@ export default async function InvoiceDetailPage({
   if (!invoice) {
     notFound();
   }
+  const settings = await getSystemSettings();
 
   return (
     <InvoiceDetailView
       invoice={JSON.parse(JSON.stringify(invoice))}
       userRole={role}
+      seller={{
+        name: settings.millName,
+        address: settings.millAddress,
+        gstin: settings.millGstin,
+        state: settings.millState,
+        phone: settings.contactPhone,
+        email: settings.contactEmail,
+        bankName: settings.bankName,
+        bankAccountName: settings.bankAccountName,
+        bankAccountNumber: settings.bankAccountNumber,
+        bankIfsc: settings.bankIfsc,
+      }}
     />
   );
 }

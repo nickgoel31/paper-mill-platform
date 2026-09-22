@@ -11,6 +11,7 @@ import {
 } from "./base-service";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG } from "./cache-tags";
+import { getSystemSettings } from "./settings-service";
 
 // -----------------------------------------------------------------------------
 // FINANCIAL YEAR INVOICE NUMBER GENERATOR (INV-2526-0001)
@@ -215,7 +216,9 @@ export async function createInvoicesFromDispatch(dispatchId: string) {
     return existingInvoices; // Idempotent
   }
 
-  const millState = (process.env.MILL_STATE || "Rajasthan").trim().toLowerCase();
+  const { millState: millStateRaw, defaultGstRate } = await getSystemSettings();
+  const millState = millStateRaw.trim().toLowerCase();
+  const gstRate = defaultGstRate / 100;
 
   const createdInvoices = await db.$transaction(async (tx) => {
     const results: any[] = [];
@@ -263,13 +266,23 @@ export async function createInvoicesFromDispatch(dispatchId: string) {
       let igst = 0;
 
       if (isIntraState) {
-        cgst = Number((subtotal * 0.09).toFixed(2));
-        sgst = Number((subtotal * 0.09).toFixed(2));
+        cgst = Number((subtotal * (gstRate / 2)).toFixed(2));
+        sgst = Number((subtotal * (gstRate / 2)).toFixed(2));
       } else {
-        igst = Number((subtotal * 0.18).toFixed(2));
+        igst = Number((subtotal * gstRate).toFixed(2));
       }
 
       const totalAmount = Math.round(subtotal + cgst + sgst + igst);
+      const roundOff = Number((totalAmount - (subtotal + cgst + sgst + igst)).toFixed(2));
+      if (roundOff !== 0) {
+        linesData.push({
+          orderItemId: null,
+          description: "Round Off",
+          quantityKg: new Prisma.Decimal(0),
+          ratePerKg: new Prisma.Decimal(0),
+          amount: new Prisma.Decimal(roundOff.toFixed(2)),
+        } as any);
+      }
 
       const createdInvoice = await tx.invoice.create({
         data: {
@@ -321,6 +334,100 @@ export async function createInvoicesFromDispatch(dispatchId: string) {
   revalidateTag(DASHBOARD_TAG);
   revalidatePath("/dispatch/history");
   return createdInvoices;
+}
+
+// -----------------------------------------------------------------------------
+// MANUAL / CUSTOM INVOICE CREATION (no dispatch required)
+// -----------------------------------------------------------------------------
+
+export interface ManualInvoiceLineInput {
+  description: string;
+  quantityKg: number;
+  ratePerKg: number;
+}
+
+export async function createManualInvoice(input: {
+  clientId: string;
+  lines: ManualInvoiceLineInput[];
+  invoiceDate?: string;
+}) {
+  const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
+
+  if (!input.lines || input.lines.length === 0) {
+    throw new Error("An invoice needs at least one line item.");
+  }
+
+  const client = await db.client.findFirst({ where: { id: input.clientId } });
+  if (!client) throw new Error("Client not found.");
+
+  const { millState: millStateRaw, defaultGstRate } = await getSystemSettings();
+  const millState = millStateRaw.trim().toLowerCase();
+  const gstRate = defaultGstRate / 100;
+  const isIntraState = millState === (client.state || "").trim().toLowerCase();
+
+  const created = await db.$transaction(async (tx) => {
+    const invoiceNumber = await generateInvoiceNumber(tx);
+
+    let subtotal = 0;
+    const linesData = input.lines.map((l) => {
+      const amount = Number((l.quantityKg * l.ratePerKg).toFixed(2));
+      subtotal += amount;
+      return {
+        description: l.description.slice(0, 500),
+        quantityKg: new Prisma.Decimal(l.quantityKg.toFixed(3)),
+        ratePerKg: new Prisma.Decimal(l.ratePerKg.toFixed(2)),
+        amount: new Prisma.Decimal(amount.toFixed(2)),
+      };
+    });
+
+    let cgst = 0,
+      sgst = 0,
+      igst = 0;
+    if (isIntraState) {
+      cgst = Number((subtotal * (gstRate / 2)).toFixed(2));
+      sgst = Number((subtotal * (gstRate / 2)).toFixed(2));
+    } else {
+      igst = Number((subtotal * gstRate).toFixed(2));
+    }
+    const totalAmount = Math.round(subtotal + cgst + sgst + igst);
+    const roundOff = Number((totalAmount - (subtotal + cgst + sgst + igst)).toFixed(2));
+    if (roundOff !== 0) {
+      linesData.push({
+        description: "Round Off",
+        quantityKg: new Prisma.Decimal(0),
+        ratePerKg: new Prisma.Decimal(0),
+        amount: new Prisma.Decimal(roundOff.toFixed(2)),
+      } as any);
+    }
+
+    const invoice = await tx.invoice.create({
+      data: {
+        invoiceNumber,
+        clientId: input.clientId,
+        invoiceDate: input.invoiceDate ? new Date(input.invoiceDate) : new Date(),
+        subtotal: new Prisma.Decimal(subtotal.toFixed(2)),
+        cgst: new Prisma.Decimal(cgst.toFixed(2)),
+        sgst: new Prisma.Decimal(sgst.toFixed(2)),
+        igst: new Prisma.Decimal(igst.toFixed(2)),
+        totalAmount: new Prisma.Decimal(totalAmount.toFixed(2)),
+        status: InvoiceStatus.ISSUED,
+        createdById: userId,
+        lines: { create: linesData },
+      },
+      include: { client: true, lines: true },
+    });
+
+    await logAudit(
+      { userId, entityType: "Invoice", entityId: invoice.id, action: "CREATE_MANUAL_INVOICE", after: { invoiceNumber, totalAmount } },
+      tx
+    );
+
+    return invoice;
+  });
+
+  revalidatePath("/invoices");
+  revalidateTag(DASHBOARD_TAG);
+  return created;
 }
 
 export async function cancelInvoice(invoiceId: string, reason: string) {

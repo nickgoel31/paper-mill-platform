@@ -4,6 +4,7 @@ import {
   getInvoices,
   getInvoiceSummaryStats,
 } from "@/server/services/invoice-service";
+import { getClientOptions } from "@/server/services/lookup-service";
 import { InvoiceList } from "@/components/invoices/invoice-list";
 
 export const metadata = {
@@ -11,17 +12,19 @@ export const metadata = {
 };
 
 export default async function InvoicesPage() {
-  await requireRole(Role.ADMIN, Role.DISPATCH, Role.SALES, Role.PLANNER);
+  const { tenantId } = await requireRole(Role.ADMIN, Role.DISPATCH, Role.SALES, Role.PLANNER);
 
-  const [initialData, stats] = await Promise.all([
+  const [initialData, stats, clients] = await Promise.all([
     getInvoices({ page: 1, pageSize: 20 }),
     getInvoiceSummaryStats(),
+    getClientOptions(tenantId!),
   ]);
 
   return (
     <InvoiceList
       initialData={JSON.parse(JSON.stringify(initialData))}
       initialStats={stats}
+      clients={clients}
     />
   );
 }

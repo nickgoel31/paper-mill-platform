@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { cancelInvoice } from "@/server/services/invoice-service";
+import { buildTallyInvoiceXml, downloadTallyXml } from "@/lib/tally-export";
 import { numberToIndianWords } from "@/lib/number-to-words";
 import { formatCurrencyINR, formatWeightKg } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -39,12 +40,26 @@ import {
 } from "lucide-react";
 import { Role } from "@/generated/prisma/browser";
 
+interface SellerInfo {
+  name: string;
+  address: string;
+  gstin: string;
+  state: string;
+  phone: string;
+  email: string;
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  bankIfsc: string;
+}
+
 interface InvoiceDetailViewProps {
   invoice: any;
   userRole: Role;
+  seller: SellerInfo;
 }
 
-export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps) {
+export function InvoiceDetailView({ invoice, userRole, seller }: InvoiceDetailViewProps) {
   const router = useRouter();
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState("");
@@ -121,6 +136,29 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
             <Printer className="h-4 w-4" /> Print / Save PDF (A4)
           </Button>
 
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const xml = buildTallyInvoiceXml({
+                invoiceNumber: invoice.invoiceNumber,
+                invoiceDate: invoice.invoiceDate,
+                client: invoice.client,
+                subtotal: Number(invoice.subtotal),
+                cgst: Number(invoice.cgst),
+                sgst: Number(invoice.sgst),
+                igst: Number(invoice.igst),
+                totalAmount: Number(invoice.totalAmount),
+              });
+              downloadTallyXml(`${invoice.invoiceNumber}-tally.xml`, xml);
+              toast.success("Tally XML downloaded — import via Gateway of Tally → Import Data → Vouchers.");
+            }}
+            className="h-10 px-4 rounded-xl text-xs font-bold gap-1.5 shadow-xs border-slate-200"
+          >
+            <Download className="h-4 w-4" /> Export to Tally (XML)
+          </Button>
+
           {!isCancelled && isAdmin && (
             <Button
               type="button"
@@ -142,14 +180,14 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b pb-4">
             <div>
               <h2 className="text-2xl font-black font-mono tracking-tight text-slate-950">
-                HRA PAPER MILL PVT LTD
+                {seller.name}
               </h2>
               <p className="text-xs text-slate-600 font-mono mt-0.5">
-                Plot No. 45-48, Industrial Growth Area, Jaipur, Rajasthan - 302013
+                {seller.address}
               </p>
               <div className="text-xs font-mono text-slate-700 mt-2 space-y-0.5">
-                <div>GSTIN: <strong>08AAAAH1234F1Z5</strong> • State: <strong>08 - Rajasthan</strong></div>
-                <div>Email: accounts@papermill.local • Phone: +91 141 2789100</div>
+                <div>GSTIN: <strong>{seller.gstin}</strong> • State: <strong>{seller.state}</strong></div>
+                <div>Email: {seller.email} • Phone: {seller.phone}</div>
               </div>
             </div>
 
@@ -184,7 +222,7 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
               <div className="pt-1 text-slate-800">
                 GSTIN: <strong>{invoice.client.gstin || "Unregistered"}</strong>
               </div>
-              <div>State: <strong>{invoice.client.state || "Rajasthan"}</strong></div>
+              <div>State: <strong>{invoice.client.state || "—"}</strong></div>
             </div>
 
             <div className="p-3 bg-slate-50 border rounded-lg space-y-1">
@@ -254,10 +292,10 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
                 <span className="font-sans font-bold text-slate-800 uppercase block text-[10px]">
                   BANK PAYMENT DETAILS:
                 </span>
-                <div>Bank: <strong>HDFC Bank Ltd</strong></div>
-                <div>A/C Name: <strong>HRA Paper Mill Private Limited</strong></div>
-                <div>A/C Number: <strong>50200088991122</strong></div>
-                <div>IFSC Code: <strong>HDFC0001234</strong> (Jaipur Branch)</div>
+                <div>Bank: <strong>{seller.bankName}</strong></div>
+                <div>A/C Name: <strong>{seller.bankAccountName}</strong></div>
+                <div>A/C Number: <strong>{seller.bankAccountNumber}</strong></div>
+                <div>IFSC Code: <strong>{seller.bankIfsc}</strong></div>
               </div>
             </div>
 
@@ -274,21 +312,21 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
 
               {cgst > 0 && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Central GST (CGST @ 9%):</span>
+                  <span>Central GST (CGST @ {subtotal > 0 ? ((cgst / subtotal) * 100).toFixed(1) : 0}%):</span>
                   <span>₹{cgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
 
               {sgst > 0 && (
                 <div className="flex justify-between text-slate-600">
-                  <span>State GST (SGST @ 9%):</span>
+                  <span>State GST (SGST @ {subtotal > 0 ? ((sgst / subtotal) * 100).toFixed(1) : 0}%):</span>
                   <span>₹{sgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
 
               {igst > 0 && (
                 <div className="flex justify-between text-slate-600">
-                  <span>Integrated GST (IGST @ 18%):</span>
+                  <span>Integrated GST (IGST @ {subtotal > 0 ? ((igst / subtotal) * 100).toFixed(1) : 0}%):</span>
                   <span>₹{igst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                 </div>
               )}
@@ -311,7 +349,7 @@ export function InvoiceDetailView({ invoice, userRole }: InvoiceDetailViewProps)
 
             <div className="text-right space-y-10 font-mono">
               <div className="text-xs font-bold text-slate-900">
-                For HRA PAPER MILL PVT LTD
+                For {seller.name}
               </div>
               <div className="text-[11px] text-slate-600 font-bold border-t border-slate-400 pt-2 inline-block">
                 AUTHORIZED SIGNATORY
