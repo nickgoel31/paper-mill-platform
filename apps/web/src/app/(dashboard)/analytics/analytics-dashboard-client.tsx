@@ -22,9 +22,15 @@ import {
   ArrowDownRight,
   Truck,
   ChevronDown,
+  Download,
+  Loader2,
+  CalendarRange,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { AnalyticsSummary } from "@/server/services/analytics-service";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { AnalyticsSummary, getAnalyticsData } from "@/server/services/analytics-service";
+import { downloadCsv } from "@/lib/csv";
 
 interface Props {
   initialData: AnalyticsSummary;
@@ -32,9 +38,83 @@ interface Props {
 }
 
 export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Props) {
-  const [data] = React.useState<AnalyticsSummary>(initialData);
+  const [data, setData] = React.useState<AnalyticsSummary>(initialData);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [timePeriod, setTimePeriod] = React.useState("Monthly");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isExporting, setIsExporting] = React.useState(false);
+
+  const handleApplyRange = async () => {
+    setIsLoading(true);
+    try {
+      const fresh = await getAnalyticsData({
+        startDate: dateFrom || undefined,
+        endDate: dateTo || undefined,
+        ...(dateFrom ? {} : { timeRange: "last_6_months" }),
+      });
+      setData(fresh);
+      toast.success("Analytics updated for the selected range.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load analytics for that range");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    try {
+      const rangeLabel =
+        dateFrom || dateTo ? `${dateFrom || "start"}_to_${dateTo || "today"}` : "last_6_months";
+      const lines: string[] = [];
+      lines.push(`PaperMill Analytics Report — ${rangeLabel}`);
+      lines.push("");
+      lines.push("KPI,Value");
+      lines.push(`Total Revenue (INR),${data.kpis.totalRevenueInr}`);
+      lines.push(`Revenue Growth (%),${data.kpis.revenueGrowthPercent}`);
+      lines.push(`Total Sales Weight (kg),${data.kpis.totalSalesWeightKg}`);
+      lines.push(`Total Produced Weight (kg),${data.kpis.totalProducedWeightKg}`);
+      lines.push(`Total Dispatched Weight (kg),${data.kpis.totalDispatchedWeightKg}`);
+      lines.push(`Total Wastage (kg),${data.kpis.totalWastageKg}`);
+      lines.push(`Average Trim Loss (%),${data.kpis.averageTrimLossPercent}`);
+      lines.push(`Total Orders,${data.kpis.totalOrdersCount}`);
+      lines.push(`Active Clients,${data.kpis.activeClientsCount}`);
+      lines.push(`Machine Utilization (%),${data.kpis.machineUtilizationPercent}`);
+      lines.push("");
+      lines.push("Monthly Trends");
+      lines.push("Month,Sales (INR),Sales Weight (kg),Production (kg),Wastage (kg),Trim Loss (%),Dispatched (kg)");
+      data.monthlyTrends.forEach((t) => {
+        lines.push(`${t.month},${t.salesInr},${t.salesWeightKg},${t.productionKg},${t.wastageKg},${t.trimLossPercent},${t.dispatchedKg}`);
+      });
+      lines.push("");
+      lines.push("Wastage Breakdown");
+      lines.push("Type,Weight (kg),Percent");
+      data.wastageBreakdown.forEach((w) => {
+        lines.push(`${w.type},${w.weightKg},${w.percent}`);
+      });
+      lines.push("");
+      lines.push("Machine Performance");
+      lines.push("Machine,Code,Total Output (kg),Avg Trim (%),Runs");
+      data.machinePerformance.forEach((m) => {
+        lines.push(`${m.machineName},${m.code},${m.totalOutputKg},${m.avgTrimPercent},${m.runsCount}`);
+      });
+      lines.push("");
+      lines.push("Top Clients");
+      lines.push("Client,City,Orders,Weight (kg),Revenue (INR)");
+      data.topClients.forEach((c) => {
+        lines.push(`${c.clientName},${c.city},${c.ordersCount},${c.totalWeightKg},${c.totalRevenueInr}`);
+      });
+
+      downloadCsv(`analytics-report-${rangeLabel}.csv`, lines.join("\n"));
+      toast.success("Report downloaded — opens directly in Excel.");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to export report");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Summary Metrics — real data only, 0 when nothing recorded yet (no fabricated fallbacks)
   const totalProductionMT = (data?.kpis?.totalProducedWeightKg || 0) / 1000;
@@ -88,6 +168,45 @@ export function AnalyticsDashboardClient({ initialData, userName = "Nick" }: Pro
 
   return (
     <div className="space-y-6 pb-12 font-sans">
+      {/* Date Range + Export Toolbar */}
+      <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 shrink-0">
+          <CalendarRange className="h-4 w-4 text-sky-500" /> Date Range:
+        </div>
+        <Input
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          className="h-9 text-xs w-[150px] bg-slate-50/70 border-slate-200 rounded-xl"
+        />
+        <span className="text-xs text-slate-400">to</span>
+        <Input
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          className="h-9 text-xs w-[150px] bg-slate-50/70 border-slate-200 rounded-xl"
+        />
+        <Button
+          size="sm"
+          disabled={isLoading}
+          onClick={handleApplyRange}
+          className="h-9 text-xs font-bold rounded-xl bg-[#161622] hover:bg-[#202030] text-white gap-1.5"
+        >
+          {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Apply
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isExporting}
+          onClick={handleExportExcel}
+          className="h-9 text-xs font-bold rounded-xl gap-1.5 ml-auto"
+        >
+          {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          Export Report (Excel)
+        </Button>
+      </div>
+
       {/* 4 KPI Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Metric 1: HERO DARK CARD (Inspired by Reference Image Card 1) */}
