@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { OrderPriority, OrderStatus, PaperType } from "@/generated/prisma/browser";
+import { OrderPriority, OrderStatus, PaperType, PaperSize, LengthUnit } from "@/generated/prisma/browser";
+import { toInches, unitLabel } from "@/lib/units";
 import {
   orderFormSchema,
   OrderFormInput,
@@ -17,17 +18,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
-const PAPER_TYPE_LABELS: Record<PaperType, string> = {
-  [PaperType.WHITE]: "White",
-  [PaperType.BROWN]: "Brown (Kraft)",
-  [PaperType.COLOURED]: "Coloured",
-};
+import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 
 const NEW_ITEM_DEFAULTS = {
   widthInch: 45.0,
+  widthUnit: LengthUnit.INCH,
   gsm: 120,
-  paperType: PaperType.BROWN,
-  paperColour: "",
+  paperType: PaperType.NATURAL,
+  size: PaperSize.NORMAL,
   numberOfReels: null as number | null,
   remark: "",
   quantityKg: 3000,
@@ -98,6 +97,8 @@ interface MachineConstraint {
 interface OrderFormProps {
   initialOrder?: any;
   clients: ClientOption[];
+  /** Mill's default width unit (Settings). New reel rows start in this unit. */
+  defaultUnit?: LengthUnit;
   machineConstraints: {
     machines: MachineConstraint[];
     maxDeckle: number;
@@ -109,6 +110,7 @@ interface OrderFormProps {
 export function OrderForm({
   initialOrder,
   clients,
+  defaultUnit = LengthUnit.INCH,
   machineConstraints,
 }: OrderFormProps) {
   const router = useRouter();
@@ -117,16 +119,19 @@ export function OrderForm({
 
   const defaultItems = initialOrder?.items?.map((it: any) => ({
     id: it.id,
-    widthInch: Number(it.widthInch),
+    // Show/edit the value in whatever unit it was originally entered in, not the
+    // canonical inches — redisplaying "as entered" should never drift.
+    widthInch: Number(it.enteredWidth ?? it.widthInch),
+    widthUnit: (it.enteredWidthUnit as LengthUnit) || LengthUnit.INCH,
     gsm: Number(it.gsm),
-    paperType: (it.paperType as PaperType) || PaperType.BROWN,
-    paperColour: it.paperColour || "",
+    paperType: (it.paperType as PaperType) || PaperType.NATURAL,
+    size: (it.size as PaperSize) || PaperSize.NORMAL,
     numberOfReels: it.numberOfReels ?? null,
     remark: it.remark || "",
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent || 5.0),
     ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
-  })) || [{ ...NEW_ITEM_DEFAULTS, quantityKg: 5000, ratePerKg: 35.0 }];
+  })) || [{ ...NEW_ITEM_DEFAULTS, widthUnit: defaultUnit, quantityKg: 5000, ratePerKg: 35.0 }];
 
   const form = useForm<any>({
     resolver: zodResolver(orderFormSchema),
@@ -194,7 +199,8 @@ export function OrderForm({
     (watchedItems || []).forEach((it: any) => {
       if (!it || !it.widthInch || !it.gsm) return;
       const type = PAPER_TYPE_LABELS[it.paperType as PaperType] || it.paperType;
-      const key = `${Number(it.widthInch).toFixed(2)}" @ ${it.gsm} GSM • ${type}`;
+      const widthIn = toInches(Number(it.widthInch), it.widthUnit || LengthUnit.INCH);
+      const key = `${widthIn.toFixed(2)}" @ ${it.gsm} GSM • ${type}`;
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     counts.forEach((count, key) => {
@@ -208,7 +214,8 @@ export function OrderForm({
     const mergedMap = new Map<string, any>();
     (watchedItems || []).forEach((it: any) => {
       if (!it) return;
-      const key = `${Number(it.widthInch).toFixed(2)}@${Number(it.gsm)}@${it.paperType}@${(it.paperColour || "").trim().toLowerCase()}`;
+      const widthIn = toInches(Number(it.widthInch), it.widthUnit || LengthUnit.INCH);
+      const key = `${widthIn.toFixed(2)}@${Number(it.gsm)}@${it.paperType}`;
       if (!mergedMap.has(key)) {
         mergedMap.set(key, { ...it });
       } else {
@@ -504,7 +511,7 @@ export function OrderForm({
                     type="button"
                     size="sm"
                     onClick={() => {
-                      const row = { ...NEW_ITEM_DEFAULTS, gsm: distinctGsms[0] || 120 };
+                      const row = { ...NEW_ITEM_DEFAULTS, widthUnit: defaultUnit, gsm: distinctGsms[0] || 120 };
                       append(Array.from({ length: addQty }, () => ({ ...row })));
                     }}
                     className="h-8 text-xs font-bold bg-[#161622] hover:bg-[#202030] text-white rounded-xl shadow-xs gap-1.5"
@@ -522,9 +529,10 @@ export function OrderForm({
                 <TableHeader className="bg-slate-50/70">
                   <TableRow>
                     <TableHead className="w-12 text-center text-[10px] font-bold font-mono">#</TableHead>
-                    <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches) *</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[130px]">Width *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">GSM *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[150px]">Paper Type *</TableHead>
+                    <TableHead className="text-[11px] font-bold uppercase text-slate-500 min-w-[110px]">Size</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Qty (Reels)</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Weight (KG) *</TableHead>
                     <TableHead className="text-[11px] font-bold uppercase text-slate-500">Tolerance (%)</TableHead>
@@ -538,12 +546,14 @@ export function OrderForm({
                   {fields.map((field, idx) => {
                     const currentItem = watchedItems?.[idx];
                     const currentWidth = Number(currentItem?.widthInch) || 0;
+                    const currentWidthUnit = (currentItem?.widthUnit as LengthUnit) || LengthUnit.INCH;
+                    const currentWidthInches = toInches(currentWidth, currentWidthUnit);
                     const currentGsm = Number(currentItem?.gsm) || 0;
                     const currentKg = Number(currentItem?.quantityKg) || 0;
                     const currentRate = Number(currentItem?.ratePerKg) || 0;
                     const lineAmount = currentKg * currentRate;
 
-                    const isExceedingDeckle = currentWidth > maxDeckle;
+                    const isExceedingDeckle = currentWidthInches > maxDeckle;
 
                     return (
                       <TableRow key={field.id} className="hover:bg-slate-50/50">
@@ -551,15 +561,15 @@ export function OrderForm({
                           {idx + 1}
                         </TableCell>
 
-                        {/* Width */}
+                        {/* Width + unit */}
                         <TableCell>
-                          <FormField
-                            control={form.control}
-                            name={`items.${idx}.widthInch`}
-                            render={({ field: itField }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="relative">
+                          <div className="flex items-center gap-1.5">
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.widthInch`}
+                              render={({ field: itField }) => (
+                                <FormItem className="flex-1">
+                                  <FormControl>
                                     <Input
                                       type="number"
                                       step="0.01"
@@ -568,15 +578,32 @@ export function OrderForm({
                                         isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-slate-50/70 border-slate-200"
                                       }`}
                                     />
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                      inch
-                                    </span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name={`items.${idx}.widthUnit`}
+                              render={({ field: itField }) => (
+                                <Select onValueChange={itField.onChange} value={itField.value}>
+                                  <SelectTrigger className="h-9 w-[70px] text-[11px] rounded-xl bg-slate-50/70 border-slate-200 shrink-0">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="rounded-xl">
+                                    <SelectItem value={LengthUnit.INCH} className="text-xs">in</SelectItem>
+                                    <SelectItem value={LengthUnit.CM} className="text-xs">cm</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            />
+                          </div>
+                          {isExceedingDeckle && (
+                            <p className="text-[10px] text-rose-500 mt-1">
+                              = {currentWidthInches.toFixed(2)}" — exceeds {maxDeckle.toFixed(2)}" max deckle
+                            </p>
+                          )}
                         </TableCell>
 
                         {/* GSM */}
@@ -622,7 +649,7 @@ export function OrderForm({
                                       </SelectTrigger>
                                     </FormControl>
                                     <SelectContent className="rounded-xl">
-                                      {Object.values(PaperType).map((pt) => (
+                                      {PAPER_TYPES.map((pt) => (
                                         <SelectItem key={pt} value={pt} className="text-xs">
                                           {PAPER_TYPE_LABELS[pt]}
                                         </SelectItem>
@@ -633,26 +660,37 @@ export function OrderForm({
                                 </FormItem>
                               )}
                             />
-                            {watchedItems?.[idx]?.paperType === PaperType.COLOURED && (
-                              <FormField
-                                control={form.control}
-                                name={`items.${idx}.paperColour`}
-                                render={({ field: itField }) => (
-                                  <FormItem>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="Colour name"
-                                        value={itField.value ?? ""}
-                                        onChange={(e) => itField.onChange(e.target.value)}
-                                        className="h-8 text-xs rounded-xl bg-amber-50 border-amber-200"
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-                            )}
                           </div>
+                        </TableCell>
+
+                        {/* Size */}
+                        <TableCell>
+                          <FormField
+                            control={form.control}
+                            name={`items.${idx}.size`}
+                            render={({ field: itField }) => (
+                              <FormItem>
+                                <Select
+                                  onValueChange={itField.onChange}
+                                  value={itField.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger className="h-9 text-xs rounded-xl bg-slate-50/70 border-slate-200">
+                                      <SelectValue placeholder="Size" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent className="rounded-xl">
+                                    {PAPER_SIZES.map((sz) => (
+                                      <SelectItem key={sz} value={sz} className="text-xs">
+                                        {PAPER_SIZE_LABELS[sz]}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
                         </TableCell>
 
                         {/* Qty (Reels) */}

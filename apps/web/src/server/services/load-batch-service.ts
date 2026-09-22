@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, LoadStatus, OrderStatus, Prisma } from "@/generated/prisma/browser";
+import { Role, LoadStatus, OrderStatus, StockStatus, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -121,6 +121,12 @@ export async function getLoadBatches(params: LoadQueryParams) {
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
 }
 
+/**
+ * Orders ready for truck assignment. `totalKg` is the reel weight actually
+ * produced and sitting in the warehouse against this order (ALLOCATED stock),
+ * not the ordered quantity — a truck should only be loaded with what's really
+ * on hand, not what was merely booked.
+ */
 export async function getUnassignedConfirmedOrders() {
   const orders = await db.order.findMany({
     where: {
@@ -141,10 +147,16 @@ export async function getUnassignedConfirmedOrders() {
           },
         },
       },
+      // Only orders with produced reels actually waiting in the warehouse.
+      items: { some: { stockItems: { some: { status: StockStatus.ALLOCATED } } } },
     },
     include: {
       client: true,
-      items: true,
+      items: {
+        include: {
+          stockItems: { where: { status: StockStatus.ALLOCATED } },
+        },
+      },
     },
     orderBy: {
       deliveryDate: "asc",
@@ -152,10 +164,14 @@ export async function getUnassignedConfirmedOrders() {
   });
 
   return orders.map((o) => {
-    const totalKg = o.items.reduce((acc, it) => acc + Number(it.quantityKg || 0), 0);
+    const totalKg = o.items.reduce(
+      (acc, it) => acc + it.stockItems.reduce((s, si) => s + Number(si.quantityKg || 0), 0),
+      0
+    );
     const distinctGsms = Array.from(new Set(o.items.map((it) => it.gsm)));
     return {
       ...o,
+      items: o.items.map(({ stockItems, ...it }) => it),
       totalKg,
       distinctGsms,
     };

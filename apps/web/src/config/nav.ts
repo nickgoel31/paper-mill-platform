@@ -162,6 +162,11 @@ export const navConfig: NavItem[] = [
         href: "/masters/stock-presets",
         allowedRoles: [Role.ADMIN, Role.PLANNER, Role.SALES, Role.DISPATCH, Role.OPERATOR],
       },
+      {
+        title: "GSM Weight Chart",
+        href: "/masters/gsm-weights",
+        allowedRoles: [Role.ADMIN, Role.PLANNER, Role.SALES, Role.DISPATCH, Role.OPERATOR],
+      },
     ],
   },
 

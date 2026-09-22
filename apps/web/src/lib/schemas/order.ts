@@ -1,24 +1,22 @@
 import { z } from "zod";
-import { OrderPriority, OrderStatus, PaperType } from "@/generated/prisma/browser";
+import { OrderPriority, OrderStatus, PaperType, PaperSize, LengthUnit } from "@/generated/prisma/browser";
 
 export const orderItemSchema = z.object({
   id: z.string().optional(),
+  // The value exactly as typed, in `widthUnit` below. Converted to canonical
+  // inches (and validated against machine deckle) server-side in order-service.
   widthInch: z.coerce
     .number()
     .positive("Width must be greater than 0")
-    .max(500, "Width cannot exceed 500 inches"),
+    .max(1300, "Width is out of range"),
+  widthUnit: z.nativeEnum(LengthUnit).default(LengthUnit.INCH),
   gsm: z.coerce
     .number()
     .int("GSM must be an integer")
     .min(40, "GSM must be at least 40")
     .max(600, "GSM cannot exceed 600"),
-  paperType: z.nativeEnum(PaperType).default(PaperType.BROWN),
-  paperColour: z
-    .string()
-    .max(60, "Colour name too long")
-    .trim()
-    .optional()
-    .nullable(),
+  paperType: z.nativeEnum(PaperType).default(PaperType.NATURAL),
+  size: z.nativeEnum(PaperSize).default(PaperSize.NORMAL),
   numberOfReels: z.coerce
     .number()
     .int("Reel count must be a whole number")

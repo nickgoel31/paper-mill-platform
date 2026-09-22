@@ -3,6 +3,7 @@ import { Role } from "@/generated/prisma/browser";
 import { db } from "@/lib/db";
 import { getAllActiveStockPresets } from "@/server/services/stock-preset-service";
 import { getMachineOptions } from "@/server/services/lookup-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { StockForm } from "@/components/stock/stock-form";
 
 export const metadata = {
@@ -12,7 +13,7 @@ export const metadata = {
 export default async function NewStockPage() {
   const { tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH, Role.OPERATOR);
 
-  const [activeMachines, confirmedOrders, stockPresets] = await Promise.all([
+  const [activeMachines, confirmedOrders, stockPresets, settings] = await Promise.all([
     getMachineOptions(tenantId!),
     db.order.findMany({
       where: {
@@ -26,7 +27,11 @@ export default async function NewStockPage() {
           select: {
             id: true,
             widthInch: true,
+            enteredWidth: true,
+            enteredWidthUnit: true,
             gsm: true,
+            paperType: true,
+            size: true,
             quantityKg: true,
             producedKg: true,
           },
@@ -36,10 +41,12 @@ export default async function NewStockPage() {
       take: 50,
     }),
     getAllActiveStockPresets(),
+    getSystemSettings(),
   ]);
 
   return (
     <StockForm
+      defaultUnit={settings.measurementUnit}
       machines={JSON.parse(JSON.stringify(activeMachines))}
       recentOrders={JSON.parse(JSON.stringify(confirmedOrders))}
       presets={JSON.parse(JSON.stringify(stockPresets))}

@@ -11,6 +11,8 @@ import {
 } from "./base-service";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG } from "./cache-tags";
+import { generateReelNumber } from "./stock-service";
+import { getSystemSettings } from "./settings-service";
 
 // -----------------------------------------------------------------------------
 // QUERY RUNS & KPIS
@@ -450,10 +452,8 @@ export async function completeProductionRun(input: {
     //    - Increment OrderItem.producedKg
     //    - Create StockItem reel
     const producedPerItem = new Map<string, number>();
-    const yy = String(new Date().getFullYear()).slice(-2);
-    const mm = String(new Date().getMonth() + 1).padStart(2, "0");
+    const { reelNumberPrefix } = await getSystemSettings();
 
-    let reelSeq = 1;
     for (const pat of run.patterns) {
       const baseLengthM = Number((pat as any).runLengthM || 0);
       let lengthM = baseLengthM > 0 ? baseLengthM : pat.repetitions * 1000.0;
@@ -474,17 +474,19 @@ export async function completeProductionRun(input: {
         }
 
         // Create StockItem (Reel in warehouse)
-        const reelNumber = `REEL-${yy}${mm}-${String(reelSeq).padStart(4, "0")}`;
-        reelSeq++;
+        const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
 
         await tx.stockItem.create({
           data: {
+            reelNumber,
             widthInch: cut.widthInch,
             gsm: run.gsm,
             quantityKg: new Prisma.Decimal(cutWeightKg.toFixed(3)),
             status: item ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
             location: `BAY-${run.machine.code}-01`,
             orderItemId: item ? item.id : null,
+            // Reels cut for an order take that line's paper type/size; others default.
+            ...(item ? { paperType: item.paperType, size: item.size } : {}),
             productionRunId: input.runId,
           },
         });

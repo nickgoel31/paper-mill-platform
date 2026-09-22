@@ -12,6 +12,7 @@ import {
 import { machineSchema, MachineFormInput } from "@/lib/schemas/machine";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { LOOKUP_TAGS } from "./cache-tags";
+import { toInches } from "@/lib/units";
 
 export async function getMachines(params: QueryParams) {
   const { skip, take, search, sortBy, sortOrder } = parsePaginationParams(params);
@@ -65,15 +66,18 @@ export async function createMachine(data: MachineFormInput) {
     throw new Error(`Machine name "${validated.name}" is already in use.`);
   }
 
+  const unit = validated.dimensionUnit;
+
   const machine = await db.$transaction(async (tx) => {
     const created = await tx.machine.create({
       data: {
         name: validated.name.trim(),
         code: validated.code.trim().toUpperCase(),
-        maxDeckleInch: new Prisma.Decimal(validated.maxDeckleInch.toFixed(2)),
-        minDeckleInch: new Prisma.Decimal(validated.minDeckleInch.toFixed(2)),
-        minTrimInch: new Prisma.Decimal(validated.minTrimInch.toFixed(2)),
-        maxTrimInch: new Prisma.Decimal(validated.maxTrimInch.toFixed(2)),
+        dimensionUnit: unit,
+        maxDeckleInch: new Prisma.Decimal(toInches(validated.maxDeckleInch, unit).toFixed(2)),
+        minDeckleInch: new Prisma.Decimal(toInches(validated.minDeckleInch, unit).toFixed(2)),
+        minTrimInch: new Prisma.Decimal(toInches(validated.minTrimInch, unit).toFixed(2)),
+        maxTrimInch: new Prisma.Decimal(toInches(validated.maxTrimInch, unit).toFixed(2)),
         minGsm: validated.minGsm,
         maxGsm: validated.maxGsm,
         speedMpm: validated.speedMpm || null,
@@ -130,16 +134,19 @@ export async function updateMachine(id: string, data: MachineFormInput) {
     }
   }
 
+  const unit = validated.dimensionUnit;
+
   const updated = await db.$transaction(async (tx) => {
     const res = await tx.machine.update({
       where: { id },
       data: {
         name: validated.name.trim(),
         code: validated.code.trim().toUpperCase(),
-        maxDeckleInch: new Prisma.Decimal(validated.maxDeckleInch.toFixed(2)),
-        minDeckleInch: new Prisma.Decimal(validated.minDeckleInch.toFixed(2)),
-        minTrimInch: new Prisma.Decimal(validated.minTrimInch.toFixed(2)),
-        maxTrimInch: new Prisma.Decimal(validated.maxTrimInch.toFixed(2)),
+        dimensionUnit: unit,
+        maxDeckleInch: new Prisma.Decimal(toInches(validated.maxDeckleInch, unit).toFixed(2)),
+        minDeckleInch: new Prisma.Decimal(toInches(validated.minDeckleInch, unit).toFixed(2)),
+        minTrimInch: new Prisma.Decimal(toInches(validated.minTrimInch, unit).toFixed(2)),
+        maxTrimInch: new Prisma.Decimal(toInches(validated.maxTrimInch, unit).toFixed(2)),
         minGsm: validated.minGsm,
         maxGsm: validated.maxGsm,
         speedMpm: validated.speedMpm || null,

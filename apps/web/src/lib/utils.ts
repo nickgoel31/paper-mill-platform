@@ -1,5 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { LengthUnit } from "@/generated/prisma/browser";
+import { fromInches, unitSuffix } from "@/lib/units";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -12,11 +14,18 @@ export function formatWeightKg(kg: number | string | null | undefined): string {
   return `${(num / 1000).toFixed(3)} MT (${num.toLocaleString("en-IN")} kg)`;
 }
 
-export function formatWidthInch(inch: number | string | null | undefined): string {
-  if (inch === null || inch === undefined) return "0.00\"";
+/**
+ * `inch` is always the canonical-inches value stored in the DB. `unit` picks
+ * what it's rendered as; omitting it keeps the original inches-only behavior.
+ */
+export function formatWidthInch(
+  inch: number | string | null | undefined,
+  unit: LengthUnit = "INCH"
+): string {
+  if (inch === null || inch === undefined) return unit === "CM" ? "0.00 cm" : "0.00\"";
   const num = typeof inch === "string" ? parseFloat(inch) : inch;
-  if (isNaN(num)) return "0.00\"";
-  return `${num.toFixed(2)}"`;
+  if (isNaN(num)) return unit === "CM" ? "0.00 cm" : "0.00\"";
+  return `${fromInches(num, unit).toFixed(2)}${unitSuffix(unit)}`;
 }
 
 export function formatTrimPercent(percent: number | string | null | undefined): {

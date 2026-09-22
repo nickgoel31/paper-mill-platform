@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RunStatus, Role } from "@/generated/prisma/browser";
+import { RunStatus, Role, LengthUnit } from "@/generated/prisma/browser";
 import { formatWeightKg, formatTrimPercent, formatWidthInch } from "@/lib/utils";
 import {
   releaseRunToFloor,
@@ -63,13 +63,16 @@ import {
 interface RunDetailViewProps {
   run: any;
   userRole: Role;
+  defaultUnit?: LengthUnit;
 }
 
-export function RunDetailView({ run, userRole }: RunDetailViewProps) {
+export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: RunDetailViewProps) {
   const router = useRouter();
   const [isTransitioning, setIsTransitioning] = React.useState(false);
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState("");
+  // Run-card display unit — starts at the mill's default, toggleable per viewing.
+  const [displayUnit, setDisplayUnit] = React.useState<LengthUnit>(defaultUnit);
 
   const canManage = userRole === Role.ADMIN || userRole === Role.PLANNER;
 
@@ -172,7 +175,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <RunCardPdfButton run={run} />
+          <RunCardPdfButton run={run} unit={displayUnit} />
 
           {run.status === RunStatus.PLANNED && canManage && (
             <Button
@@ -306,8 +309,28 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
               Machine Cutting Patterns ({run.patterns.length})
             </CardTitle>
             <CardDescription className="text-xs">
-              Slitter knife positioning and blade sequences across the {Number(run.machine.maxDeckleInch).toFixed(1)}&quot; web.
+              Slitter knife positioning and blade sequences across the {formatWidthInch(run.machine.maxDeckleInch, displayUnit)} web.
             </CardDescription>
+          </div>
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={displayUnit === LengthUnit.INCH ? "default" : "ghost"}
+              onClick={() => setDisplayUnit(LengthUnit.INCH)}
+              className="h-7 px-2.5 text-[11px] font-bold rounded-md"
+            >
+              Inches
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={displayUnit === LengthUnit.CM ? "default" : "ghost"}
+              onClick={() => setDisplayUnit(LengthUnit.CM)}
+              className="h-7 px-2.5 text-[11px] font-bold rounded-md"
+            >
+              cm
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
@@ -338,6 +361,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
                   cuts={cutsDisplay}
                   isManuallyEdited={pat.isManuallyEdited}
                   orderColorMap={orderColorMap}
+                  unit={displayUnit}
                 />
               </div>
             );
@@ -391,7 +415,7 @@ export function RunDetailView({ run, userRole }: RunDetailViewProps) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold">
-                      {formatWidthInch(it.widthInch)}
+                      {formatWidthInch(it.widthInch, displayUnit)}
                     </TableCell>
                     <TableCell className="text-right font-mono font-bold">
                       {formatWeightKg(it.quantityKg)}

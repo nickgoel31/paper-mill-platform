@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/server/auth-helpers";
 import { Role } from "@/generated/prisma/browser";
 import { getProductionRunById } from "@/server/services/production-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { RunDetailView } from "@/components/production/run-detail-view";
 
 interface ProductionRunDetailPageProps {
@@ -28,13 +29,14 @@ export default async function ProductionRunDetailPage({
     Role.DISPATCH
   );
 
-  const run = await getProductionRunById(id);
+  const [run, settings] = await Promise.all([getProductionRunById(id), getSystemSettings()]);
   if (!run) notFound();
 
   return (
     <RunDetailView
       run={JSON.parse(JSON.stringify(run))}
       userRole={role}
+      defaultUnit={settings.measurementUnit}
     />
   );
 }

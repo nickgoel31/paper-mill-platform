@@ -60,7 +60,7 @@ function localClient(): PrismaClient {
 
 /** Models with their own `tenantId` column. */
 const DIRECT_SCOPED = new Set([
-  "Client", "Machine", "Transporter", "Truck", "StockPreset", "Order",
+  "Client", "Machine", "Transporter", "Truck", "StockPreset", "GsmWeightProfile", "Order",
   "ProductionRun", "LoadBatch", "Dispatch", "Invoice", "StockItem",
   "WastageLog", "WhatsAppNotification", "AuditLog", "SystemSetting",
 ]);

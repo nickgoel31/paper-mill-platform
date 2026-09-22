@@ -7,6 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Building2,
   Landmark,
   Percent,
@@ -16,6 +23,7 @@ import {
   ShieldCheck,
   Settings as SettingsIcon,
   Sparkles,
+  Ruler,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -175,6 +183,63 @@ export function SettingsView({ initialSettings }: SettingsViewProps) {
               onChange={(e) => setForm({ ...form, bankIfsc: e.target.value })}
               className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200 font-mono uppercase"
             />
+          </div>
+        </div>
+      </div>
+
+      {/* 3.5 MEASUREMENT UNIT CARD */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-[0_1px_4px_rgba(0,0,0,0.03)] space-y-5">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <Ruler className="h-4 w-4 text-sky-500" /> Measurement Unit
+          </h2>
+          <span className="text-[11px] font-mono text-slate-400">
+            Width Display Default
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
+          <div className="space-y-1 sm:col-span-2">
+            <label className="font-bold text-slate-700">
+              Default width unit across orders, inventory &amp; masters
+            </label>
+            <Select
+              value={form.measurementUnit}
+              onValueChange={(val) =>
+                setForm({ ...form, measurementUnit: val as "INCH" | "CM" })
+              }
+            >
+              <SelectTrigger className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200 w-full sm:w-64">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="INCH">Inches (in)</SelectItem>
+                <SelectItem value="CM">Centimeters (cm)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-slate-400 pt-1">
+              A width can still be typed in either unit on any single order line or
+              stock reel — this only sets what's shown by default and what new
+              entries default to.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-slate-700">
+              Reel Number Prefix (Auto-generated)
+            </label>
+            <Input
+              value={form.reelNumberPrefix}
+              onChange={(e) =>
+                setForm({ ...form, reelNumberPrefix: e.target.value.toUpperCase() })
+              }
+              maxLength={12}
+              className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200 font-mono uppercase"
+            />
+            <p className="text-[11px] text-slate-400 pt-1">
+              New stock reels are numbered {form.reelNumberPrefix || "REEL"}-2609-0001
+              (month resets the sequence).
+            </p>
           </div>
         </div>
       </div>

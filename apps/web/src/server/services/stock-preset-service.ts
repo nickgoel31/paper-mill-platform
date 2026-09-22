@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, Prisma } from "@/generated/prisma/browser";
+import { Role, LengthUnit, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -10,6 +10,7 @@ import {
   buildPaginatedResponse,
 } from "./base-service";
 import { revalidatePath } from "next/cache";
+import { toInches } from "@/lib/units";
 
 export interface StockPresetQueryParams extends QueryParams {
   gsm?: number;
@@ -81,7 +82,9 @@ export async function getAllActiveStockPresets() {
 export async function createStockPreset(input: {
   name: string;
   code: string;
+  /** As typed, in `widthUnit` (defaults to inches for old callers). */
   widthInch: number;
+  widthUnit?: LengthUnit;
   gsm: number;
   standardWeightKg: number;
   defaultLocation?: string;
@@ -98,6 +101,9 @@ export async function createStockPreset(input: {
   if (input.gsm <= 0) throw new Error("GSM must be greater than 0.");
   if (input.standardWeightKg <= 0) throw new Error("Standard weight must be greater than 0.");
 
+  const widthUnit = input.widthUnit ?? LengthUnit.INCH;
+  const widthInches = toInches(input.widthInch, widthUnit);
+
   const created = await db.$transaction(async (tx) => {
     const existing = await tx.stockPreset.findFirst({
       where: { code: input.code.trim().toUpperCase() },
@@ -110,7 +116,8 @@ export async function createStockPreset(input: {
       data: {
         name: input.name.trim(),
         code: input.code.trim().toUpperCase(),
-        widthInch: new Prisma.Decimal(input.widthInch.toFixed(2)),
+        widthInch: new Prisma.Decimal(widthInches.toFixed(2)),
+        dimensionUnit: widthUnit,
         gsm: input.gsm,
         standardWeightKg: new Prisma.Decimal(input.standardWeightKg.toFixed(3)),
         defaultLocation: input.defaultLocation?.trim() || "BAY-A (Primary Warehouse)",
@@ -145,7 +152,9 @@ export async function updateStockPreset(
   id: string,
   input: {
     name?: string;
+    /** As typed, in `widthUnit` (defaults to inches for old callers). */
     widthInch?: number;
+    widthUnit?: LengthUnit;
     gsm?: number;
     standardWeightKg?: number;
     defaultLocation?: string;
@@ -167,7 +176,12 @@ export async function updateStockPreset(
       data: {
         ...(input.name ? { name: input.name.trim() } : {}),
         ...(input.widthInch !== undefined
-          ? { widthInch: new Prisma.Decimal(input.widthInch.toFixed(2)) }
+          ? {
+              widthInch: new Prisma.Decimal(
+                toInches(input.widthInch, input.widthUnit ?? LengthUnit.INCH).toFixed(2)
+              ),
+              dimensionUnit: input.widthUnit ?? LengthUnit.INCH,
+            }
           : {}),
         ...(input.gsm !== undefined ? { gsm: input.gsm } : {}),
         ...(input.standardWeightKg !== undefined
@@ -202,6 +216,84 @@ export async function updateStockPreset(
   revalidatePath("/masters/stock-presets");
   revalidatePath("/stock/new");
   return updated;
+}
+
+// -----------------------------------------------------------------------------
+// CSV IMPORT
+// -----------------------------------------------------------------------------
+
+/**
+ * Bulk-create stock presets from parsed CSV rows. `code` is your own custom id
+ * (required, must be unique) — nothing here is auto-generated. A bad row is
+ * reported and skipped rather than failing the whole file.
+ */
+export async function importStockPresetsCsv(rows: Record<string, string>[]) {
+  const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
+
+  const errors: { row: number; message: string }[] = [];
+  let created = 0;
+  const usedCodes = new Set<string>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNum = i + 2;
+    const r = rows[i];
+    try {
+      const code = r.code?.trim().toUpperCase() || "";
+      const name = r.name?.trim() || "";
+      const widthRaw = parseFloat(r.widthInch);
+      const gsm = parseInt(r.gsm, 10);
+      const standardWeightKg = parseFloat(r.standardWeightKg);
+      const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? LengthUnit.CM : LengthUnit.INCH;
+
+      if (!code) throw new Error(`"code" is required.`);
+      if (!name) throw new Error(`"name" is required.`);
+      if (isNaN(widthRaw) || widthRaw <= 0) throw new Error(`Invalid "widthInch": "${r.widthInch}"`);
+      if (isNaN(gsm) || gsm <= 0) throw new Error(`Invalid "gsm": "${r.gsm}"`);
+      if (isNaN(standardWeightKg) || standardWeightKg <= 0) {
+        throw new Error(`Invalid "standardWeightKg": "${r.standardWeightKg}"`);
+      }
+      if (usedCodes.has(code)) throw new Error(`Code "${code}" is duplicated within this file.`);
+
+      const existing = await db.stockPreset.findFirst({ where: { code } });
+      if (existing && !existing.deletedAt) throw new Error(`Code "${code}" already exists.`);
+
+      const preset = await db.$transaction(async (tx) => {
+        const row = await tx.stockPreset.create({
+          data: {
+            name,
+            code,
+            widthInch: new Prisma.Decimal(toInches(widthRaw, widthUnit).toFixed(2)),
+            dimensionUnit: widthUnit,
+            gsm,
+            standardWeightKg: new Prisma.Decimal(standardWeightKg.toFixed(3)),
+            defaultLocation: r.defaultLocation?.trim() || "BAY-A (Primary Warehouse)",
+            shade: r.shade?.trim() || "NATURAL",
+            bf: r.bf?.trim() || "18BF",
+            paperType: r.paperType?.trim() || "KRAFT",
+            description: r.description?.trim() || null,
+            createdById: userId,
+          },
+        });
+        await logAudit(
+          { userId, entityType: "StockPreset", entityId: row.id, action: "CREATE", after: { source: "CSV import" } },
+          tx
+        );
+        return row;
+      });
+
+      usedCodes.add(code);
+      created++;
+      void preset;
+    } catch (err: any) {
+      errors.push({ row: rowNum, message: err.message || "Failed to import row" });
+    }
+  }
+
+  if (created > 0) {
+    revalidatePath("/masters/stock-presets");
+    revalidatePath("/stock/new");
+  }
+  return { created, errors };
 }
 
 export async function deleteStockPreset(id: string) {

@@ -3,7 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
+import { OrderStatus, OrderPriority, PaperType, Role } from "@/generated/prisma/browser";
+import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
+import { PAPER_SIZE_LABELS } from "@/lib/paper-size";
 import { formatWeightKg, formatCurrencyINR, formatWidthInch } from "@/lib/utils";
 import { transitionOrderStatus } from "@/server/services/order-service";
 import { toast } from "sonner";
@@ -55,9 +57,10 @@ import {
 interface OrderDetailViewProps {
   order: any;
   userRole: Role;
+  displayUnit?: "INCH" | "CM";
 }
 
-export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
+export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: OrderDetailViewProps) {
   const router = useRouter();
   const [isTransitioning, setIsTransitioning] = React.useState(false);
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
@@ -487,6 +490,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Width (Inches)</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Quality (GSM)</TableHead>
               <TableHead className="text-[11px] font-bold uppercase text-slate-500">Paper Type</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Size</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Reels</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Ordered Qty</TableHead>
               <TableHead className="text-right text-[11px] font-bold uppercase text-slate-500">Produced</TableHead>
@@ -511,7 +515,7 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
                     {idx + 1}
                   </TableCell>
                   <TableCell className="font-mono font-black text-slate-900 text-sm">
-                    {formatWidthInch(it.widthInch)}
+                    {formatWidthInch(it.widthInch, displayUnit)}
                     {it.remark && (
                       <span className="block font-sans font-normal text-[10px] text-slate-400 mt-0.5 max-w-[180px] truncate" title={it.remark}>
                         {it.remark}
@@ -524,11 +528,10 @@ export function OrderDetailView({ order, userRole }: OrderDetailViewProps) {
                     </span>
                   </TableCell>
                   <TableCell className="text-[11px] font-semibold text-slate-700">
-                    {it.paperType === "COLOURED"
-                      ? `Coloured${it.paperColour ? ` (${it.paperColour})` : ""}`
-                      : it.paperType === "WHITE"
-                      ? "White"
-                      : "Brown (Kraft)"}
+                    {PAPER_TYPE_LABELS[it.paperType as PaperType] ?? it.paperType}
+                  </TableCell>
+                  <TableCell className="text-[11px] font-semibold text-slate-700">
+                    {PAPER_SIZE_LABELS[it.size as keyof typeof PAPER_SIZE_LABELS] ?? it.size ?? "Normal"}
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-slate-700">
                     {it.numberOfReels ? `${it.numberOfReels}` : "—"}
