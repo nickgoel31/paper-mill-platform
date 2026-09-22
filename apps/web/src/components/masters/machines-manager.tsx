@@ -36,6 +36,15 @@ import {
   updateMachine,
   deleteMachine,
 } from "@/server/services/machine-service";
+import { LengthUnit } from "@/generated/prisma/browser";
+import { convertLength, unitSuffix } from "@/lib/units";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Plus,
   MoreHorizontal,
@@ -56,6 +65,7 @@ interface MachineRow {
   minTrimInch: any;
   maxTrimInch: any;
   trimMode?: "BOTH_SIDES" | "ONE_SIDE";
+  dimensionUnit: LengthUnit;
   minGsm: number;
   maxGsm: number;
   speedMpm: number | null;
@@ -72,6 +82,8 @@ interface MachinesManagerProps {
     totalPages: number;
   };
   isAdmin: boolean;
+  /** Mill's default width unit (Settings), used for new machines. */
+  defaultUnit?: LengthUnit;
 }
 
 // Visual Deckle Live Preview Component
@@ -81,14 +93,17 @@ function DecklePreview({
   minTrim,
   maxTrim,
   trimMode = "BOTH_SIDES",
+  unit = LengthUnit.INCH,
 }: {
   maxDeckle: number;
   minDeckle: number;
   minTrim: number;
   maxTrim: number;
   trimMode?: "BOTH_SIDES" | "ONE_SIDE";
+  unit?: LengthUnit;
 }) {
   const bothSides = trimMode !== "ONE_SIDE";
+  const suffix = unitSuffix(unit);
   const safeMax = typeof maxDeckle === "number" && !isNaN(maxDeckle) ? Math.max(1, maxDeckle) : 100;
   const safeMin = typeof minDeckle === "number" && !isNaN(minDeckle) ? Math.min(safeMax, Math.max(0, minDeckle)) : 40;
   const safeMinTrim = typeof minTrim === "number" && !isNaN(minTrim) ? Math.max(0, minTrim) : 0;
@@ -106,7 +121,7 @@ function DecklePreview({
           Live Deckle Constraint Preview (RULE B)
         </span>
         <span className="font-mono text-slate-300">
-          Max Web: <strong className="text-white">{safeMax.toFixed(2)}&quot;</strong>
+          Max Web: <strong className="text-white">{safeMax.toFixed(2)}{suffix}</strong>
         </span>
       </div>
 
@@ -129,7 +144,7 @@ function DecklePreview({
             style={{ width: `${usableWidthPercent}%` }}
             className="bg-emerald-700/90 border-r border-dashed border-emerald-400 flex items-center justify-center text-emerald-100 font-semibold px-2 flex-1"
           >
-            Usable Pattern Width (~{(safeMax - safeMaxTrim).toFixed(1)}&quot; to {safeMax.toFixed(1)}&quot;)
+            Usable Pattern Width (~{(safeMax - safeMaxTrim).toFixed(1)}{suffix} to {safeMax.toFixed(1)}{suffix})
           </div>
 
           {/* Max Trim Margin Allowance */}
@@ -159,16 +174,16 @@ function DecklePreview({
         <div className="flex flex-wrap items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
-            Min Trim: {safeMinTrim.toFixed(2)}&quot;
-            {bothSides ? ` (${(safeMinTrim / 2).toFixed(2)}" each side)` : " (one side)"}
+            Min Trim: {safeMinTrim.toFixed(2)}{suffix}
+            {bothSides ? ` (${(safeMinTrim / 2).toFixed(2)}${suffix} each side)` : " (one side)"}
           </span>
           <span className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full bg-amber-500 inline-block" />
-            Max Trim Limit: {safeMaxTrim.toFixed(2)}&quot;
+            Max Trim Limit: {safeMaxTrim.toFixed(2)}{suffix}
           </span>
           <span className="flex items-center gap-1 text-emerald-400">
             <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
-            Min Deckle Run: {safeMin.toFixed(2)}&quot;
+            Min Deckle Run: {safeMin.toFixed(2)}{suffix}
           </span>
         </div>
       </div>
@@ -176,7 +191,11 @@ function DecklePreview({
   );
 }
 
-export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) {
+export function MachinesManager({
+  initialData,
+  isAdmin,
+  defaultUnit = LengthUnit.INCH,
+}: MachinesManagerProps) {
   const [data, setData] = React.useState(initialData.rows);
   const [total, setTotal] = React.useState(initialData.total);
   const [page, setPage] = React.useState(initialData.page);
@@ -198,6 +217,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
     defaultValues: {
       name: "",
       code: "",
+      dimensionUnit: defaultUnit,
       maxDeckleInch: 196.0,
       minDeckleInch: 60.0,
       minTrimInch: 0.5,
@@ -216,6 +236,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
   const watchedMinTrim = useWatch({ control: form.control, name: "minTrimInch" });
   const watchedMaxTrim = useWatch({ control: form.control, name: "maxTrimInch" });
   const watchedTrimMode = useWatch({ control: form.control, name: "trimMode" });
+  const watchedUnit = useWatch({ control: form.control, name: "dimensionUnit" }) || LengthUnit.INCH;
 
   const fetchData = React.useCallback(async (newPage: number, searchTerm: string) => {
     setIsLoading(true);
@@ -247,6 +268,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
     form.reset({
       name: "",
       code: "",
+      dimensionUnit: defaultUnit,
       maxDeckleInch: 144.0,
       minDeckleInch: 50.0,
       minTrimInch: 0.5,
@@ -260,16 +282,20 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
     setSheetOpen(true);
   };
 
-  // Open Edit
+  // Open Edit — dimensions are always stored canonical inches; show/edit them
+  // converted into whichever unit this machine was configured in.
   const handleOpenEdit = (machine: MachineRow) => {
     setEditingMachine(machine);
+    const unit = machine.dimensionUnit || LengthUnit.INCH;
+    const conv = (inches: number) => convertLength(inches, LengthUnit.INCH, unit);
     form.reset({
       name: machine.name,
       code: machine.code,
-      maxDeckleInch: Number(machine.maxDeckleInch),
-      minDeckleInch: Number(machine.minDeckleInch),
-      minTrimInch: Number(machine.minTrimInch),
-      maxTrimInch: Number(machine.maxTrimInch),
+      dimensionUnit: unit,
+      maxDeckleInch: conv(Number(machine.maxDeckleInch)),
+      minDeckleInch: conv(Number(machine.minDeckleInch)),
+      minTrimInch: conv(Number(machine.minTrimInch)),
+      maxTrimInch: conv(Number(machine.maxTrimInch)),
       trimMode: machine.trimMode ?? "BOTH_SIDES",
       minGsm: machine.minGsm,
       maxGsm: machine.maxGsm,
@@ -508,6 +534,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
               minTrim={watchedMinTrim}
               maxTrim={watchedMaxTrim}
               trimMode={watchedTrimMode}
+              unit={watchedUnit}
             />
 
             {/* Basic Info */}
@@ -547,9 +574,26 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
 
             {/* Deckle & Trim Bounds */}
             <div className="p-3 rounded-lg border bg-slate-50 space-y-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
-                Deckle & Trim Boundaries (Inches)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">
+                  Deckle & Trim Boundaries
+                </span>
+                <FormField
+                  control={form.control}
+                  name="dimensionUnit"
+                  render={({ field }) => (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <SelectTrigger className="h-7 w-[80px] text-[11px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={LengthUnit.INCH} className="text-xs">Inches</SelectItem>
+                        <SelectItem value={LengthUnit.CM} className="text-xs">cm</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField
@@ -558,7 +602,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-semibold text-primary">
-                        Max Deckle (Inches) *
+                        Max Deckle ({unitSuffix(watchedUnit).trim() || '"'}) *
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -583,7 +627,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">
-                        Min Deckle (Inches) *
+                        Min Deckle ({unitSuffix(watchedUnit).trim() || '"'}) *
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -608,7 +652,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">
-                        Min Edge Trim (Inches) *
+                        Min Edge Trim ({unitSuffix(watchedUnit).trim() || '"'}) *
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -681,7 +725,7 @@ export function MachinesManager({ initialData, isAdmin }: MachinesManagerProps) 
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-semibold">
-                        Max Trim Waste (Inches) *
+                        Max Trim Waste ({unitSuffix(watchedUnit).trim() || '"'}) *
                       </FormLabel>
                       <FormControl>
                         <Input

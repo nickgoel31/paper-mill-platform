@@ -19,6 +19,8 @@ import { getProductionSummaryStats } from "./production-service";
 import { getPendingDemandItems, runSolverOptimization } from "./deckle-service";
 import { getPendingDispatchLoadBatches } from "./dispatch-service";
 import { getActiveMachineConstraints } from "./order-service";
+import { generateReelNumber } from "./stock-service";
+import { getSystemSettings } from "./settings-service";
 
 export interface AgentToolResult {
   success: boolean;
@@ -544,21 +546,26 @@ export async function agentCreateStockReel(input: {
   orderItemId?: string;
 }) {
   try {
-    const reel = await db.stockItem.create({
-      data: {
-        widthInch: new Prisma.Decimal(input.widthInch.toFixed(2)),
-        gsm: input.gsm,
-        quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
-        location: input.location || "BAY-A",
-        status: input.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
-        orderItemId: input.orderItemId || null,
-      },
+    const { reelNumberPrefix } = await getSystemSettings();
+    const reel = await db.$transaction(async (tx) => {
+      const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
+      return tx.stockItem.create({
+        data: {
+          reelNumber,
+          widthInch: new Prisma.Decimal(input.widthInch.toFixed(2)),
+          gsm: input.gsm,
+          quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
+          location: input.location || "BAY-A",
+          status: input.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
+          orderItemId: input.orderItemId || null,
+        },
+      });
     });
 
     revalidatePath("/inventory");
     return {
       success: true,
-      message: `Added reel into stock: ${input.widthInch}" ${input.gsm}GSM (${input.quantityKg} kg) at ${reel.location}.`,
+      message: `Added reel ${reel.reelNumber} into stock: ${input.widthInch}" ${input.gsm}GSM (${input.quantityKg} kg) at ${reel.location}.`,
       actionTaken: "CREATE_STOCK_REEL",
       data: reel,
     };

@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getMachines } from "@/server/services/machine-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { MachinesManager } from "@/components/masters/machines-manager";
 import { Role } from "@/generated/prisma/browser";
 
@@ -12,7 +13,10 @@ export default async function MachinesMasterPage() {
   const userRole = (session?.user as any)?.role as Role;
   const isAdmin = userRole === Role.ADMIN;
 
-  const initialData = await getMachines({ page: 1, pageSize: 20 });
+  const [initialData, settings] = await Promise.all([
+    getMachines({ page: 1, pageSize: 20 }),
+    getSystemSettings(),
+  ]);
 
   return (
     <div className="space-y-6 font-sans pb-10">
@@ -33,6 +37,7 @@ export default async function MachinesMasterPage() {
       <MachinesManager
         initialData={JSON.parse(JSON.stringify(initialData))}
         isAdmin={isAdmin}
+        defaultUnit={settings.measurementUnit}
       />
     </div>
   );

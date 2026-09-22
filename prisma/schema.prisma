@@ -37,9 +37,24 @@ enum OrderPriority {
 }
 
 enum PaperType {
-  WHITE
-  BROWN
-  COLOURED
+  NATURAL
+  BY
+}
+
+// Reel/sheet size category, hardcoded per mill request (two sizes only).
+enum PaperSize {
+  BABY
+  NORMAL
+}
+
+// The unit a width/length value was originally entered in. `widthInch` /
+// `maxDeckleInch` etc. columns always stay canonical inches (every existing
+// comparison, the deckle solver, and stock-to-order matching depend on that) —
+// this only tags which unit the mill's own number came from, for display and
+// exact "as entered" record-keeping.
+enum LengthUnit {
+  INCH
+  CM
 }
 
 enum RunStatus {
@@ -118,6 +133,7 @@ model Tenant {
   transporters  Transporter[]
   trucks        Truck[]
   stockPresets  StockPreset[]
+  gsmWeightProfiles GsmWeightProfile[]
   orders        Order[]
   productionRuns ProductionRun[]
   loadBatches   LoadBatch[]
@@ -155,6 +171,7 @@ model User {
   createdDispatches   Dispatch[]
   createdInvoices     Invoice[]
   createdStockPresets StockPreset[]
+  createdGsmWeightProfiles GsmWeightProfile[]
   auditLogs           AuditLog[]
 
   @@index([role])
@@ -207,6 +224,9 @@ model Machine {
   minTrimInch   Decimal // mandatory edge trim, e.g. 0.50
   maxTrimInch   Decimal // reject patterns above this, e.g. 6.00
   trimMode      TrimMode  @default(BOTH_SIDES) // trim split across both edges, or one edge only
+  // Which unit the deckle/trim fields above were entered in (they always stay
+  // canonical inches in storage — this only drives what the edit form shows).
+  dimensionUnit LengthUnit @default(INCH)
   minGsm        Int
   maxGsm        Int
   speedMpm      Int? // metres per minute, for run time estimate
@@ -309,8 +329,13 @@ model OrderItem {
   id               String   @id @default(cuid())
   orderId          String
   widthInch        Decimal
+  // The value + unit exactly as the mill typed it (widthInch above is always the
+  // canonical inch equivalent, used for every comparison and by the solver).
+  enteredWidth     Decimal?
+  enteredWidthUnit LengthUnit @default(INCH)
   gsm              Int
-  paperType        PaperType @default(BROWN)
+  paperType        PaperType @default(NATURAL) @map("paperKind")
+  size             PaperSize @default(NORMAL) @map("paperSize")
   paperColour      String?
   numberOfReels    Int?
   remark           String?
@@ -467,8 +492,15 @@ model StockItem {
   orderItemId     String?
   productionRunId String?
   originOrderItemId String?
+  // Human-facing reel identifier, e.g. "REEL-2609-0001". Monthly-reset, same
+  // convention as Order.orderNumber.
+  reelNumber      String?
   widthInch       Decimal
   gsm             Int
+  paperType       PaperType   @default(NATURAL) @map("paperKind")
+  size            PaperSize   @default(NORMAL) @map("paperSize")
+  enteredWidth    Decimal?
+  enteredWidthUnit LengthUnit @default(INCH)
   quantityKg      Decimal
   status          StockStatus @default(AVAILABLE)
   location        String?
@@ -654,12 +686,37 @@ model SystemSetting {
   @@index([tenantId])
 }
 
+// Per-mill calibration: how many kg a standard finished reel weighs per inch of
+// width, for a given GSM — mills keep this precisely because a fixed maximum
+// reel/roll diameter (winder limit) means different GSMs wind to different
+// lengths, so weight-per-inch doesn't scale linearly with GSM. Used by the
+// deckle planner to estimate/validate cut weight without needing an exact run
+// length up front. `reelDiameterInch` is informational (shown to operators).
+model GsmWeightProfile {
+  id               String   @id @default(cuid())
+  tenantId         String?
+  gsm              Int
+  kgPerInch        Decimal
+  reelDiameterInch Decimal?
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdById      String?
+
+  tenant    Tenant? @relation(fields: [tenantId], references: [id])
+  createdBy User?   @relation(fields: [createdById], references: [id])
+
+  @@unique([tenantId, gsm])
+  @@index([tenantId])
+}
+
 model StockPreset {
   id               String    @id @default(cuid())
   tenantId         String?
   name             String
   code             String
   widthInch        Decimal
+  dimensionUnit    LengthUnit @default(INCH)
   gsm              Int
   standardWeightKg Decimal
   defaultLocation  String?   @default("BAY-A (Primary Warehouse)")

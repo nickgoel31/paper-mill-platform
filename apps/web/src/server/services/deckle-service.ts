@@ -14,6 +14,7 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG } from "./cache-tags";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getGsmWeightMap } from "./gsm-weight-service";
 
 /**
  * The `SOLVER` service binding's fetch, when running on Cloudflare. Worker-to-
@@ -129,6 +130,7 @@ export async function getPendingDemandItems() {
     clientCity: it.order.client.city,
     widthInch: Number(it.widthInch),
     gsm: it.gsm,
+    paperType: it.paperType,
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent),
     producedKg: Number(it.producedKg || 0),
@@ -174,6 +176,51 @@ export async function getMatchableInventory() {
 // SOLVER PROXY ACTION
 // -----------------------------------------------------------------------------
 
+/**
+ * The solver's own weight/length estimate assumes a flat "1000m jumbo roll"
+ * regardless of GSM. Where the mill has calibrated a real kg-per-inch for a
+ * GSM (`GsmWeightProfile`), override `run_length_m` / `estimated_kg` with the
+ * equivalent derived from that calibration — heavier GSM reels wind to a
+ * shorter length on the same machine, so this keeps planning weight (and the
+ * production-run weight computed from `run_length_m` at completion) close to
+ * what actually comes off the winder. Trim % is a pure width ratio and is
+ * left untouched.
+ */
+function applyGsmWeightProfiles(
+  response: OptimizeResponse,
+  weightMap: Record<number, number>
+): OptimizeResponse {
+  if (Object.keys(weightMap).length === 0) return response;
+
+  const runs = response.runs.map((run) => {
+    const kgPerInch = weightMap[run.gsm];
+    if (!kgPerInch) return run;
+
+    // Equivalent standard reel length (m) that yields `kgPerInch` kg per inch
+    // of width at this GSM: kgPerInch = widthM_per_inch(0.0254) * lengthM * gsm/1000.
+    const equivalentLengthM = (kgPerInch * 1000) / (0.0254 * run.gsm);
+
+    let totalPlannedKg = 0;
+    const patterns = run.patterns.map((pat) => {
+      const runLengthM = equivalentLengthM * pat.repetitions;
+      const estimatedKg = pat.cuts.reduce(
+        (acc, c) => acc + c.width_inch * kgPerInch * pat.repetitions * c.count,
+        0
+      );
+      totalPlannedKg += estimatedKg;
+      return { ...pat, run_length_m: runLengthM, estimated_kg: Math.round(estimatedKg) };
+    });
+
+    return { ...run, patterns, total_planned_kg: Math.round(totalPlannedKg) };
+  });
+
+  return {
+    ...response,
+    runs,
+    summary: { ...response.summary, total_kg: Math.round(runs.reduce((a, r) => a + r.total_planned_kg, 0)) },
+  };
+}
+
 export async function runSolverOptimization(
   payload: SolverRequestPayload
 ): Promise<OptimizeResponse> {
@@ -204,7 +251,9 @@ export async function runSolverOptimization(
     }
   }
 
-  return callDeckleSolver(payload, 35000, getSolverFetch());
+  const result = await callDeckleSolver(payload, 35000, getSolverFetch());
+  const weightMap = await getGsmWeightMap();
+  return applyGsmWeightProfiles(result, weightMap);
 }
 
 // -----------------------------------------------------------------------------
@@ -425,4 +474,119 @@ export async function commitProductionRuns(input: CommitRunsInput): Promise<Comm
       error: err instanceof Error ? err.message : "Failed to commit the plan.",
     };
   }
+}
+
+// -----------------------------------------------------------------------------
+// STOCK-FIRST CHECK — don't cut what's already sitting in the warehouse
+// -----------------------------------------------------------------------------
+
+export interface StockMatchCandidate {
+  stockItemId: string;
+  reelNumber: string | null;
+  quantityKg: number;
+  location: string | null;
+}
+
+export interface StockMatchForDemand {
+  orderItemId: string;
+  candidates: StockMatchCandidate[];
+}
+
+type Fifoable = { reelNumber: string | null; createdAt: Date };
+
+/** Oldest reel number first (reel numbers are zero-padded & monthly, so this is
+ * chronological); falls back to `createdAt` for reels with no number. */
+function byFifo(a: Fifoable, b: Fifoable): number {
+  if (a.reelNumber && b.reelNumber && a.reelNumber !== b.reelNumber) {
+    return a.reelNumber < b.reelNumber ? -1 : 1;
+  }
+  if (a.reelNumber && !b.reelNumber) return -1;
+  if (!a.reelNumber && b.reelNumber) return 1;
+  return a.createdAt.getTime() - b.createdAt.getTime();
+}
+
+/**
+ * For each pending demand item (not yet fully produced), any AVAILABLE
+ * warehouse stock that already matches its width + GSM + paper type — so a
+ * planner can assign it instead of cutting a fresh reel. Candidates are
+ * FIFO-ordered (oldest reel first).
+ */
+export async function getStockMatchesForPendingDemand(): Promise<StockMatchForDemand[]> {
+  await requireRole(Role.ADMIN, Role.PLANNER);
+
+  const items = await getPendingDemandItems();
+  const pending = items.filter((it) => it.quantityKg - it.producedKg > 0);
+  if (pending.length === 0) return [];
+
+  const available = await db.stockItem.findMany({
+    where: { status: StockStatus.AVAILABLE },
+    select: {
+      id: true,
+      widthInch: true,
+      gsm: true,
+      paperType: true,
+      quantityKg: true,
+      reelNumber: true,
+      location: true,
+      createdAt: true,
+    },
+  });
+
+  const results: StockMatchForDemand[] = [];
+  for (const item of pending) {
+    const candidates = available
+      .filter(
+        (s) =>
+          s.gsm === item.gsm &&
+          s.paperType === item.paperType &&
+          Math.abs(Number(s.widthInch) - item.widthInch) < 0.01
+      )
+      .sort(byFifo)
+      .map((s) => ({
+        stockItemId: s.id,
+        reelNumber: s.reelNumber,
+        quantityKg: Number(s.quantityKg),
+        location: s.location,
+      }));
+
+    if (candidates.length > 0) {
+      results.push({ orderItemId: item.id, candidates });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Assigns the FIFO-first matching AVAILABLE stock reel to a pending order
+ * line instead of cutting a new one. Re-checks matches at call time so two
+ * planners acting at once can't double-assign the same reel.
+ */
+export async function assignStockToOrderItem(orderItemId: string) {
+  await requireRole(Role.ADMIN, Role.PLANNER);
+
+  const orderItem = await db.orderItem.findFirst({
+    where: { id: orderItemId },
+    select: { widthInch: true, gsm: true, paperType: true },
+  });
+  if (!orderItem) throw new Error("Order line not found.");
+
+  const candidates = await db.stockItem.findMany({
+    where: { status: StockStatus.AVAILABLE, gsm: orderItem.gsm, paperType: orderItem.paperType },
+    select: { id: true, widthInch: true, reelNumber: true, createdAt: true },
+  });
+
+  const matches = candidates
+    .filter((s) => Math.abs(Number(s.widthInch) - Number(orderItem.widthInch)) < 0.01)
+    .sort(byFifo);
+
+  if (matches.length === 0) {
+    throw new Error("No matching available stock found for this order line anymore — it may have just been taken.");
+  }
+
+  const chosen = matches[0];
+  const result = await allocateStockToOrderItem(chosen.id, orderItemId);
+
+  revalidatePath("/deckle");
+  return { ...result, reelNumber: chosen.reelNumber };
 }

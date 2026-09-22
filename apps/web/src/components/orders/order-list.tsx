@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
-import { canTransition } from "@/server/services/order-service";
+import { canTransition, importOrdersCsv } from "@/server/services/order-service";
 import {
   offlineGetOrders,
   offlineGetOrderSummaryStats,
@@ -33,9 +33,11 @@ import {
 } from "@/lib/offline/wrapped-actions";
 import { OfflineEmptyState } from "@/components/shared/offline-empty-state";
 import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
+import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import {
   ShoppingCart,
   Plus,
+  Upload,
   MoreHorizontal,
   Eye,
   Pencil,
@@ -115,6 +117,7 @@ export function OrderList({
   const [page, setPage] = React.useState(initialData.page);
   const [pageSize, setPageSize] = React.useState(initialData.pageSize);
   const [totalPages, setTotalPages] = React.useState(initialData.totalPages);
+  const [csvImportOpen, setCsvImportOpen] = React.useState(false);
 
   // Filters State
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
@@ -539,6 +542,15 @@ export function OrderList({
         <div className="flex flex-wrap items-center gap-2.5">
           {isAdminOrSales && (
             <Button
+              variant="outline"
+              onClick={() => setCsvImportOpen(true)}
+              className="h-10 px-4 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs gap-1.5"
+            >
+              <Upload className="h-4 w-4" /> Import CSV
+            </Button>
+          )}
+          {isAdminOrSales && (
+            <Button
               asChild
               className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
             >
@@ -561,6 +573,31 @@ export function OrderList({
           )}
         </div>
       </div>
+
+      <CsvImportDialog
+        open={csvImportOpen}
+        onOpenChange={setCsvImportOpen}
+        title="Import Sales Orders from CSV"
+        description="One row per order line. Rows sharing the same orderNumber are combined into one multi-line order; leave it blank to auto-generate one per row."
+        requiredColumns={["clientCode", "widthInch", "gsm", "quantityKg"]}
+        optionalColumns={[
+          "orderNumber",
+          "orderDate",
+          "deliveryDate",
+          "priority (URGENT/NORMAL/STOCK)",
+          "widthUnit (INCH/CM)",
+          "paperType (NATURAL/BY)",
+          "size (BABY/NORMAL)",
+          "numberOfReels",
+          "remark",
+          "tolerancePercent",
+          "ratePerKg",
+          "notes",
+          "otherNotes",
+        ]}
+        onImport={importOrdersCsv}
+        onDone={fetchFilteredOrders}
+      />
 
       {isOfflineEmpty && <OfflineEmptyState label="Orders haven't been loaded on this device yet." />}
 

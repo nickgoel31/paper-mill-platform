@@ -24,6 +24,7 @@ import {
 import { PatternBar } from "./pattern-bar";
 import { PatternOverrideDialog } from "./pattern-override-dialog";
 import { TrimAdvisorBanner } from "./trim-advisor-banner";
+import { StockMatchBanner, StockMatchForDemand } from "./stock-match-banner";
 import { OrderPriority, Role } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,10 +96,12 @@ interface DecklePlanningWorkspaceProps {
   demandItems: DemandItem[];
   machines: MachineOption[];
   userRole: Role;
+  stockMatches?: StockMatchForDemand[];
 }
 
 export function DecklePlanningWorkspace({
   demandItems,
+  stockMatches = [],
   machines,
   userRole,
 }: DecklePlanningWorkspaceProps) {
@@ -264,7 +267,10 @@ export function DecklePlanningWorkspace({
         order_number: it.orderNumber,
         width_inch: it.widthInch,
         gsm: it.gsm,
-        quantity_kg: it.solverQuantityKg,
+        // Net out anything already produced AND anything the inventory
+        // pre-check just matched, so we don't ask the solver to cut kg
+        // that's already accounted for either way.
+        quantity_kg: Math.max(0, it.solverQuantityKg - it.producedKg),
         tolerance_percent: it.tolerancePercent,
         priority: it.priority,
         delivery_date: it.deliveryDate ? new Date(it.deliveryDate).toISOString().split("T")[0] : null,
@@ -550,6 +556,13 @@ export function DecklePlanningWorkspace({
               </p>
             </div>
           </div>
+
+          {/* Stock-first check: don't cut what's already in the warehouse */}
+          <StockMatchBanner
+            matches={stockMatches}
+            demandItems={demandItems}
+            onAssigned={() => router.refresh()}
+          />
 
           {/* GSM Grouped Demand Table */}
           {demandItems.length === 0 ? (

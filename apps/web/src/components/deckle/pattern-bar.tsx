@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { formatWidthInch, formatTrimPercent, formatWeightKg } from "@/lib/utils";
+import type { LengthUnit } from "@/generated/prisma/browser";
 
 export interface PatternCutDisplay {
   orderItemId: string;
@@ -29,6 +30,7 @@ export interface PatternBarProps {
    * on the right edge.
    */
   trimMode?: "BOTH_SIDES" | "ONE_SIDE";
+  unit?: LengthUnit;
 }
 
 // Distinct width-based colors so different reel sizes are visually distinguishable
@@ -56,7 +58,9 @@ export function PatternBar({
   cuts,
   isManuallyEdited = false,
   trimMode = "BOTH_SIDES",
+  unit = "INCH" as LengthUnit,
 }: PatternBarProps) {
+  const fw = (v: number) => formatWidthInch(v, unit);
   const trimBenchmark = formatTrimPercent(trimPercent);
 
   // Assign colors by distinct width value (not by order)
@@ -105,7 +109,7 @@ export function PatternBar({
       className={`h-full flex items-center justify-center bg-slate-200 text-slate-500 relative overflow-hidden border-dashed border-slate-300 select-none ${
         side === "left" ? "border-r" : "border-l"
       }`}
-      title={`${bothSides ? (side === "left" ? "Left" : "Right") + " trim" : "Trim"}: ${formatWidthInch(sideTrimInch)}`}
+      title={`${bothSides ? (side === "left" ? "Left" : "Right") + " trim" : "Trim"}: ${fw(sideTrimInch)}`}
     >
       <div
         className="absolute inset-0 opacity-10 pointer-events-none"
@@ -115,7 +119,7 @@ export function PatternBar({
         }}
       />
       <span className="font-mono text-[10px] font-bold z-10 truncate px-0.5">
-        {formatWidthInch(sideTrimInch)}
+        {fw(sideTrimInch)}
       </span>
     </div>
   );
@@ -129,7 +133,7 @@ export function PatternBar({
             #{sequence}
           </span>
           <span className="text-xs text-slate-500 font-medium">
-            ×{repetitions} {repetitions === 1 ? "cut" : "cuts"}
+            Ã—{repetitions} {repetitions === 1 ? "cut" : "cuts"}
           </span>
           {isManuallyEdited && (
             <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -167,19 +171,19 @@ export function PatternBar({
               }`}
               title={
                 isStock
-                  ? `★ STOCK PRESET (Inventory Reel): ${formatWidthInch(cut.widthInch)}`
-                  : `Order: ${cut.orderNumber || "Custom Cut"}${cut.clientName ? ` (${cut.clientName})` : ""} | Width: ${formatWidthInch(cut.widthInch)}`
+                  ? `â˜… STOCK PRESET (Inventory Reel): ${fw(cut.widthInch)}`
+                  : `Order: ${cut.orderNumber || "Custom Cut"}${cut.clientName ? ` (${cut.clientName})` : ""} | Width: ${fw(cut.widthInch)}`
               }
             >
               <span className="font-mono font-black text-xs tracking-tight truncate px-1 leading-tight">
-                {formatWidthInch(cut.widthInch)}
+                {fw(cut.widthInch)}
               </span>
               <span
                 className={`text-[9px] font-sans font-bold uppercase tracking-wider truncate px-1 leading-none mt-0.5 ${
                   isStock ? "text-amber-950 bg-amber-300/80 rounded px-1" : "opacity-90"
                 }`}
               >
-                {isStock ? "★ STOCK" : (cut.orderNumber || "DEMAND")}
+                {isStock ? "â˜… STOCK" : (cut.orderNumber || "DEMAND")}
               </span>
             </div>
           );
@@ -210,12 +214,12 @@ export function PatternBar({
                 }`}
               />
               <span className="font-bold text-slate-900">
-                {c.count}×{formatWidthInch(c.widthInch)}
+                {c.count}Ã—{fw(c.widthInch)}
               </span>
-              <span className="text-slate-300">→</span>
+              <span className="text-slate-300">â†’</span>
               {isStock ? (
                 <span className="text-[10px] uppercase font-sans font-black text-amber-800 bg-amber-200/70 px-1.5 py-0.5 rounded">
-                  ★ Stock Preset (Inventory)
+                  â˜… Stock Preset (Inventory)
                 </span>
               ) : (
                 <span className="font-sans font-bold text-sky-600 text-[11px] flex items-center gap-1">
@@ -232,15 +236,13 @@ export function PatternBar({
         })}
 
         <span className="ml-auto text-slate-400 font-mono text-[11px] font-medium">
-          Deckle: <strong>{formatWidthInch(usedWidthInch)}</strong> / {formatWidthInch(deckleInch)}
+          Deckle: <strong>{fw(usedWidthInch)}</strong> / {fw(deckleInch)}
           {trimWidthInch > 0 && (
             <>
               {" "}
               · Trim:{" "}
               <strong>
-                {bothSides
-                  ? `${formatWidthInch(sideTrimInch)} × 2`
-                  : formatWidthInch(trimWidthInch)}
+                {bothSides ? `${fw(sideTrimInch)} × 2` : fw(trimWidthInch)}
               </strong>
             </>
           )}

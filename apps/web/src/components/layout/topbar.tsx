@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Role } from "@/generated/prisma/browser";
-import { Search, Bell, User } from "lucide-react";
+import { Search, Bell, UserCircle2 } from "lucide-react";
 import { MobileSidebarDrawer } from "@/components/layout/mobile-nav/mobile-sidebar-drawer";
 
 interface TopbarProps {
@@ -63,12 +63,14 @@ export function Topbar({ userName, userEmail, userRole }: TopbarProps) {
           </button>
 
           {/* User Profile Icon */}
-          <div
-            className="h-11 w-11 shrink-0 rounded-2xl bg-slate-100/70 border border-transparent flex items-center justify-center text-slate-600"
-            title={userName}
-            aria-label={userName}
-          >
-            <User className="w-4 h-4 stroke-[2]" />
+          <div className="relative shrink-0">
+            <div
+              className="h-11 w-11 rounded-2xl bg-slate-100/70 border border-slate-200/80 shadow-xs flex items-center justify-center text-slate-500"
+              aria-label={userName}
+              title={userName}
+            >
+              <UserCircle2 className="w-6 h-6 stroke-[1.5]" />
+            </div>
           </div>
         </div>
       </div>

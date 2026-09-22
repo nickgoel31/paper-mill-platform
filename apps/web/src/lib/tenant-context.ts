@@ -20,12 +20,18 @@ export interface TenantContext {
   userId?: string;
 }
 
-// Pinned on globalThis so every bundled copy of this module shares ONE store.
-// When the bundler ends up with the route and the Prisma layer holding separate
-// copies of a module-level store, `runWithTenantContext` in one is invisible to
-// `resolveTenantContext` in the other and every query fails with "No tenant context".
-const g = globalThis as { __tenantALS?: AsyncLocalStorage<TenantContext> };
-const tenantALS = (g.__tenantALS ??= new AsyncLocalStorage<TenantContext>());
+// Next.js compiles this module once per server layer (RSC / SSR / server actions),
+// and each copy would otherwise get its OWN AsyncLocalStorage. `db.ts` caches its
+// tenant-scoped Prisma client on `globalThis`, so that one client is shared by all
+// layers but reads the store of whichever layer created it first — a tenant set
+// via `runWithTenantContext` in another layer was invisible to it ("No tenant
+// context for Order.findMany"). Pinning the store to `globalThis` gives every
+// copy the same instance.
+declare global {
+  // eslint-disable-next-line no-var
+  var __tenantALS: AsyncLocalStorage<TenantContext> | undefined;
+}
+const tenantALS = (globalThis.__tenantALS ??= new AsyncLocalStorage<TenantContext>());
 
 export function runWithTenantContext<T>(ctx: TenantContext, fn: () => T): T {
   return tenantALS.run(ctx, fn);

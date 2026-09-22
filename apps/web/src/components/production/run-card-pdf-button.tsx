@@ -5,12 +5,13 @@ import { toast } from "sonner";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateRunCardPDF } from "@/lib/pdf/generate-run-card-pdf";
+import type { LengthUnit } from "@/generated/prisma/browser";
 
 /**
  * Isolated so that jsPDF (~350 KB) is only ever in a client-side chunk and
  * never bundled into the Cloudflare Worker. Loaded via next/dynamic(ssr:false).
  */
-export default function RunCardPdfButton({ run }: { run: any }) {
+export default function RunCardPdfButton({ run, unit = "INCH" as LengthUnit }: { run: any; unit?: LengthUnit }) {
   const [isGenerating, setIsGenerating] = React.useState(false);
 
   const handleDownloadPdf = () => {
@@ -50,6 +51,7 @@ export default function RunCardPdfButton({ run }: { run: any }) {
         createdAt: run.createdAt,
         patterns: patternsFormatted,
         orderItems: run.orderItems || [],
+        unit,
       });
       toast.success(`Run Card PDF generated for #${run.runNumber}`);
     } catch (err: any) {

@@ -13,6 +13,7 @@ import { machineSchema, MachineFormInput, MachineActionResult } from "@/lib/sche
 import { revalidatePath, revalidateTag } from "next/cache";
 import { ZodError } from "zod";
 import { LOOKUP_TAGS } from "./cache-tags";
+import { toInches } from "@/lib/units";
 
 /** Turn any thrown error into a message safe and useful to show the user. */
 function friendlyError(err: unknown): string {
@@ -104,16 +105,18 @@ async function createMachineImpl(data: MachineFormInput) {
   }
 
   await releaseDeletedNameAndCode(validated.code.trim().toUpperCase(), validated.name.trim());
+  const unit = validated.dimensionUnit;
 
   const machine = await db.$transaction(async (tx) => {
     const created = await tx.machine.create({
       data: {
         name: validated.name.trim(),
         code: validated.code.trim().toUpperCase(),
-        maxDeckleInch: new Prisma.Decimal(validated.maxDeckleInch.toFixed(2)),
-        minDeckleInch: new Prisma.Decimal(validated.minDeckleInch.toFixed(2)),
-        minTrimInch: new Prisma.Decimal(validated.minTrimInch.toFixed(2)),
-        maxTrimInch: new Prisma.Decimal(validated.maxTrimInch.toFixed(2)),
+        dimensionUnit: unit,
+        maxDeckleInch: new Prisma.Decimal(toInches(validated.maxDeckleInch, unit).toFixed(2)),
+        minDeckleInch: new Prisma.Decimal(toInches(validated.minDeckleInch, unit).toFixed(2)),
+        minTrimInch: new Prisma.Decimal(toInches(validated.minTrimInch, unit).toFixed(2)),
+        maxTrimInch: new Prisma.Decimal(toInches(validated.maxTrimInch, unit).toFixed(2)),
         trimMode: validated.trimMode,
         minGsm: validated.minGsm,
         maxGsm: validated.maxGsm,
@@ -172,6 +175,7 @@ async function updateMachineImpl(id: string, data: MachineFormInput) {
   }
 
   await releaseDeletedNameAndCode(validated.code.trim().toUpperCase(), validated.name.trim(), id);
+  const unit = validated.dimensionUnit;
 
   const updated = await db.$transaction(async (tx) => {
     const res = await tx.machine.update({
@@ -179,10 +183,11 @@ async function updateMachineImpl(id: string, data: MachineFormInput) {
       data: {
         name: validated.name.trim(),
         code: validated.code.trim().toUpperCase(),
-        maxDeckleInch: new Prisma.Decimal(validated.maxDeckleInch.toFixed(2)),
-        minDeckleInch: new Prisma.Decimal(validated.minDeckleInch.toFixed(2)),
-        minTrimInch: new Prisma.Decimal(validated.minTrimInch.toFixed(2)),
-        maxTrimInch: new Prisma.Decimal(validated.maxTrimInch.toFixed(2)),
+        dimensionUnit: unit,
+        maxDeckleInch: new Prisma.Decimal(toInches(validated.maxDeckleInch, unit).toFixed(2)),
+        minDeckleInch: new Prisma.Decimal(toInches(validated.minDeckleInch, unit).toFixed(2)),
+        minTrimInch: new Prisma.Decimal(toInches(validated.minTrimInch, unit).toFixed(2)),
+        maxTrimInch: new Prisma.Decimal(toInches(validated.maxTrimInch, unit).toFixed(2)),
         trimMode: validated.trimMode,
         minGsm: validated.minGsm,
         maxGsm: validated.maxGsm,

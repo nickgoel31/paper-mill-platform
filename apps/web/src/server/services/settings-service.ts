@@ -18,6 +18,10 @@ export interface SystemSettingsMap {
   trimPercentTarget: number;
   contactEmail: string;
   contactPhone: string;
+  /** Unit widths are displayed in across the app, unless overridden (e.g. run cards). */
+  measurementUnit: "INCH" | "CM";
+  /** Prefix for auto-generated stock reel numbers, e.g. "REEL" -> REEL-2609-0001. */
+  reelNumberPrefix: string;
 }
 
 const DEFAULT_SETTINGS: SystemSettingsMap = {
@@ -33,6 +37,8 @@ const DEFAULT_SETTINGS: SystemSettingsMap = {
   trimPercentTarget: 3.0,
   contactEmail: "accounts@papermill.local",
   contactPhone: "+91 141 2789100",
+  measurementUnit: "INCH",
+  reelNumberPrefix: "REEL",
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsMap> {

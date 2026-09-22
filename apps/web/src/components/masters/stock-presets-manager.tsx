@@ -30,11 +30,14 @@ import {
   createStockPreset,
   updateStockPreset,
   deleteStockPreset,
+  importStockPresetsCsv,
 } from "@/server/services/stock-preset-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
+import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import {
   BookmarkCheck,
   Plus,
+  Upload,
   MoreHorizontal,
   Edit,
   Trash2,
@@ -86,6 +89,7 @@ export function StockPresetsManager({ initialData, isAdmin }: StockPresetsManage
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [editingPreset, setEditingPreset] = React.useState<StockPresetRow | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [csvImportOpen, setCsvImportOpen] = React.useState(false);
 
   // Form State
   const [formData, setFormData] = React.useState({
@@ -333,13 +337,33 @@ export function StockPresetsManager({ initialData, isAdmin }: StockPresetsManage
           </p>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
-        >
-          <Plus className="h-4 w-4 text-[#d4f842]" /> Create New Preset
-        </Button>
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            onClick={() => setCsvImportOpen(true)}
+            className="h-10 px-4 rounded-full border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs gap-1.5"
+          >
+            <Upload className="h-4 w-4" /> Import CSV
+          </Button>
+          <Button
+            onClick={handleOpenCreate}
+            className="h-10 px-5 rounded-full bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs gap-1.5 shadow-sm transition-all"
+          >
+            <Plus className="h-4 w-4 text-[#d4f842]" /> Create New Preset
+          </Button>
+        </div>
       </div>
+
+      <CsvImportDialog
+        open={csvImportOpen}
+        onOpenChange={setCsvImportOpen}
+        title="Import Stock Presets from CSV"
+        description="One row per preset. code is your own custom id — must be unique."
+        requiredColumns={["code", "name", "widthInch", "gsm", "standardWeightKg"]}
+        optionalColumns={["widthUnit (INCH/CM)", "defaultLocation", "shade", "bf", "paperType", "description"]}
+        onImport={importStockPresetsCsv}
+        onDone={fetchPresets}
+      />
 
       {/* 2. STATS ROW */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">

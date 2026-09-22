@@ -6,6 +6,10 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { createStockItem } from "@/server/services/stock-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
+import { PaperType, PaperSize, LengthUnit } from "@/generated/prisma/browser";
+import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
+import { toInches } from "@/lib/units";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -32,14 +36,20 @@ import {
 
 interface ReelEntry {
   id: string;
+  /** As typed, in `widthUnit`. */
   widthInch: string;
+  widthUnit: LengthUnit;
   gsm: string;
+  paperType: PaperType;
+  size: PaperSize;
   quantityKg: string;
   location: string;
   orderItemId?: string;
 }
 
 interface StockFormProps {
+  /** Mill's default width unit (Settings). New reel rows start in this unit. */
+  defaultUnit?: LengthUnit;
   machines: Array<{
     id: string;
     name: string;
@@ -55,7 +65,11 @@ interface StockFormProps {
     items: Array<{
       id: string;
       widthInch: number;
+      enteredWidth?: number | null;
+      enteredWidthUnit?: LengthUnit;
       gsm: number;
+      paperType: PaperType;
+      size?: PaperSize;
       quantityKg: number;
       producedKg: number;
     }>;
@@ -84,7 +98,12 @@ const COMMON_LOCATIONS = [
 
 const STANDARD_GSMS = [80, 100, 120, 140, 160, 180, 200, 220, 250, 280, 300];
 
-export function StockForm({ machines, recentOrders, presets = [] }: StockFormProps) {
+export function StockForm({
+  defaultUnit = LengthUnit.INCH,
+  machines,
+  recentOrders,
+  presets = [],
+}: StockFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -92,7 +111,10 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
     {
       id: "reel-1",
       widthInch: "28",
+      widthUnit: defaultUnit,
       gsm: "140",
+      paperType: PaperType.NATURAL,
+      size: PaperSize.NORMAL,
       quantityKg: "392",
       location: "BAY-A (Primary Warehouse)",
     },
@@ -104,7 +126,10 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
       {
         id: `reel-${Date.now()}`,
         widthInch: String(preset.widthInch),
+        widthUnit: defaultUnit,
         gsm: String(preset.gsm),
+        paperType: PaperType.NATURAL,
+        size: PaperSize.NORMAL,
         quantityKg: String(preset.standardWeightKg),
         location: preset.defaultLocation || "BAY-A (Primary Warehouse)",
       },
@@ -119,7 +144,10 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
       {
         id: `reel-${Date.now()}`,
         widthInch: lastReel ? lastReel.widthInch : "36",
+        widthUnit: lastReel ? lastReel.widthUnit : defaultUnit,
         gsm: lastReel ? lastReel.gsm : "120",
+        paperType: lastReel ? lastReel.paperType : PaperType.NATURAL,
+        size: lastReel ? lastReel.size : PaperSize.NORMAL,
         quantityKg: lastReel ? lastReel.quantityKg : "500",
         location: lastReel ? lastReel.location : "BAY-A (Primary Warehouse)",
       },
@@ -156,8 +184,11 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
               ? {
                   ...r,
                   orderItemId: it.id,
-                  widthInch: String(it.widthInch),
+                  widthInch: String(it.enteredWidth ?? it.widthInch),
+                  widthUnit: it.enteredWidthUnit ?? LengthUnit.INCH,
                   gsm: String(it.gsm),
+                  paperType: it.paperType,
+                  size: it.size ?? PaperSize.NORMAL,
                   quantityKg: String(Math.max(100, it.quantityKg - (it.producedKg || 0))),
                 }
               : r
@@ -185,7 +216,7 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
       const q = parseFloat(r.quantityKg);
 
       if (isNaN(w) || w <= 0) {
-        toast.error(`Reel #${i + 1}: Valid width in inches is required.`);
+        toast.error(`Reel #${i + 1}: Valid width is required.`);
         return;
       }
       if (isNaN(g) || g < 40 || g > 400) {
@@ -204,7 +235,10 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
       for (const r of reels) {
         await createStockItem({
           widthInch: parseFloat(r.widthInch),
+          widthUnit: r.widthUnit,
           gsm: parseInt(r.gsm, 10),
+          paperType: r.paperType,
+          size: r.size,
           quantityKg: parseFloat(r.quantityKg),
           location: r.location || "BAY-A (Primary Warehouse)",
           orderItemId: r.orderItemId && r.orderItemId !== "none" ? r.orderItemId : undefined,
@@ -379,25 +413,34 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  {/* Width (Inches) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4">
+                  {/* Width */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700">
-                      Width (Inches) <span className="text-rose-500">*</span>
+                      Width <span className="text-rose-500">*</span>
                     </label>
-                    <div className="relative">
+                    <div className="flex items-center gap-1.5">
                       <Input
                         type="number"
                         step="0.01"
                         placeholder="e.g. 36.00"
                         value={reel.widthInch}
                         onChange={(e) => updateReel(reel.id, "widthInch", e.target.value)}
-                        className="h-10 rounded-xl bg-white font-mono font-bold text-slate-900 border-slate-200 pr-8 text-sm"
+                        className="h-10 rounded-xl bg-white font-mono font-bold text-slate-900 border-slate-200 text-sm"
                         required
                       />
-                      <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-mono">
-                        inch
-                      </span>
+                      <Select
+                        value={reel.widthUnit}
+                        onValueChange={(val) => updateReel(reel.id, "widthUnit", val)}
+                      >
+                        <SelectTrigger className="h-10 w-[68px] rounded-xl bg-white text-xs border-slate-200 shrink-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={LengthUnit.INCH} className="text-xs">in</SelectItem>
+                          <SelectItem value={LengthUnit.CM} className="text-xs">cm</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
 
@@ -419,6 +462,46 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
                         GSM
                       </span>
                     </div>
+                  </div>
+
+                  {/* Paper Type */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Paper Type</label>
+                    <Select
+                      value={reel.paperType}
+                      onValueChange={(val) => updateReel(reel.id, "paperType", val)}
+                    >
+                      <SelectTrigger className="h-10 rounded-xl bg-white text-xs border-slate-200">
+                        <SelectValue placeholder="Paper type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAPER_TYPES.map((pt) => (
+                          <SelectItem key={pt} value={pt} className="text-xs font-medium">
+                            {PAPER_TYPE_LABELS[pt]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Size */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">Size</label>
+                    <Select
+                      value={reel.size}
+                      onValueChange={(val) => updateReel(reel.id, "size", val)}
+                    >
+                      <SelectTrigger className="h-10 rounded-xl bg-white text-xs border-slate-200">
+                        <SelectValue placeholder="Size" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAPER_SIZES.map((sz) => (
+                          <SelectItem key={sz} value={sz} className="text-xs font-medium">
+                            {PAPER_SIZE_LABELS[sz]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   {/* Weight (Kg) */}
@@ -469,7 +552,7 @@ export function StockForm({ machines, recentOrders, presets = [] }: StockFormPro
                 {recentOrders.length > 0 && (
                   <div className="pt-2 border-t border-slate-200/60 flex items-center gap-3">
                     <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
-                      Optional: Match to Pending Demand:
+                      Allocate to Order (Optional):
                     </span>
                     <Select
                       value={reel.orderItemId || "none"}

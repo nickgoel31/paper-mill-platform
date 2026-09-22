@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, OrderStatus, OrderPriority, PaperType, Prisma } from "@/generated/prisma/browser";
+import { Role, OrderStatus, OrderPriority, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -18,6 +18,13 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getMachineConstraints } from "./lookup-service";
 import { DASHBOARD_TAG } from "./cache-tags";
+import { toInches } from "@/lib/units";
+import { formatWidthInch } from "@/lib/utils";
+
+/** widthInch on the line as typed -> canonical inches, for storage/validation. */
+function itemWidthInches(item: { widthInch: number; widthUnit: import("@/generated/prisma/browser").LengthUnit }) {
+  return toInches(item.widthInch, item.widthUnit);
+}
 
 // -----------------------------------------------------------------------------
 // STATUS TRANSITION RULES (Single Source of Truth)
@@ -348,9 +355,10 @@ export async function createOrder(data: OrderFormInput) {
   }
 
   for (const item of validated.items) {
-    if (item.widthInch > maxDeckle) {
+    const widthIn = itemWidthInches(item);
+    if (widthIn > maxDeckle) {
       throw new Error(
-        `Width ${item.widthInch}" exceeds the largest active machine deckle of ${maxDeckle}". No machine can cut this reel.`
+        `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}". No machine can cut this reel.`
       );
     }
     const compatibleMachines = machines.filter(
@@ -381,13 +389,12 @@ export async function createOrder(data: OrderFormInput) {
         createdById: userId,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            enteredWidthUnit: item.widthUnit,
             gsm: item.gsm,
             paperType: item.paperType,
-            paperColour:
-              item.paperType === PaperType.COLOURED
-                ? item.paperColour?.trim() || null
-                : null,
+            size: item.size,
             numberOfReels:
               item.numberOfReels != null && item.numberOfReels > 0
                 ? Math.round(item.numberOfReels)
@@ -429,6 +436,150 @@ export async function createOrder(data: OrderFormInput) {
   return order;
 }
 
+// -----------------------------------------------------------------------------
+// CSV IMPORT
+// -----------------------------------------------------------------------------
+
+/**
+ * Bulk-create sales orders from parsed CSV rows — one row per order line.
+ * Rows sharing the same non-blank "orderNumber" are grouped into a single
+ * multi-line order; a blank "orderNumber" makes that row its own single-line
+ * order with an auto-generated number. A bad group is reported and skipped
+ * rather than failing the whole file.
+ */
+export async function importOrdersCsv(rows: Record<string, string>[]) {
+  const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
+
+  const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
+  if (machines.length === 0) {
+    throw new Error("No active machines configured. Please add a machine before importing orders.");
+  }
+
+  // Group rows by orderNumber (case-insensitive); a blank one is its own group.
+  const groups = new Map<string, { rows: Record<string, string>[]; rowNums: number[] }>();
+  rows.forEach((r, i) => {
+    const rowNum = i + 2;
+    const key = r.orderNumber?.trim() ? r.orderNumber.trim().toUpperCase() : `__row_${i}`;
+    const g = groups.get(key) || { rows: [], rowNums: [] };
+    g.rows.push(r);
+    g.rowNums.push(rowNum);
+    groups.set(key, g);
+  });
+
+  const errors: { row: number; message: string }[] = [];
+  let created = 0;
+
+  for (const [key, group] of groups) {
+    const rowLabel =
+      group.rowNums.length === 1
+        ? `${group.rowNums[0]}`
+        : `${group.rowNums[0]}-${group.rowNums[group.rowNums.length - 1]}`;
+
+    try {
+      const first = group.rows[0];
+      const clientCode = first.clientCode?.trim() || "";
+      if (!clientCode) throw new Error(`"clientCode" is required.`);
+
+      const client = await db.client.findFirst({ where: { code: clientCode } });
+      if (!client) throw new Error(`No client found with code "${clientCode}".`);
+
+      const customOrderNumber = key.startsWith("__row_") ? "" : first.orderNumber.trim();
+      if (customOrderNumber) {
+        const existing = await db.order.findFirst({ where: { orderNumber: customOrderNumber } });
+        if (existing) throw new Error(`Order number "${customOrderNumber}" already exists.`);
+      }
+
+      const orderDate = first.orderDate?.trim() ? new Date(first.orderDate.trim()) : new Date();
+      if (isNaN(orderDate.getTime())) throw new Error(`Invalid "orderDate": "${first.orderDate}"`);
+      const deliveryDate = first.deliveryDate?.trim() ? new Date(first.deliveryDate.trim()) : null;
+      if (deliveryDate && isNaN(deliveryDate.getTime())) {
+        throw new Error(`Invalid "deliveryDate": "${first.deliveryDate}"`);
+      }
+      const priorityRaw = (first.priority || "").toUpperCase();
+      const priority = (Object.values(OrderPriority) as string[]).includes(priorityRaw)
+        ? (priorityRaw as OrderPriority)
+        : OrderPriority.NORMAL;
+
+      const items = group.rows.map((r, idx) => {
+        const widthRaw = parseFloat(r.widthInch);
+        const gsm = parseInt(r.gsm, 10);
+        const quantityKg = parseFloat(r.quantityKg);
+        if (isNaN(widthRaw) || widthRaw <= 0) {
+          throw new Error(`Invalid "widthInch" on line ${idx + 1} of this order: "${r.widthInch}"`);
+        }
+        if (isNaN(gsm) || gsm <= 0) {
+          throw new Error(`Invalid "gsm" on line ${idx + 1} of this order: "${r.gsm}"`);
+        }
+        if (isNaN(quantityKg) || quantityKg <= 0) {
+          throw new Error(`Invalid "quantityKg" on line ${idx + 1} of this order: "${r.quantityKg}"`);
+        }
+        const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? "CM" : "INCH";
+        const widthIn = toInches(widthRaw, widthUnit as any);
+        if (widthIn > maxDeckle) {
+          throw new Error(
+            `Width ${formatWidthInch(widthIn, widthUnit as any)} on line ${idx + 1} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}".`
+          );
+        }
+        const compatibleMachines = machines.filter((m) => gsm >= m.minGsm && gsm <= m.maxGsm);
+        if (compatibleMachines.length === 0) {
+          throw new Error(`GSM ${gsm} on line ${idx + 1} cannot be run on any active machine.`);
+        }
+        const paperType = (r.paperType || "").toUpperCase() === "BY" ? "BY" : "NATURAL";
+        const size = (r.size || "").toUpperCase() === "BABY" ? "BABY" : "NORMAL";
+        const numberOfReels = r.numberOfReels?.trim() ? parseInt(r.numberOfReels, 10) : null;
+        const tolerancePercent = r.tolerancePercent?.trim() ? parseFloat(r.tolerancePercent) : 5.0;
+        const ratePerKg = r.ratePerKg?.trim() ? parseFloat(r.ratePerKg) : null;
+
+        return {
+          widthInch: new Prisma.Decimal(widthIn.toFixed(2)),
+          enteredWidth: new Prisma.Decimal(widthRaw.toFixed(2)),
+          enteredWidthUnit: widthUnit as any,
+          gsm,
+          paperType: paperType as any,
+          size: size as any,
+          numberOfReels: numberOfReels && numberOfReels > 0 ? numberOfReels : null,
+          remark: r.remark?.trim() || null,
+          quantityKg: new Prisma.Decimal(quantityKg.toFixed(3)),
+          tolerancePercent: new Prisma.Decimal((isNaN(tolerancePercent) ? 5.0 : tolerancePercent).toFixed(2)),
+          ratePerKg: ratePerKg && !isNaN(ratePerKg) ? new Prisma.Decimal(ratePerKg.toFixed(2)) : null,
+        };
+      });
+
+      await db.$transaction(async (tx) => {
+        const orderNumber = customOrderNumber || (await generateOrderNumber(tx, orderDate));
+        const order = await tx.order.create({
+          data: {
+            orderNumber,
+            clientId: client.id,
+            orderDate,
+            deliveryDate,
+            priority,
+            status: OrderStatus.DRAFT,
+            notes: first.notes?.trim() || null,
+            otherNotes: first.otherNotes?.trim() || null,
+            createdById: userId,
+            items: { create: items },
+          },
+        });
+        await logAudit(
+          { userId, entityType: "Order", entityId: order.id, action: "CREATE", after: { source: "CSV import", orderNumber } },
+          tx
+        );
+      });
+
+      created++;
+    } catch (err: any) {
+      errors.push({ row: group.rowNums[0], message: `Row(s) ${rowLabel}: ${err.message || "Failed to import"}` });
+    }
+  }
+
+  if (created > 0) {
+    revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
+  }
+  return { created, errors };
+}
+
 export async function updateOrder(id: string, data: OrderFormInput) {
   const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const validated = orderFormSchema.parse(data);
@@ -455,9 +606,10 @@ export async function updateOrder(id: string, data: OrderFormInput) {
   // Validate items against machine constraints
   const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
   for (const item of validated.items) {
-    if (item.widthInch > maxDeckle) {
+    const widthIn = itemWidthInches(item);
+    if (widthIn > maxDeckle) {
       throw new Error(
-        `Width ${item.widthInch}" exceeds the largest active machine deckle of ${maxDeckle}".`
+        `Width ${formatWidthInch(widthIn, item.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}".`
       );
     }
   }
@@ -477,13 +629,12 @@ export async function updateOrder(id: string, data: OrderFormInput) {
         otherNotes: validated.otherNotes?.trim() || null,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            enteredWidthUnit: item.widthUnit,
             gsm: item.gsm,
             paperType: item.paperType,
-            paperColour:
-              item.paperType === PaperType.COLOURED
-                ? item.paperColour?.trim() || null
-                : null,
+            size: item.size,
             numberOfReels:
               item.numberOfReels != null && item.numberOfReels > 0
                 ? Math.round(item.numberOfReels)

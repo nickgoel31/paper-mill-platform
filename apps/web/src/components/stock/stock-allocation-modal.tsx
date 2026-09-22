@@ -7,6 +7,8 @@ import {
   allocateStockToOrderItem,
 } from "@/server/services/stock-service";
 import { formatWidthInch, formatWeightKg } from "@/lib/utils";
+import type { PaperType, PaperSize } from "@/generated/prisma/browser";
+import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,8 @@ interface StockAllocationModalProps {
     location?: string | null;
     /** Order this reel was cut for; preselected when still eligible. */
     originOrder?: { orderItemId: string } | null;
+    paperType?: PaperType;
+    size?: PaperSize;
   } | null;
   onSuccess: () => void;
 }
@@ -56,7 +60,7 @@ export function StockAllocationModal({
     if (open && stockItem) {
       setSelectedOrderItemId("");
       setIsLoading(true);
-      getPendingEligibleOrderItemsForStock(stockItem.widthInch, stockItem.gsm)
+      getPendingEligibleOrderItemsForStock(stockItem.widthInch, stockItem.gsm, stockItem.paperType, stockItem.size)
         .then((items) => {
           setEligibleItems(items);
           if (items.length > 0) {
@@ -122,6 +126,11 @@ export function StockAllocationModal({
                 <Badge variant="outline" className="font-mono text-xs text-primary font-bold">
                   {stockItem.gsm} GSM
                 </Badge>
+                {stockItem.paperType && (
+                  <Badge variant="outline" className="text-xs font-semibold">
+                    {PAPER_TYPE_LABELS[stockItem.paperType]}
+                  </Badge>
+                )}
               </div>
             </div>
 

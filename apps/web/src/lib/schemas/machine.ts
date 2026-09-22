@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LengthUnit } from "@/generated/prisma/browser";
 
 export const machineSchema = z
   .object({
@@ -8,10 +9,14 @@ export const machineSchema = z
       .min(1, "Machine code is required")
       .max(10, "Code must be at most 10 characters")
       .regex(/^[A-Z0-9_-]+$/, "Code must be uppercase alphanumeric (e.g. M1, M2, M3)"),
+    // All four dimensions below are entered in, and validated against machine
+    // constraints in, this same unit — converted to canonical inches for storage
+    // in machine-service.ts.
+    dimensionUnit: z.nativeEnum(LengthUnit).default(LengthUnit.INCH),
     maxDeckleInch: z.coerce
       .number()
       .positive("Max deckle width must be greater than 0")
-      .max(500, "Max deckle cannot exceed 500 inches"),
+      .max(1300, "Max deckle is out of range"),
     minDeckleInch: z.coerce
       .number()
       .positive("Min deckle width must be greater than 0"),

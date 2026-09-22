@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatWidthInch } from "@/lib/utils";
+import type { LengthUnit } from "@/generated/prisma/browser";
 
 export interface RunCardData {
   runNumber: string;
@@ -8,6 +9,8 @@ export interface RunCardData {
   maxDeckleInch: number;
   gsm: number;
   status: string;
+  /** Widths in this card are all canonical inches; rendered in this unit. */
+  unit?: LengthUnit;
   totalPlannedKg: number;
   totalActualKg?: number;
   totalTrimPercent: number;
@@ -54,6 +57,9 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
     unit: "mm",
     format: "a4",
   });
+
+  const displayUnit = (data.unit ?? "INCH") as LengthUnit;
+  const fw = (v: number) => formatWidthInch(v, displayUnit);
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -103,7 +109,7 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
   const columns = [
     { label: "MACHINE", val: data.machineName, width: 56 },
     { label: "PAPER GRADE", val: `${data.gsm} GSM`, width: 26 },
-    { label: "MAX DECKLE", val: `${data.maxDeckleInch.toFixed(1)}"`, width: 26 },
+    { label: "MAX DECKLE", val: fw(data.maxDeckleInch), width: 26 },
     { label: "PLANNED OUTPUT", val: `${(data.totalPlannedKg / 1000).toFixed(2)} MT`, width: 40 },
     { label: "TRIM LOSS", val: `${data.totalTrimPercent.toFixed(2)}%`, width: 38 },
   ];
@@ -184,7 +190,7 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7);
     doc.setTextColor(71, 85, 105);
-    const trimInfo = `Deckle: ${pat.usedWidthInch.toFixed(1)}" / ${data.maxDeckleInch.toFixed(1)}"   Trim: ${pat.trimWidthInch.toFixed(1)}" (${pat.trimPercent.toFixed(2)}%)`;
+    const trimInfo = `Deckle: ${fw(pat.usedWidthInch)} / ${fw(data.maxDeckleInch)}   Trim: ${fw(pat.trimWidthInch)} (${pat.trimPercent.toFixed(2)}%)`;
     doc.text(trimInfo, pageWidth - margin - 4, currentY + 4.5, { align: "right" });
 
     // Visual knife strip
@@ -215,7 +221,7 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(6.5);
         doc.setTextColor(15, 23, 42);
-        const textLabel = isStock ? `${cut.widthInch}" [STOCK]` : `${cut.widthInch}"`;
+        const textLabel = isStock ? `${fw(cut.widthInch)} [STOCK]` : fw(cut.widthInch);
         doc.text(textLabel, currentX + cutWidthMm / 2, stripY + 4.2, { align: "center" });
 
         if (cut.orderNumber && !isStock && cutWidthMm > 14) {
@@ -246,8 +252,8 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
       .map((c) => {
         const isStock = c.isStockPreset || c.orderNumber === "STOCK";
         return isStock
-          ? `${c.count}×${c.widthInch}" [★ STOCK PRESET]`
-          : `${c.count}×${c.widthInch}" (${c.orderNumber || "Order"})`;
+          ? `${c.count}×${fw(c.widthInch)} [★ STOCK PRESET]`
+          : `${c.count}×${fw(c.widthInch)} (${c.orderNumber || "Order"})`;
       })
       .join("  +  ");
 
@@ -284,7 +290,7 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
       String(idx + 1),
       it.order?.orderNumber || "DIRECT",
       clientStr,
-      `${formatWidthInch(Number(it.widthInch))}`,
+      fw(Number(it.widthInch)),
       `${Number(it.quantityKg).toLocaleString("en-IN")} kg`,
       `±${Number(it.tolerancePercent).toFixed(1)}%`,
       dateStr,
@@ -308,7 +314,7 @@ function buildRunCardDoc(data: RunCardData): jsPDF {
       "★",
       "STOCK PRESET",
       "Warehouse Master Inventory",
-      `${formatWidthInch(width)}`,
+      fw(width),
       "— (Zero-Waste Surplus)",
       "Exact",
       "Immediate Stock",

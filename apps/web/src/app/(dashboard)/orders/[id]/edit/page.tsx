@@ -3,6 +3,7 @@ import { requireRole } from "@/server/auth-helpers";
 import { Role, OrderStatus } from "@/generated/prisma/browser";
 import { getOrderById, getActiveMachineConstraints } from "@/server/services/order-service";
 import { getClientOptions } from "@/server/services/lookup-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { OrderForm } from "@/components/orders/order-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,10 +22,11 @@ export default async function EditOrderPage({
   const { tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const { id } = await params;
 
-  const [order, clients, machineConstraints] = await Promise.all([
+  const [order, clients, machineConstraints, settings] = await Promise.all([
     getOrderById(id),
     getClientOptions(tenantId!),
     getActiveMachineConstraints(tenantId!),
+    getSystemSettings(),
   ]);
 
   if (!order) {
@@ -66,6 +68,7 @@ export default async function EditOrderPage({
     <OrderForm
       initialOrder={JSON.parse(JSON.stringify(order))}
       clients={clients}
+      defaultUnit={settings.measurementUnit}
       machineConstraints={machineConstraints}
     />
   );
