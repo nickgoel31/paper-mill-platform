@@ -14,6 +14,7 @@ import {
   agentCreateStockReel,
   agentUpdateStockReel,
   agentDeleteStockReel,
+  agentAllocateStockToOrderItem,
   agentGetStockPresets,
   agentCreateStockPreset,
   agentDeleteStockPreset,
@@ -30,12 +31,16 @@ import {
   agentCreateLoadBatch,
   agentGetInvoices,
   agentUpdateInvoiceStatus,
+  agentCreateInvoicesFromDispatch,
   agentGetUsers,
   agentGetNotifications,
   agentGetDashboardSummary,
   agentGetDeckleDemand,
   agentRunDeckleOptimization,
   agentGetPendingDispatches,
+  agentGetDispatchHistory,
+  agentMarkDispatchDelivered,
+  agentGetAnalytics,
 } from "@/server/services/agent-tools-service";
 
 export const maxDuration = 60;
@@ -265,11 +270,26 @@ const OPENAI_TOOLS = [
     type: "function",
     function: {
       name: "deleteStockReel",
-      description: "Delete or write off a stock reel from warehouse.",
+      description: "Delete or write off a stock reel from warehouse. Only works on AVAILABLE reels — allocated/dispatched reels must be deallocated first.",
       parameters: {
         type: "object",
         required: ["id"],
         properties: { id: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "allocateStockToOrderItem",
+      description: "Match/allocate a specific warehouse reel to a specific sales order line (exact width + GSM match required). This is how unallocated inventory gets matched to demand.",
+      parameters: {
+        type: "object",
+        required: ["stockItemId", "orderItemId"],
+        properties: {
+          stockItemId: { type: "string", description: "The stock reel's id (from getStockInventory)" },
+          orderItemId: { type: "string", description: "The order line's id (from getOrders items[].id)" },
+        },
       },
     },
   },
@@ -337,13 +357,17 @@ const OPENAI_TOOLS = [
     type: "function",
     function: {
       name: "updateProductionRunStatus",
-      description: "Update production run status (e.g. start running, mark completed).",
+      description: "Transition a production run: release to floor, start it, mark it complete, or cancel it. Completing a run creates the finished-goods reels and credits their orders — always ask the user for the real actual output weight (actualKg) rather than assuming it matches the plan.",
       parameters: {
         type: "object",
         required: ["runNumberOrId", "status"],
         properties: {
           runNumberOrId: { type: "string" },
-          status: { type: "string", enum: ["PLANNED", "RELEASED", "RUNNING", "COMPLETED", "CANCELLED"] },
+          status: { type: "string", enum: ["RELEASED", "RUNNING", "COMPLETED", "CANCELLED"] },
+          actualKg: { type: "number", description: "Required for COMPLETED — actual output weight in kg." },
+          trimWasteKg: { type: "number", description: "Trim/edge waste in kg, for COMPLETED." },
+          wastageReason: { type: "string" },
+          reason: { type: "string", description: "Reason, for CANCELLED." },
         },
       },
     },
@@ -505,13 +529,28 @@ const OPENAI_TOOLS = [
     type: "function",
     function: {
       name: "updateInvoiceStatus",
-      description: "Update GST tax invoice status (e.g. mark ISSUED or CANCELLED).",
+      description: "Update GST tax invoice status. Cancelling requires a reason.",
       parameters: {
         type: "object",
         required: ["invoiceNumberOrId", "status"],
         properties: {
           invoiceNumberOrId: { type: "string" },
           status: { type: "string", enum: ["DRAFT", "ISSUED", "CANCELLED"] },
+          reason: { type: "string", description: "Required when status is CANCELLED." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "createInvoicesFromDispatch",
+      description: "Generate GST tax invoices for a dispatch — one invoice per distinct client on that dispatch's load. Idempotent: calling it again on an already-invoiced dispatch just returns the existing invoices.",
+      parameters: {
+        type: "object",
+        required: ["dispatchNumberOrId"],
+        properties: {
+          dispatchNumberOrId: { type: "string", description: "Dispatch number (e.g. DSP-2609-0001) or id" },
         },
       },
     },
@@ -576,6 +615,49 @@ const OPENAI_TOOLS = [
       parameters: { type: "object", properties: {} },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "getDispatchHistory",
+      description: "Get past dispatches (gate passes) — vehicle, driver, clients served, weight, delivery status.",
+      parameters: {
+        type: "object",
+        properties: {
+          vehicleNumber: { type: "string", description: "Filter by vehicle registration (partial match)" },
+          limit: { type: "number" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "markDispatchDelivered",
+      description: "Mark a dispatch as DELIVERED and enqueue delivery-confirmation WhatsApp messages to its clients.",
+      parameters: {
+        type: "object",
+        required: ["dispatchNumberOrId"],
+        properties: { dispatchNumberOrId: { type: "string" } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getAnalytics",
+      description: "Get mill-wide analytics: revenue, sales/production/dispatch weight, wastage %, trim loss, GSM mix, per-machine performance, and top clients over a time range. Use this for any 'how are we doing' / trend / investigation question.",
+      parameters: {
+        type: "object",
+        properties: {
+          timeRange: {
+            type: "string",
+            enum: ["last_3_months", "last_6_months", "last_12_months", "this_year"],
+            description: "Defaults to last_6_months",
+          },
+        },
+      },
+    },
+  },
 ];
 
 async function executeAgentTool(name: string, args: any) {
@@ -609,6 +691,8 @@ async function executeAgentTool(name: string, args: any) {
       return await agentUpdateStockReel(args);
     case "deleteStockReel":
       return await agentDeleteStockReel(args);
+    case "allocateStockToOrderItem":
+      return await agentAllocateStockToOrderItem(args);
 
     // Stock Presets
     case "getStockPresets":
@@ -653,6 +737,8 @@ async function executeAgentTool(name: string, args: any) {
       return await agentGetInvoices(args);
     case "updateInvoiceStatus":
       return await agentUpdateInvoiceStatus(args);
+    case "createInvoicesFromDispatch":
+      return await agentCreateInvoicesFromDispatch(args);
 
     // Users & Notifications
     case "getUsers":
@@ -669,34 +755,17 @@ async function executeAgentTool(name: string, args: any) {
       return await agentRunDeckleOptimization(args);
     case "getPendingDispatches":
       return await agentGetPendingDispatches();
+    case "getDispatchHistory":
+      return await agentGetDispatchHistory(args);
+    case "markDispatchDelivered":
+      return await agentMarkDispatchDelivered(args);
+    case "getAnalytics":
+      return await agentGetAnalytics(args);
 
     default:
       return { success: false, message: `Tool '${name}' not recognized.` };
   }
 }
-
-export async function POST(req: NextRequest) {
-  const session = await auth();
-  const u = session?.user as any;
-  if (!u) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (u.isPlatform || !u.tenantId) {
-    return NextResponse.json(
-      { error: "The AI assistant is only available for mill accounts." },
-      { status: 403 }
-    );
-  }
-  // This route is in the middleware public-list, so it carries no tenant headers.
-  // Establish the tenant scope explicitly for the isolation layer.
-  const tenantCtx: TenantContext = {
-    tenantId: u.tenantId,
-    isPlatform: false,
-    userId: u.id,
-  };
-  return runWithTenantContext(tenantCtx, () => handleAgentPost(req, u, tenantCtx));
-}
-
 
 // ---------------------------------------------------------------------------
 // PaperMill AI — OpenAI Responses API agentic loop
@@ -733,8 +802,10 @@ function buildSystemPrompt(userName: string, userRole: string): string {
     "",
     "You act on the mill's real data through tools. You can read and write across every module:",
     "sales orders, clients, warehouse stock & buffer presets, production runs & machines,",
-    "deckle (cutting) planning, logistics (trucks, transporters, load batches, dispatch),",
-    "GST invoices, wastage logs, users, and WhatsApp notifications.",
+    "deckle (cutting) planning, logistics (trucks, transporters, load batches, dispatch history",
+    "and delivery confirmation), GST invoices (including generating them from a dispatch),",
+    "wastage logs, analytics (revenue/production/wastage/trim/GSM mix/machine/client trends),",
+    "users, and WhatsApp notifications.",
     "",
     "## Purchase orders / invoices attached as files",
     "When a PO, invoice, or order document (PDF or image) is attached:",
@@ -753,49 +824,148 @@ function buildSystemPrompt(userName: string, userRole: string): string {
     "- Before a destructive action (delete / cancel), state what you will remove, then do it if the",
     "  user's instruction was explicit.",
     "- runDeckleOptimization only produces a plan — always tell the user to commit it from the Deckle Planning screen.",
+    "- Confirming a truck's departure (weighbridge + gate pass) is done from the Dispatch screen, not by you — you can read",
+    "  pending/history dispatches and mark one DELIVERED or generate its invoices, but not confirm a new departure.",
+    "- Completing a production run needs the real actual output weight — never assume it equals the plan; ask if unstated.",
+    "- Every write tool enforces the same role permissions as the matching screen in the app. If a tool returns a",
+    "  permission/role error, tell the user plainly that their role doesn't allow that action — don't retry it or work",
+    "  around it.",
     "- Keep replies short and factual. Use markdown tables for lists. Use the rupee sign and Indian digit grouping for money.",
     "",
     `Current user: ${userName} (${userRole}).`,
   ].join("\n");
 }
 
-type ResponsesOutput = {
-  id: string;
-  status?: string;
-  output_text?: string;
-  output?: Array<{
-    type: string;
-    role?: string;
-    name?: string;
-    call_id?: string;
-    arguments?: string;
-    content?: Array<{ type: string; text?: string }>;
-  }>;
-};
+// ---------------------------------------------------------------------------
+// Streaming: parse OpenAI's SSE Responses stream and re-emit a small,
+// stable event set of our own (newline-delimited JSON) — text deltas, tool
+// call start/result, and a final done/error. The client never needs to know
+// anything about OpenAI's wire format, only ours.
+// ---------------------------------------------------------------------------
 
-async function callOpenAI(apiKey: string, requestBody: Record<string, unknown>) {
+interface StreamSink {
+  onTextDelta: (delta: string) => void;
+  onFunctionCallDone: (call: { name: string; arguments: string; call_id: string }) => void;
+  onResponseId: (id: string) => void;
+}
+
+/** Reads one OpenAI Responses `stream: true` call to completion, firing `sink` callbacks as events arrive. */
+async function streamOpenAIResponse(
+  apiKey: string,
+  requestBody: Record<string, unknown>,
+  sink: StreamSink
+): Promise<void> {
   const res = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`,
+      accept: "text/event-stream",
     },
-    body: JSON.stringify(requestBody),
+    body: JSON.stringify({ ...requestBody, stream: true }),
   });
-  const text = await res.text();
-  if (!res.ok) {
+
+  if (!res.ok || !res.body) {
+    const text = res.body ? await res.text().catch(() => "") : "";
     throw new Error(`OpenAI API ${res.status}: ${text.slice(0, 600)}`);
   }
-  return JSON.parse(text) as ResponsesOutput;
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  // Function-call items stream their arguments incrementally, keyed by item id.
+  const pendingCalls = new Map<string, { name: string; call_id: string; arguments: string }>();
+
+  const handleEvent = (evt: any) => {
+    if (!evt || typeof evt !== "object") return;
+    switch (evt.type) {
+      case "response.created":
+      case "response.in_progress":
+        if (evt.response?.id) sink.onResponseId(evt.response.id);
+        break;
+      case "response.output_text.delta":
+        if (typeof evt.delta === "string") sink.onTextDelta(evt.delta);
+        break;
+      case "response.output_item.added":
+        if (evt.item?.type === "function_call") {
+          pendingCalls.set(evt.item.id, {
+            name: evt.item.name || "",
+            call_id: evt.item.call_id || evt.item.id,
+            arguments: "",
+          });
+        }
+        break;
+      case "response.function_call_arguments.delta": {
+        const pc = pendingCalls.get(evt.item_id);
+        if (pc && typeof evt.delta === "string") pc.arguments += evt.delta;
+        break;
+      }
+      case "response.output_item.done":
+        if (evt.item?.type === "function_call") {
+          const complete = {
+            name: evt.item.name || pendingCalls.get(evt.item.id)?.name || "",
+            call_id: evt.item.call_id || pendingCalls.get(evt.item.id)?.call_id || evt.item.id,
+            arguments:
+              evt.item.arguments ?? pendingCalls.get(evt.item.id)?.arguments ?? "{}",
+          };
+          pendingCalls.delete(evt.item.id);
+          sink.onFunctionCallDone(complete);
+        }
+        break;
+      case "response.completed":
+        if (evt.response?.id) sink.onResponseId(evt.response.id);
+        break;
+      case "error":
+        throw new Error(evt.message || "OpenAI stream error");
+      default:
+        break; // ignore anything we don't specifically handle
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const chunks = buffer.split("\n\n");
+    buffer = chunks.pop() ?? "";
+    for (const chunk of chunks) {
+      const dataLines = chunk
+        .split("\n")
+        .filter((l) => l.startsWith("data:"))
+        .map((l) => l.slice(5).trim());
+      if (dataLines.length === 0) continue;
+      const data = dataLines.join("");
+      if (data === "[DONE]") continue;
+      try {
+        handleEvent(JSON.parse(data));
+      } catch {
+        // Malformed/partial SSE line — skip rather than kill the whole stream.
+      }
+    }
+  }
 }
 
-async function handleAgentPost(
-  req: NextRequest,
-  sessionUser: any,
-  tenantCtx: TenantContext
-) {
-  const userRole = sessionUser?.role || "STAFF";
-  const userName = sessionUser?.name || "Staff Member";
+/** A single ND-JSON event line sent to the client. Kept intentionally tiny and stable. */
+type AgentStreamEvent =
+  | { type: "text_delta"; text: string }
+  | { type: "tool_call_start"; name: string; args: any }
+  | { type: "tool_call_result"; name: string; result: any }
+  | { type: "done"; reply: string; toolResults: any[] }
+  | { type: "error"; message: string };
+
+export async function POST(req: NextRequest) {
+  const session = await auth();
+  const u = session?.user as any;
+  if (!u) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (u.isPlatform || !u.tenantId) {
+    return NextResponse.json(
+      { error: "The AI assistant is only available for mill accounts." },
+      { status: 403 }
+    );
+  }
 
   let body: {
     messages?: Message[];
@@ -808,8 +978,6 @@ async function handleAgentPost(
     return NextResponse.json({ reply: "Invalid request.", toolResults: [] }, { status: 400 });
   }
 
-  const { messages = [], userMessage = "", files = [] } = body;
-
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({
@@ -819,124 +987,152 @@ async function handleAgentPost(
     });
   }
 
-  // Current user turn: files first (PDF / image), then the text.
-  const userContent: any[] = [];
-  for (const f of files || []) {
-    if (f.base64 && f.type?.startsWith("image/")) {
-      userContent.push({
-        type: "input_image",
-        image_url: `data:${f.type};base64,${f.base64}`,
-      });
-    } else if (
-      f.base64 &&
-      (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"))
-    ) {
-      userContent.push({
-        type: "input_file",
-        filename: f.name || "document.pdf",
-        file_data: `data:application/pdf;base64,${f.base64}`,
-      });
-    } else if (f.text) {
-      userContent.push({ type: "input_text", text: `[Attached file: ${f.name}]\n${f.text}` });
-    }
-  }
-  userContent.push({
-    type: "input_text",
-    text: userMessage || "Please review the attached document and take the requested action.",
+  // This route is in the middleware public-list, so it carries no tenant headers.
+  // Establish the tenant scope explicitly for the isolation layer.
+  const tenantCtx: TenantContext = {
+    tenantId: u.tenantId,
+    isPlatform: false,
+    userId: u.id,
+  };
+  const userRole = u?.role || "STAFF";
+  const userName = u?.name || "Staff Member";
+
+  const { messages = [], userMessage = "", files = [] } = body;
+
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (evt: AgentStreamEvent) => {
+        controller.enqueue(encoder.encode(JSON.stringify(evt) + "\n"));
+      };
+
+      try {
+        await runWithTenantContext(tenantCtx, async () => {
+          // Current user turn: files first (PDF / image), then the text.
+          const userContent: any[] = [];
+          for (const f of files || []) {
+            if (f.base64 && f.type?.startsWith("image/")) {
+              userContent.push({ type: "input_image", image_url: `data:${f.type};base64,${f.base64}` });
+            } else if (f.base64 && (f.type === "application/pdf" || f.name?.toLowerCase().endsWith(".pdf"))) {
+              userContent.push({
+                type: "input_file",
+                filename: f.name || "document.pdf",
+                file_data: `data:application/pdf;base64,${f.base64}`,
+              });
+            } else if (f.text) {
+              userContent.push({ type: "input_text", text: `[Attached file: ${f.name}]\n${f.text}` });
+            }
+          }
+          userContent.push({
+            type: "input_text",
+            text: userMessage || "Please review the attached document and take the requested action.",
+          });
+
+          const history = (messages || [])
+            .slice(0, -1)
+            .slice(-8)
+            .filter((m) => m && (m.role === "user" || m.role === "assistant"))
+            .map((m) => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: (typeof m.content === "string" ? m.content : JSON.stringify(m.content)) || "(no text)",
+            }));
+
+          const system = buildSystemPrompt(userName, userRole);
+          const toolResults: any[] = [];
+          const model = (files || []).some(isVisualDoc) ? OPENAI_MODEL_DOC : OPENAI_MODEL_CHAT;
+
+          let input: any[] = [...history, { role: "user", content: userContent }];
+          let previousResponseId: string | null = null;
+
+          for (let step = 0; step < MAX_AGENT_STEPS; step++) {
+            let assistantText = "";
+            const calls: Array<{ name: string; arguments: string; call_id: string }> = [];
+
+            await streamOpenAIResponse(
+              apiKey,
+              {
+                model,
+                instructions: system,
+                tools: RESPONSES_TOOLS,
+                tool_choice: "auto",
+                parallel_tool_calls: true,
+                input,
+                ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
+              },
+              {
+                onTextDelta: (delta) => {
+                  assistantText += delta;
+                  send({ type: "text_delta", text: delta });
+                },
+                onFunctionCallDone: (call) => calls.push(call),
+                onResponseId: (id) => {
+                  previousResponseId = id;
+                },
+              }
+            );
+
+            if (calls.length === 0) {
+              send({ type: "done", reply: assistantText.trim() || "Done.", toolResults });
+              return;
+            }
+
+            input = [];
+            for (const call of calls) {
+              let args: any = {};
+              try {
+                args = JSON.parse(call.arguments || "{}");
+              } catch {
+                args = {};
+              }
+              send({ type: "tool_call_start", name: call.name, args });
+
+              let out: any;
+              try {
+                // Re-assert the tenant scope for every tool call. The agentic
+                // loop awaits the OpenAI stream between steps, and the ambient
+                // AsyncLocalStorage store is not guaranteed to survive that
+                // boundary on workerd — without this, tenant-scoped Prisma
+                // reads/writes throw "No tenant context".
+                out = await runWithTenantContext(tenantCtx, () => executeAgentTool(call.name || "", args));
+              } catch (e: any) {
+                out = { success: false, message: "Tool crashed", error: e?.message || String(e) };
+              }
+              toolResults.push(out);
+              send({ type: "tool_call_result", name: call.name, result: out });
+              input.push({
+                type: "function_call_output",
+                call_id: call.call_id,
+                output: JSON.stringify(out).slice(0, 16000),
+              });
+            }
+          }
+
+          send({
+            type: "done",
+            reply: "I ran several steps but hit the step limit before finishing. Please narrow the request or ask me to continue.",
+            toolResults,
+          });
+        });
+      } catch (error: any) {
+        console.error("[PaperMill AI]", error);
+        const msg = String(error?.message || "");
+        send({
+          type: "error",
+          message: msg.includes("OpenAI API 401")
+            ? "The configured OPENAI_API_KEY is invalid."
+            : msg || "Something went wrong.",
+        });
+      } finally {
+        controller.close();
+      }
+    },
   });
 
-  // Prior conversation (text only; earlier attachments are not re-sent).
-  const history = (messages || [])
-    .slice(0, -1)
-    .slice(-8)
-    .filter((m) => m && (m.role === "user" || m.role === "assistant"))
-    .map((m) => ({
-      role: m.role === "assistant" ? "assistant" : "user",
-      content:
-        (typeof m.content === "string" ? m.content : JSON.stringify(m.content)) || "(no text)",
-    }));
-
-  const system = buildSystemPrompt(userName, userRole);
-  const toolResults: any[] = [];
-
-  // One model for the whole loop: doc model if this turn has a PO/invoice/image.
-  const model = (files || []).some(isVisualDoc) ? OPENAI_MODEL_DOC : OPENAI_MODEL_CHAT;
-
-  let input: any[] = [...history, { role: "user", content: userContent }];
-  let previousResponseId: string | null = null;
-
-  try {
-    for (let step = 0; step < MAX_AGENT_STEPS; step++) {
-      const resp = await callOpenAI(apiKey, {
-        model,
-        instructions: system,
-        tools: RESPONSES_TOOLS,
-        tool_choice: "auto",
-        parallel_tool_calls: true,
-        input,
-        ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
-      });
-      previousResponseId = resp.id;
-
-      const calls = (resp.output || []).filter((o) => o.type === "function_call");
-
-      if (calls.length === 0) {
-        const text =
-          resp.output_text?.trim() ||
-          (resp.output || [])
-            .filter((o) => o.type === "message")
-            .flatMap((m) => m.content || [])
-            .filter((c) => c.type === "output_text")
-            .map((c) => c.text || "")
-            .join("")
-            .trim();
-        return NextResponse.json({ reply: text || "Done.", toolResults });
-      }
-
-      // Execute every requested tool; feed all outputs back next turn.
-      input = [];
-      for (const call of calls) {
-        let args: any = {};
-        try {
-          args = JSON.parse(call.arguments || "{}");
-        } catch {
-          args = {};
-        }
-        let out: any;
-        try {
-          // Re-assert the tenant scope for every tool call. The agentic loop
-          // awaits the OpenAI fetch between steps, and the ambient
-          // AsyncLocalStorage store is not guaranteed to survive that boundary
-          // on workerd — without this, tenant-scoped Prisma reads/writes throw
-          // "No tenant context" and the model reports a vague "system issue".
-          out = await runWithTenantContext(tenantCtx, () =>
-            executeAgentTool(call.name || "", args)
-          );
-        } catch (e: any) {
-          out = { success: false, message: "Tool crashed", error: e?.message || String(e) };
-        }
-        toolResults.push(out);
-        input.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: JSON.stringify(out).slice(0, 16000),
-        });
-      }
-    }
-
-    return NextResponse.json({
-      reply:
-        "I ran several steps but hit the step limit before finishing. Please narrow the request or ask me to continue.",
-      toolResults,
-    });
-  } catch (error: any) {
-    console.error("[PaperMill AI]", error);
-    const msg = String(error?.message || "");
-    return NextResponse.json({
-      reply: msg.includes("OpenAI API 401")
-        ? "The configured OPENAI_API_KEY is invalid."
-        : `Something went wrong: ${msg || "unknown error"}`,
-      toolResults,
-    });
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }

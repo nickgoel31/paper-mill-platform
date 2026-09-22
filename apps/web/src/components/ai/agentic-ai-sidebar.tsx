@@ -35,6 +35,11 @@ interface AttachedFile {
   text?: string;
 }
 
+interface ToolActivity {
+  name: string;
+  status: "running" | "done" | "failed";
+}
+
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -42,7 +47,55 @@ interface ChatMessage {
   timestamp: string;
   files?: AttachedFile[];
   toolResults?: any[];
+  /** Live/finished tool-call activity for this turn, shown above the streamed text. */
+  toolActivity?: ToolActivity[];
+  /** True while this assistant message is still streaming in. */
+  streaming?: boolean;
 }
+
+// Friendlier, human labels for tool activity — the raw tool name is a decent
+// fallback for anything not explicitly listed here.
+const TOOL_LABELS: Record<string, string> = {
+  getOrders: "Looking up sales orders",
+  createOrder: "Creating sales order",
+  updateOrder: "Updating sales order",
+  deleteOrder: "Removing sales order",
+  getClients: "Looking up clients",
+  createClient: "Creating client",
+  updateClient: "Updating client",
+  deleteClient: "Deactivating client",
+  getStockInventory: "Checking warehouse inventory",
+  createStockReel: "Adding stock reel",
+  updateStockReel: "Updating stock reel",
+  deleteStockReel: "Removing stock reel",
+  allocateStockToOrderItem: "Allocating stock to order",
+  getStockPresets: "Looking up stock presets",
+  createStockPreset: "Creating stock preset",
+  deleteStockPreset: "Removing stock preset",
+  getProductionRuns: "Looking up production runs",
+  updateProductionRunStatus: "Updating production run",
+  deleteProductionRun: "Removing production run",
+  getWastageLogs: "Looking up wastage logs",
+  createWastageLog: "Logging wastage",
+  getMachines: "Looking up machines",
+  createMachine: "Registering machine",
+  updateMachine: "Updating machine",
+  getTrucksAndTransporters: "Looking up fleet",
+  createTruck: "Registering truck",
+  createLoadBatch: "Creating load batch",
+  getInvoices: "Looking up invoices",
+  updateInvoiceStatus: "Updating invoice",
+  createInvoicesFromDispatch: "Generating invoices",
+  getUsers: "Looking up users",
+  getNotifications: "Looking up notifications",
+  getDashboardSummary: "Pulling mill KPIs",
+  getDeckleDemand: "Checking deckle demand",
+  runDeckleOptimization: "Running the cutting-stock solver",
+  getPendingDispatches: "Checking pending dispatches",
+  getDispatchHistory: "Looking up dispatch history",
+  markDispatchDelivered: "Marking dispatch delivered",
+  getAnalytics: "Pulling analytics",
+};
 
 // PaperMill AI mark — 4-pointed spark on the app's gradient
 export function PaperMillAiIcon({ className = "w-5 h-5" }: { className?: string }) {
@@ -216,6 +269,23 @@ export function AgenticAiSidebar() {
     setIsLoading(true);
     setShowAllSuggestions(false);
 
+    const assistantId = `ast-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        toolActivity: [],
+        streaming: true,
+      },
+    ]);
+
+    const patchAssistant = (patch: (m: ChatMessage) => ChatMessage) => {
+      setMessages((prev) => prev.map((m) => (m.id === assistantId ? patch(m) : m)));
+    };
+
     try {
       const res = await fetch("/api/ai-agent", {
         method: "POST",
@@ -227,30 +297,86 @@ export function AgenticAiSidebar() {
         }),
       });
 
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         throw new Error(`Server returned ${res.status}`);
       }
 
-      const data = await res.json();
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const toolResults: any[] = [];
 
-      const assistantMsg: ChatMessage = {
-        id: `ast-${Date.now()}`,
-        role: "assistant",
-        content: data.reply || "Operation completed successfully.",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        toolResults: data.toolResults,
+      const handleLine = (line: string) => {
+        if (!line.trim()) return;
+        let evt: any;
+        try {
+          evt = JSON.parse(line);
+        } catch {
+          return; // ignore a partial/corrupt line rather than breaking the whole stream
+        }
+
+        switch (evt.type) {
+          case "text_delta":
+            patchAssistant((m) => ({ ...m, content: m.content + evt.text }));
+            break;
+          case "tool_call_start":
+            patchAssistant((m) => ({
+              ...m,
+              toolActivity: [...(m.toolActivity || []), { name: evt.name, status: "running" }],
+            }));
+            break;
+          case "tool_call_result":
+            toolResults.push(evt.result);
+            patchAssistant((m) => ({
+              ...m,
+              toolActivity: (m.toolActivity || []).map((a, idx) =>
+                idx === (m.toolActivity!.length - 1) && a.name === evt.name && a.status === "running"
+                  ? { ...a, status: evt.result?.success === false ? "failed" : "done" }
+                  : a
+              ),
+            }));
+            break;
+          case "done":
+            patchAssistant((m) => ({
+              ...m,
+              content: m.content || evt.reply || "Done.",
+              toolResults,
+              streaming: false,
+            }));
+            break;
+          case "error":
+            patchAssistant((m) => ({
+              ...m,
+              content: `❌ **Error**: ${evt.message}`,
+              streaming: false,
+            }));
+            break;
+        }
       };
 
-      setMessages((prev) => [...prev, assistantMsg]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) handleLine(line);
+      }
+      if (buffer.trim()) handleLine(buffer);
+
+      // Belt-and-braces: if the stream ended without a "done"/"error" event
+      // reaching us (a dropped connection mid-stream), don't leave the
+      // bubble stuck in a permanent "streaming" state.
+      patchAssistant((m) =>
+        m.streaming ? { ...m, streaming: false, content: m.content || "Connection interrupted." } : m
+      );
     } catch (err: any) {
       toast.error(err.message || "Failed to reach PaperMill AI");
-      const errorMsg: ChatMessage = {
-        id: `err-${Date.now()}`,
-        role: "assistant",
+      patchAssistant((m) => ({
+        ...m,
         content: `❌ **Error**: ${err.message || "Could not reach AI backend. Please verify your connection."}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+        streaming: false,
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -470,13 +596,45 @@ export function AgenticAiSidebar() {
                         </div>
                       )}
 
+                      {/* Live tool-call activity — what the assistant is actually doing right now */}
+                      {isAssistant && msg.toolActivity && msg.toolActivity.length > 0 && (
+                        <div className="mb-2 space-y-1">
+                          {msg.toolActivity.map((a, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-1.5 text-[11.5px] text-slate-500"
+                            >
+                              {a.status === "running" ? (
+                                <Loader2 className="w-3 h-3 animate-spin text-[#7c3aed] shrink-0" />
+                              ) : a.status === "failed" ? (
+                                <span className="w-3 h-3 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-[8px] font-bold shrink-0">✕</span>
+                              ) : (
+                                <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                              )}
+                              <span className={a.status === "running" ? "italic" : ""}>
+                                {TOOL_LABELS[a.name] || a.name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {/* Markdown / text content rendering */}
-                      <div
-                        className="prose prose-xs max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-a:text-[#1a73e8] prose-a:underline"
-                        dangerouslySetInnerHTML={{
-                          __html: formatMarkdownToHtml(msg.content),
-                        }}
-                      />
+                      {msg.content || !msg.streaming ? (
+                        <div
+                          className="prose prose-xs max-w-none prose-headings:font-bold prose-headings:text-slate-900 prose-a:text-[#1a73e8] prose-a:underline"
+                          dangerouslySetInnerHTML={{
+                            __html: formatMarkdownToHtml(msg.content) + (msg.streaming ? '<span class="inline-block w-1.5 h-3.5 -mb-0.5 ml-0.5 bg-slate-400 animate-pulse"></span>' : ""),
+                          }}
+                        />
+                      ) : (
+                        isAssistant &&
+                        (!msg.toolActivity || msg.toolActivity.length === 0) && (
+                          <div className="flex items-center gap-2 text-xs text-slate-400 italic">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Thinking…
+                          </div>
+                        )
+                      )}
 
                       {/* Rich React UI Cards for ERP Objects */}
                       {msg.toolResults && msg.toolResults.length > 0 && (
@@ -526,13 +684,6 @@ export function AgenticAiSidebar() {
                   </div>
                 );
               })}
-
-              {isLoading && (
-                <div className="flex items-center gap-2.5 text-xs text-slate-500 py-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-[#1a73e8]" />
-                  <span>PaperMill AI is working…</span>
-                </div>
-              )}
 
               <div ref={chatBottomRef} />
             </div>

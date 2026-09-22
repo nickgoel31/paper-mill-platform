@@ -14,13 +14,38 @@ import {
 import { revalidatePath, revalidateTag } from "next/cache";
 import { DASHBOARD_TAG, LOOKUP_TAGS } from "./cache-tags";
 import { getTenantContextSync } from "@/lib/tenant-context";
+import { requireRole } from "@/server/auth-helpers";
 import { getOrderSummaryStats } from "./order-service";
-import { getProductionSummaryStats } from "./production-service";
+import {
+  getProductionSummaryStats,
+  releaseRunToFloor,
+  startProductionRun,
+  completeProductionRun,
+  cancelProductionRun,
+} from "./production-service";
 import { getPendingDemandItems, runSolverOptimization } from "./deckle-service";
 import { getPendingDispatchLoadBatches } from "./dispatch-service";
 import { getActiveMachineConstraints } from "./order-service";
-import { generateReelNumber } from "./stock-service";
+import { generateReelNumber, allocateStockToOrderItem } from "./stock-service";
 import { getSystemSettings } from "./settings-service";
+
+/**
+ * Every write-capable agent tool below gates itself the same way its
+ * equivalent UI action does — the AI assistant must never be a back door
+ * around the role permissions the rest of the app enforces.
+ */
+const AGENT_ROLE = {
+  ORDER_WRITE: [Role.ADMIN, Role.SALES] as Role[],
+  CLIENT_WRITE: [Role.ADMIN] as Role[],
+  STOCK_WRITE: [Role.ADMIN, Role.PLANNER, Role.DISPATCH] as Role[],
+  PRESET_WRITE: [Role.ADMIN] as Role[],
+  RUN_WRITE: [Role.ADMIN, Role.PLANNER, Role.OPERATOR] as Role[],
+  WASTAGE_WRITE: [Role.ADMIN, Role.PLANNER, Role.DISPATCH] as Role[],
+  MACHINE_WRITE: [Role.ADMIN] as Role[],
+  TRUCK_WRITE: [Role.ADMIN] as Role[],
+  LOGISTICS_WRITE: [Role.ADMIN, Role.PLANNER, Role.DISPATCH] as Role[],
+  INVOICE_CANCEL: [Role.ADMIN] as Role[],
+};
 
 export interface AgentToolResult {
   success: boolean;
@@ -103,6 +128,7 @@ export async function agentCreateOrder(input: {
   }>;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.ORDER_WRITE);
     // 1. Resolve client
     let client = await db.client.findFirst({
       where: {
@@ -208,6 +234,7 @@ export async function agentUpdateOrder(input: {
   notes?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.ORDER_WRITE);
     const order = await db.order.findFirst({
       where: {
         OR: [{ id: input.orderNumberOrId }, { orderNumber: input.orderNumberOrId }],
@@ -261,43 +288,9 @@ export async function agentUpdateOrder(input: {
   }
 }
 
-export async function agentUpdateOrderStatus(input: {
-  orderNumberOrId: string;
-  status: OrderStatus;
-}) {
-  try {
-    const order = await db.order.findFirst({
-      where: {
-        OR: [{ id: input.orderNumberOrId }, { orderNumber: input.orderNumberOrId }],
-      },
-    });
-
-    if (!order) {
-      return { success: false, message: `Order '${input.orderNumberOrId}' not found.` };
-    }
-
-    const updated = await db.order.update({
-      where: { id: order.id },
-      data: { status: input.status },
-    });
-
-    revalidatePath("/orders");
-    revalidateTag(DASHBOARD_TAG);
-    revalidatePath(`/orders/${order.id}`);
-
-    return {
-      success: true,
-      message: `Updated status of Order #${order.orderNumber} from ${order.status} to ${input.status}.`,
-      actionTaken: "UPDATE_ORDER_STATUS",
-      data: updated,
-    };
-  } catch (err: any) {
-    return { success: false, message: "Failed to update order status", error: err.message };
-  }
-}
-
 export async function agentDeleteOrder(input: { orderNumberOrId: string }) {
   try {
+    await requireRole(...AGENT_ROLE.ORDER_WRITE);
     const order = await db.order.findFirst({
       where: {
         OR: [{ id: input.orderNumberOrId }, { orderNumber: input.orderNumberOrId }],
@@ -308,8 +301,36 @@ export async function agentDeleteOrder(input: { orderNumberOrId: string }) {
       return { success: false, message: `Order '${input.orderNumberOrId}' not found.` };
     }
 
-    await db.orderItem.deleteMany({ where: { orderId: order.id } });
-    await db.order.delete({ where: { id: order.id } });
+    // A DRAFT order was never confirmed and nothing downstream depends on it,
+    // so a hard delete is safe. Anything further along (CONFIRMED or later)
+    // is cancelled instead — same as the UI, which never hard-deletes a real
+    // order — to preserve the audit trail and free its demand for re-planning.
+    if (order.status === OrderStatus.DRAFT) {
+      await db.orderItem.deleteMany({ where: { orderId: order.id } });
+      await db.order.delete({ where: { id: order.id } });
+
+      revalidatePath("/orders");
+      revalidateTag(DASHBOARD_TAG);
+      revalidatePath("/deckle");
+
+      return {
+        success: true,
+        message: `Deleted draft Sales Order #${order.orderNumber} and all its line items.`,
+        actionTaken: "DELETE_ORDER",
+      };
+    }
+
+    if (order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.CANCELLED) {
+      return {
+        success: false,
+        message: `Order #${order.orderNumber} is already ${order.status} and cannot be removed.`,
+      };
+    }
+
+    const cancelled = await db.order.update({
+      where: { id: order.id },
+      data: { status: OrderStatus.CANCELLED },
+    });
 
     revalidatePath("/orders");
     revalidateTag(DASHBOARD_TAG);
@@ -317,8 +338,9 @@ export async function agentDeleteOrder(input: { orderNumberOrId: string }) {
 
     return {
       success: true,
-      message: `Deleted Sales Order #${order.orderNumber} and all its line items.`,
-      actionTaken: "DELETE_ORDER",
+      message: `Order #${order.orderNumber} was already ${order.status}, so it was cancelled instead of deleted (its history is kept).`,
+      actionTaken: "CANCEL_ORDER",
+      data: cancelled,
     };
   } catch (err: any) {
     return { success: false, message: "Failed to delete order", error: err.message };
@@ -376,6 +398,7 @@ export async function agentCreateClient(input: {
   email?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.CLIENT_WRITE);
     const code =
       input.code ||
       input.name
@@ -423,6 +446,7 @@ export async function agentUpdateClient(input: {
   email?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.CLIENT_WRITE);
     const client = await db.client.findFirst({
       where: { OR: [{ id: input.idOrCode }, { code: input.idOrCode }] },
     });
@@ -456,6 +480,7 @@ export async function agentUpdateClient(input: {
 
 export async function agentDeleteClient(input: { idOrCode: string }) {
   try {
+    await requireRole(...AGENT_ROLE.CLIENT_WRITE);
     const client = await db.client.findFirst({
       where: { OR: [{ id: input.idOrCode }, { code: input.idOrCode }] },
     });
@@ -546,6 +571,7 @@ export async function agentCreateStockReel(input: {
   orderItemId?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.STOCK_WRITE);
     const { reelNumberPrefix } = await getSystemSettings();
     const reel = await db.$transaction(async (tx) => {
       const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
@@ -581,6 +607,7 @@ export async function agentUpdateStockReel(input: {
   quantityKg?: number;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.STOCK_WRITE);
     const reel = await db.stockItem.findFirst({ where: { id: input.id } });
     if (!reel) return { success: false, message: `Stock reel '${input.id}' not found.` };
 
@@ -607,11 +634,40 @@ export async function agentUpdateStockReel(input: {
 
 export async function agentDeleteStockReel(input: { id: string }) {
   try {
+    await requireRole(...AGENT_ROLE.STOCK_WRITE);
+    const reel = await db.stockItem.findFirst({ where: { id: input.id } });
+    if (!reel) return { success: false, message: `Stock reel '${input.id}' not found.` };
+    if (reel.status !== StockStatus.AVAILABLE) {
+      return {
+        success: false,
+        message: `Reel ${reel.reelNumber || reel.id} is ${reel.status}, not AVAILABLE — deallocate it from the Stock screen before deleting so the order/dispatch it's tied to isn't left inconsistent.`,
+      };
+    }
     await db.stockItem.delete({ where: { id: input.id } });
     revalidatePath("/inventory");
-    return { success: true, message: `Deleted stock reel '${input.id}'.`, actionTaken: "DELETE_STOCK_REEL" };
+    return { success: true, message: `Deleted stock reel '${reel.reelNumber || input.id}'.`, actionTaken: "DELETE_STOCK_REEL" };
   } catch (err: any) {
     return { success: false, message: "Failed to delete stock reel", error: err.message };
+  }
+}
+
+export async function agentAllocateStockToOrderItem(input: {
+  stockItemId: string;
+  orderItemId: string;
+}) {
+  try {
+    const result = await allocateStockToOrderItem(input.stockItemId, input.orderItemId);
+    revalidatePath("/inventory");
+    revalidatePath("/orders");
+    revalidateTag(DASHBOARD_TAG);
+    return {
+      success: true,
+      message: `Allocated reel ${(result.updatedStock as any).reelNumber || result.updatedStock.id} to the order line — order item is now at ${Number(result.updatedOrderItem.producedKg)} kg produced.`,
+      actionTaken: "ALLOCATE_STOCK",
+      data: result,
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to allocate stock to order", error: err.message };
   }
 }
 
@@ -661,6 +717,7 @@ export async function agentCreateStockPreset(input: {
   defaultLocation?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.PRESET_WRITE);
     const stdWeight = input.standardWeightKg || input.widthInch * 14.0;
     const code =
       input.code ||
@@ -694,6 +751,7 @@ export async function agentCreateStockPreset(input: {
 
 export async function agentDeleteStockPreset(input: { idOrCode: string }) {
   try {
+    await requireRole(...AGENT_ROLE.PRESET_WRITE);
     const preset = await db.stockPreset.findFirst({
       where: { OR: [{ id: input.idOrCode }, { code: input.idOrCode }] },
     });
@@ -755,33 +813,84 @@ export async function agentGetProductionRuns(params: {
   }
 }
 
+/**
+ * Routes through the SAME lifecycle functions the UI uses (releaseRunToFloor /
+ * startProductionRun / completeProductionRun / cancelProductionRun) instead of
+ * flipping the `status` column directly — a raw flip to COMPLETED would skip
+ * creating the finished-goods stock reels and updating order fulfillment,
+ * silently leaving the order underproduced despite showing a completed run.
+ */
 export async function agentUpdateProductionRunStatus(input: {
   runNumberOrId: string;
   status: RunStatus;
+  /** Required to move to COMPLETED — actual output weight in kg. */
+  actualKg?: number;
+  /** Trim/edge waste in kg, for a COMPLETED transition. */
+  trimWasteKg?: number;
+  wastageReason?: string;
+  /** For a CANCELLED transition. */
+  reason?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.RUN_WRITE);
     const run = await db.productionRun.findFirst({
       where: { OR: [{ id: input.runNumberOrId }, { runNumber: input.runNumberOrId }] },
     });
     if (!run) return { success: false, message: `Production run '${input.runNumberOrId}' not found.` };
 
-    const updated = await db.productionRun.update({
-      where: { id: run.id },
-      data: {
-        status: input.status,
-        ...(input.status === RunStatus.RUNNING && !run.startedAt ? { startedAt: new Date() } : {}),
-        ...(input.status === RunStatus.COMPLETED && !run.completedAt ? { completedAt: new Date() } : {}),
-      },
-    });
-
-    revalidatePath("/production");
-    revalidatePath(`/production/${run.id}`);
-    return {
-      success: true,
-      message: `Updated Production Run #${run.runNumber} status to ${input.status}.`,
-      actionTaken: "UPDATE_RUN_STATUS",
-      data: updated,
-    };
+    switch (input.status) {
+      case RunStatus.RELEASED: {
+        const updated = await releaseRunToFloor(run.id);
+        return {
+          success: true,
+          message: `Production Run #${run.runNumber} released to the floor.`,
+          actionTaken: "RELEASE_RUN",
+          data: updated,
+        };
+      }
+      case RunStatus.RUNNING: {
+        const updated = await startProductionRun(run.id);
+        return {
+          success: true,
+          message: `Production Run #${run.runNumber} started.`,
+          actionTaken: "START_RUN",
+          data: updated,
+        };
+      }
+      case RunStatus.COMPLETED: {
+        if (!input.actualKg || input.actualKg <= 0) {
+          return {
+            success: false,
+            message: `Completing a run needs the actual output weight (actualKg) — planned was ${Number(run.totalPlannedKg)} kg. Ask the user for the real figure rather than assuming it matches plan.`,
+          };
+        }
+        const updated = await completeProductionRun({
+          runId: run.id,
+          actualKg: input.actualKg,
+          trimWasteKg: input.trimWasteKg || 0,
+          wastageReason: input.wastageReason,
+        });
+        return {
+          success: true,
+          message: `Production Run #${run.runNumber} marked complete: ${input.actualKg} kg actual output, finished reels created and credited to their orders.`,
+          actionTaken: "COMPLETE_RUN",
+          data: updated,
+        };
+      }
+      case RunStatus.CANCELLED: {
+        await cancelProductionRun(run.id, input.reason);
+        return {
+          success: true,
+          message: `Production Run #${run.runNumber} cancelled. Its demand items were reverted to CONFIRMED for re-planning.`,
+          actionTaken: "CANCEL_RUN",
+        };
+      }
+      default:
+        return {
+          success: false,
+          message: `'${input.status}' is not a supported transition from here. Valid targets: RELEASED, RUNNING, COMPLETED, CANCELLED.`,
+        };
+    }
   } catch (err: any) {
     return { success: false, message: "Failed to update run status", error: err.message };
   }
@@ -789,10 +898,25 @@ export async function agentUpdateProductionRunStatus(input: {
 
 export async function agentDeleteProductionRun(input: { runNumberOrId: string }) {
   try {
+    await requireRole(...AGENT_ROLE.RUN_WRITE);
     const run = await db.productionRun.findFirst({
       where: { OR: [{ id: input.runNumberOrId }, { runNumber: input.runNumberOrId }] },
     });
     if (!run) return { success: false, message: `Production run '${input.runNumberOrId}' not found.` };
+
+    // Once a run has started, RUNNING/COMPLETED carry real consequences
+    // (started machine, or credited stock/order fulfillment) that a raw
+    // delete would silently orphan. Only a PLANNED run — nothing has
+    // happened yet — is safe to hard-delete; anything active gets cancelled
+    // instead, same as the UI.
+    if (run.status !== RunStatus.PLANNED && run.status !== RunStatus.CANCELLED) {
+      await cancelProductionRun(run.id, "Cancelled via PaperMill AI instead of deletion (run had already started).");
+      return {
+        success: true,
+        message: `Production Run #${run.runNumber} was ${run.status}, so it was cancelled instead of deleted — its demand items are back to CONFIRMED for re-planning.`,
+        actionTaken: "CANCEL_RUN",
+      };
+    }
 
     await db.productionRun.delete({ where: { id: run.id } });
     revalidatePath("/production");
@@ -846,6 +970,7 @@ export async function agentCreateWastageLog(input: {
   runNumberOrId?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.WASTAGE_WRITE);
     let runId: string | null = null;
     if (input.runNumberOrId) {
       const run = await db.productionRun.findFirst({
@@ -919,6 +1044,7 @@ export async function agentCreateMachine(input: {
   speedMpm?: number;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.MACHINE_WRITE);
     const machine = await db.machine.create({
       data: {
         name: input.name,
@@ -954,6 +1080,7 @@ export async function agentUpdateMachine(input: {
   speedMpm?: number;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.MACHINE_WRITE);
     const machine = await db.machine.findFirst({
       where: { OR: [{ id: input.codeOrId }, { code: input.codeOrId }] },
     });
@@ -1026,6 +1153,7 @@ export async function agentCreateTruck(input: {
   transporterNameOrId?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.TRUCK_WRITE);
     let transporterId: string | null = null;
     if (input.transporterNameOrId) {
       const trans = await db.transporter.findFirst({
@@ -1067,6 +1195,7 @@ export async function agentCreateLoadBatch(input: {
   notes?: string;
 }) {
   try {
+    await requireRole(...AGENT_ROLE.LOGISTICS_WRITE);
     const batchNumber = `LB-${Date.now().toString().slice(-6)}`;
     let truckId: string | null = null;
     if (input.truckRegistration) {
@@ -1138,6 +1267,8 @@ export async function agentGetInvoices(params: { status?: InvoiceStatus; limit?:
 export async function agentUpdateInvoiceStatus(input: {
   invoiceNumberOrId: string;
   status: InvoiceStatus;
+  /** Required to cancel an invoice. */
+  reason?: string;
 }) {
   try {
     const invoice = await db.invoice.findFirst({
@@ -1145,6 +1276,21 @@ export async function agentUpdateInvoiceStatus(input: {
     });
     if (!invoice) return { success: false, message: `Invoice '${input.invoiceNumberOrId}' not found.` };
 
+    if (input.status === InvoiceStatus.CANCELLED) {
+      if (!input.reason?.trim()) {
+        return { success: false, message: "Cancelling an invoice needs a reason — ask the user for one." };
+      }
+      const { cancelInvoice } = await import("./invoice-service");
+      const updated = await cancelInvoice(invoice.id, input.reason.trim());
+      return {
+        success: true,
+        message: `Cancelled Invoice #${invoice.invoiceNumber}: ${input.reason.trim()}.`,
+        actionTaken: "CANCEL_INVOICE",
+        data: updated,
+      };
+    }
+
+    await requireRole(...AGENT_ROLE.INVOICE_CANCEL);
     const updated = await db.invoice.update({
       where: { id: invoice.id },
       data: { status: input.status },
@@ -1159,6 +1305,35 @@ export async function agentUpdateInvoiceStatus(input: {
     };
   } catch (err: any) {
     return { success: false, message: "Failed to update invoice", error: err.message };
+  }
+}
+
+export async function agentCreateInvoicesFromDispatch(input: { dispatchNumberOrId: string }) {
+  try {
+    const dispatch = await db.dispatch.findFirst({
+      where: { OR: [{ id: input.dispatchNumberOrId }, { dispatchNumber: input.dispatchNumberOrId }] },
+    });
+    if (!dispatch) {
+      return { success: false, message: `Dispatch '${input.dispatchNumberOrId}' not found.` };
+    }
+    const { createInvoicesFromDispatch } = await import("./invoice-service");
+    const invoices = await createInvoicesFromDispatch(dispatch.id);
+    revalidatePath("/invoices");
+    revalidatePath("/dispatch/history");
+    return {
+      success: true,
+      message: `Generated ${invoices.length} invoice(s) from Dispatch #${dispatch.dispatchNumber}: ${invoices.map((i) => i.invoiceNumber).join(", ")}.`,
+      actionTaken: "CREATE_INVOICES_FROM_DISPATCH",
+      data: invoices.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        client: (inv as any).client?.name,
+        totalAmount: Number(inv.totalAmount),
+        status: inv.status,
+      })),
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to generate invoices from dispatch", error: err.message };
   }
 }
 
@@ -1327,5 +1502,82 @@ export async function agentGetPendingDispatches() {
     };
   } catch (err: any) {
     return { success: false, message: "Failed to load pending dispatches", error: err.message };
+  }
+}
+
+export async function agentGetDispatchHistory(params?: { vehicleNumber?: string; limit?: number }) {
+  try {
+    const { getDispatchHistory } = await import("./dispatch-service");
+    const res = await getDispatchHistory({
+      page: 1,
+      pageSize: params?.limit || 15,
+      vehicleNumber: params?.vehicleNumber,
+    });
+    return {
+      success: true,
+      message: `Found ${res.rows.length} dispatch(es).`,
+      data: (res.rows as any[]).map((d) => ({
+        id: d.id,
+        dispatchNumber: d.dispatchNumber,
+        gatePassNumber: d.gatePassNumber,
+        vehicleNumber: d.vehicleNumber,
+        driverName: d.driverName,
+        totalDispatchedKg: Number(d.totalDispatchedKg),
+        dispatchedAt: d.dispatchedAt,
+        batchNumber: d.loadBatch?.batchNumber,
+        batchStatus: d.loadBatch?.status,
+        clients: Array.from(new Set((d.loadBatch?.orders || []).map((o: any) => o.order.client.name))),
+        invoicesCount: d.invoices?.length ?? 0,
+      })),
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to load dispatch history", error: err.message };
+  }
+}
+
+export async function agentMarkDispatchDelivered(input: { dispatchNumberOrId: string }) {
+  try {
+    const dispatch = await db.dispatch.findFirst({
+      where: { OR: [{ id: input.dispatchNumberOrId }, { dispatchNumber: input.dispatchNumberOrId }] },
+    });
+    if (!dispatch) {
+      return { success: false, message: `Dispatch '${input.dispatchNumberOrId}' not found.` };
+    }
+    const { markDispatchDelivered } = await import("./dispatch-service");
+    await markDispatchDelivered(dispatch.id);
+    return {
+      success: true,
+      message: `Dispatch #${dispatch.dispatchNumber} marked DELIVERED — delivery WhatsApp notifications enqueued for every client on the load.`,
+      actionTaken: "MARK_DISPATCH_DELIVERED",
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to mark dispatch delivered", error: err.message };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 13. ANALYTICS
+// -----------------------------------------------------------------------------
+
+export async function agentGetAnalytics(params?: {
+  timeRange?: "last_3_months" | "last_6_months" | "last_12_months" | "this_year";
+}) {
+  try {
+    const { getAnalyticsData } = await import("./analytics-service");
+    const data = await getAnalyticsData({ timeRange: params?.timeRange || "last_6_months" });
+    return {
+      success: true,
+      message: "Mill analytics summary.",
+      data: {
+        kpis: data.kpis,
+        monthlyTrends: data.monthlyTrends,
+        wastageBreakdown: data.wastageBreakdown,
+        gsmDistribution: data.gsmDistribution,
+        machinePerformance: data.machinePerformance,
+        topClients: data.topClients,
+      },
+    };
+  } catch (err: any) {
+    return { success: false, message: "Failed to load analytics", error: err.message };
   }
 }

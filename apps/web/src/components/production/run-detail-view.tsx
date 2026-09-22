@@ -3,11 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { RunStatus, Role, LengthUnit } from "@/generated/prisma/browser";
+import { RunStatus, Role, LengthUnit, PostProductionMode } from "@/generated/prisma/browser";
 import { formatWeightKg, formatTrimPercent, formatWidthInch } from "@/lib/utils";
 import {
   releaseRunToFloor,
   cancelProductionRun,
+  startProductionRun,
+  completeProductionRun,
 } from "@/server/services/production-service";
 import dynamic from "next/dynamic";
 import { PatternBar } from "@/components/deckle/pattern-bar";
@@ -42,6 +44,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Factory,
@@ -71,6 +81,16 @@ export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: 
   const [isTransitioning, setIsTransitioning] = React.useState(false);
   const [cancelModalOpen, setCancelModalOpen] = React.useState(false);
   const [cancelReason, setCancelReason] = React.useState("");
+  const [completeModalOpen, setCompleteModalOpen] = React.useState(false);
+  const [completeActualKg, setCompleteActualKg] = React.useState(
+    String(Number(run.totalPlannedKg) || 0)
+  );
+  const [completeTrimKg, setCompleteTrimKg] = React.useState("0");
+  const [completeWastageReason, setCompleteWastageReason] = React.useState("");
+  const [completeDestination, setCompleteDestination] = React.useState<PostProductionMode | "DEFAULT">(
+    "DEFAULT"
+  );
+  const [completeFeedback, setCompleteFeedback] = React.useState("");
   // Run-card display unit — starts at the mill's default, toggleable per viewing.
   const [displayUnit, setDisplayUnit] = React.useState<LengthUnit>(defaultUnit);
 
@@ -89,6 +109,46 @@ export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: 
       router.refresh();
     } catch (err: any) {
       toast.error(err.message || "Failed to release run");
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
+
+  const handleStart = async () => {
+    setIsTransitioning(true);
+    try {
+      await startProductionRun(run.id);
+      toast.success(`Production Run #${run.runNumber} started.`);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to start run");
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
+
+  const handleConfirmComplete = async () => {
+    const actualKg = Number(completeActualKg);
+    const trimWasteKg = Number(completeTrimKg);
+    if (!actualKg || actualKg <= 0) {
+      toast.error("Enter the actual output weight.");
+      return;
+    }
+    setIsTransitioning(true);
+    try {
+      await completeProductionRun({
+        runId: run.id,
+        actualKg,
+        trimWasteKg: trimWasteKg || 0,
+        wastageReason: completeWastageReason.trim() || undefined,
+        destination: completeDestination === "DEFAULT" ? undefined : completeDestination,
+        feedback: completeFeedback.trim() || undefined,
+      });
+      toast.success(`Production Run #${run.runNumber} marked complete.`);
+      setCompleteModalOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to complete run");
     } finally {
       setIsTransitioning(false);
     }
@@ -186,6 +246,29 @@ export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: 
             >
               {isTransitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Release to Floor
+            </Button>
+          )}
+
+          {run.status === RunStatus.RELEASED && canManage && (
+            <Button
+              size="sm"
+              disabled={isTransitioning}
+              onClick={handleStart}
+              className="h-10 px-5 rounded-xl bg-[#161622] hover:bg-[#202030] text-white font-bold text-xs shadow-sm gap-1.5 transition-all"
+            >
+              {isTransitioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              Start Run
+            </Button>
+          )}
+
+          {(run.status === RunStatus.RELEASED || run.status === RunStatus.RUNNING) && canManage && (
+            <Button
+              size="sm"
+              disabled={isTransitioning}
+              onClick={() => setCompleteModalOpen(true)}
+              className="h-10 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-sm gap-1.5 transition-all"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Mark Complete
             </Button>
           )}
 
@@ -503,6 +586,117 @@ export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: 
                 </>
               ) : (
                 "Confirm Cancel Run"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Run Dialog — lets a dashboard user (admin/planner) mark a run
+          complete without needing to be on the floor tablet. */}
+      <Dialog open={completeModalOpen} onOpenChange={setCompleteModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2 text-emerald-700">
+              <CheckCircle2 className="h-5 w-5" />
+              <DialogTitle className="text-base font-bold">
+                Mark Run #{run.runNumber} Complete
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              Records actual output, creates the finished reels, and updates order fulfillment —
+              same as completing from the floor tablet.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold">Actual Output (kg) *</label>
+                <Input
+                  type="number"
+                  step="any"
+                  min={0}
+                  value={completeActualKg}
+                  onChange={(e) => setCompleteActualKg(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold">Trim Waste (kg)</label>
+                <Input
+                  type="number"
+                  step="any"
+                  min={0}
+                  value={completeTrimKg}
+                  onChange={(e) => setCompleteTrimKg(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold">Wastage Reason (Optional)</label>
+              <Input
+                placeholder="e.g. Edge trim, machine calibration"
+                value={completeWastageReason}
+                onChange={(e) => setCompleteWastageReason(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold">Finished Reels Destination</label>
+              <Select
+                value={completeDestination}
+                onValueChange={(v) => setCompleteDestination(v as PostProductionMode | "DEFAULT")}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEFAULT" className="text-xs">Use mill default</SelectItem>
+                  <SelectItem value={PostProductionMode.AUTO_DISPATCH} className="text-xs">
+                    Auto-allocate to sales orders
+                  </SelectItem>
+                  <SelectItem value={PostProductionMode.INVENTORY} className="text-xs">
+                    Store in inventory
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold">Notes (Optional)</label>
+              <Textarea
+                placeholder="Any notes on this run's completion"
+                rows={2}
+                value={completeFeedback}
+                onChange={(e) => setCompleteFeedback(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isTransitioning}
+              onClick={() => setCompleteModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={isTransitioning}
+              onClick={handleConfirmComplete}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+            >
+              {isTransitioning ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Completing...
+                </>
+              ) : (
+                "Confirm Complete"
               )}
             </Button>
           </DialogFooter>
