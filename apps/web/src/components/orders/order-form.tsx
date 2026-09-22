@@ -30,7 +30,7 @@ const NEW_ITEM_DEFAULTS = {
   numberOfReels: null as number | null,
   remark: "",
   quantityKg: 3000,
-  tolerancePercent: 5.0,
+  tolerancePercent: 0,
   ratePerKg: null as number | null,
   amount: null as number | null,
 };
