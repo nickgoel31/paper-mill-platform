@@ -187,8 +187,42 @@ export async function getLoadBatchLoadingSheetData(loadBatchId: string) {
     return lo.order.client;
   });
 
+  // The loading sheet must reflect the physical reels actually allocated to
+  // each order line, not the order's demanded quantity — a demand of 500kg
+  // might be covered by two real reels of 240kg and 260kg, and that's what
+  // gets weighed and loaded onto the truck.
+  const orderItemIds = batch.orders.flatMap((lo) => lo.order.items.map((it) => it.id));
+  const allocatedStockItems = orderItemIds.length
+    ? await db.stockItem.findMany({
+        where: {
+          orderItemId: { in: orderItemIds },
+          status: { in: [StockStatus.ALLOCATED, StockStatus.DISPATCHED] },
+        },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const stockItemsByOrderItemId = new Map<string, typeof allocatedStockItems>();
+  for (const si of allocatedStockItems) {
+    if (!si.orderItemId) continue;
+    const list = stockItemsByOrderItemId.get(si.orderItemId) || [];
+    list.push(si);
+    stockItemsByOrderItemId.set(si.orderItemId, list);
+  }
+
+  const ordersWithAllocatedReels = batch.orders.map((lo) => ({
+    ...lo,
+    order: {
+      ...lo.order,
+      items: lo.order.items.map((it) => ({
+        ...it,
+        allocatedStockItems: stockItemsByOrderItemId.get(it.id) || [],
+      })),
+    },
+  }));
+
   return {
     ...batch,
+    orders: ordersWithAllocatedReels,
     distinctClients,
   };
 }

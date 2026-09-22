@@ -23,6 +23,14 @@ const RunCardPdfButton = dynamic(() => import("./run-card-pdf-button"), {
     </Button>
   ),
 });
+const PatternListPdfButton = dynamic(() => import("./pattern-list-pdf-button"), {
+  ssr: false,
+  loading: () => (
+    <Button variant="outline" size="sm" disabled className="gap-1.5 text-xs font-bold">
+      Download Pattern List (PDF)
+    </Button>
+  ),
+});
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -236,6 +244,7 @@ export function RunDetailView({ run, userRole, defaultUnit = LengthUnit.INCH }: 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2.5">
           <RunCardPdfButton run={run} unit={displayUnit} />
+          <PatternListPdfButton run={run} unit={displayUnit} />
 
           {run.status === RunStatus.PLANNED && canManage && (
             <Button

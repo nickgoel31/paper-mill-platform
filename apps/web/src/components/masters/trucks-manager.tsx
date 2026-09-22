@@ -201,13 +201,14 @@ export function TrucksManager({
   const onSubmitTransporter = async (values: TransporterFormInput) => {
     setIsSubmitting(true);
     try {
-      if (editingTransporter) {
-        await updateTransporter(editingTransporter.id, values);
-        toast.success(`Transporter "${values.name}" updated.`);
-      } else {
-        await createTransporter(values);
-        toast.success(`Transporter "${values.name}" created.`);
+      const result = editingTransporter
+        ? await updateTransporter(editingTransporter.id, values)
+        : await createTransporter(values);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(`Transporter "${values.name}" ${editingTransporter ? "updated" : "created"}.`);
       setTransporterSheetOpen(false);
       fetchTransporters(transportersPage, transportersSearch);
     } catch (err: any) {
@@ -260,13 +261,14 @@ export function TrucksManager({
   const onSubmitTruck = async (values: TruckFormInput) => {
     setIsSubmitting(true);
     try {
-      if (editingTruck) {
-        await updateTruck(editingTruck.id, values);
-        toast.success(`Truck "${values.registrationNumber}" updated.`);
-      } else {
-        await createTruck(values);
-        toast.success(`Truck "${values.registrationNumber}" registered.`);
+      const result = editingTruck
+        ? await updateTruck(editingTruck.id, values)
+        : await createTruck(values);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
       }
+      toast.success(`Truck "${values.registrationNumber}" ${editingTruck ? "updated" : "registered"}.`);
       setTruckSheetOpen(false);
       fetchTrucks(trucksPage, trucksSearch);
     } catch (err: any) {

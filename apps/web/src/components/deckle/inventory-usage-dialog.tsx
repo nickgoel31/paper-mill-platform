@@ -13,31 +13,32 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
 import type { InventoryAllocation } from "@/lib/deckle-inventory-match";
-import { Boxes, CheckCircle2, RotateCcw, Loader2 } from "lucide-react";
+import { Boxes, CheckCircle2, Loader2 } from "lucide-react";
 
 interface InventoryUsageDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   allocations: InventoryAllocation[];
   isBusy?: boolean;
-  /** Keep every listed reel allocated. */
-  onApprove: () => void;
-  /** Re-run the plan without these reels (the ones the user unticked). */
-  onRerun: (excludedReelIds: string[]) => void;
+  /**
+   * Confirms the selection in one step: ticked reels are allocated as listed;
+   * any unticked reels have their demand automatically folded back into the
+   * cutting plan (re-solved if needed) — no separate re-run step required.
+   */
+  onConfirm: (keptStockItemIds: string[]) => void;
 }
 
 /**
  * Shown on the results step when free inventory was used instead of new
- * production. The planner either approves the allocation as listed, or unticks
- * reels and re-runs the plan without them.
+ * production. Tick exactly the reels you want to take from inventory; the
+ * rest go back into production automatically on confirm.
  */
 export function InventoryUsageDialog({
   open,
   onOpenChange,
   allocations,
   isBusy = false,
-  onApprove,
-  onRerun,
+  onConfirm,
 }: InventoryUsageDialogProps) {
   const [ticked, setTicked] = React.useState<Set<string>>(new Set());
 
@@ -79,9 +80,9 @@ export function InventoryUsageDialog({
             </DialogTitle>
           </div>
           <DialogDescription className="text-xs">
-            These free reels in inventory match your sales orders exactly (width and GSM), so they
-            were assigned to them and taken out of the cutting plan. Untick any you don&apos;t want
-            to use and re-run — those orders will go back into production.
+            These free reels in inventory match your sales orders exactly (width and GSM). Tick the
+            ones you want to allocate from stock — anything you leave unticked goes back into the
+            cutting plan automatically.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,29 +135,15 @@ export function InventoryUsageDialog({
         <DialogFooter className="gap-2 sm:gap-2 pt-1">
           <Button
             type="button"
-            variant="outline"
             size="sm"
-            disabled={isBusy || unticked.length === 0}
-            onClick={() => onRerun(unticked.map((a) => a.stockItemId))}
-            className="gap-1.5"
-          >
-            {isBusy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RotateCcw className="h-4 w-4" />
-            )}
-            Re-run without {unticked.length > 0 ? unticked.length : "unticked"} reel
-            {unticked.length === 1 ? "" : "s"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={isBusy || unticked.length > 0}
-            onClick={onApprove}
+            disabled={isBusy || ticked.size === 0}
+            onClick={() => onConfirm(Array.from(ticked))}
             className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
-            title={unticked.length > 0 ? "Re-run to apply your changes before approving" : undefined}
           >
-            <CheckCircle2 className="h-4 w-4" /> Approve allocation
+            {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            {unticked.length > 0
+              ? `Allocate ${ticked.size} & Replan ${unticked.length} Reel${unticked.length === 1 ? "" : "s"}`
+              : "Approve Allocation"}
           </Button>
         </DialogFooter>
       </DialogContent>

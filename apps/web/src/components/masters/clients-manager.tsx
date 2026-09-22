@@ -219,13 +219,16 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
   const onSubmit = async (values: ClientFormInput) => {
     setIsSubmitting(true);
     try {
-      if (editingClient) {
-        await updateClient(editingClient.id, values);
-        toast.success(`Client "${values.name}" updated successfully.`);
-      } else {
-        await createClient(values);
-        toast.success(`Client "${values.name}" created successfully.`);
+      const result = editingClient
+        ? await updateClient(editingClient.id, values)
+        : await createClient(values);
+
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
       }
+
+      toast.success(`Client "${values.name}" ${editingClient ? "updated" : "created"} successfully.`);
       setSheetOpen(false);
       fetchData(page, search);
     } catch (err: any) {

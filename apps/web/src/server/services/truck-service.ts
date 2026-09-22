@@ -59,80 +59,101 @@ export async function getTransporters(params: QueryParams) {
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function createTransporter(data: TransporterFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = transporterSchema.parse(data);
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = transporterSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
 
-  const transporter = await db.$transaction(async (tx) => {
-    const created = await tx.transporter.create({
-      data: {
-        name: validated.name.trim(),
-        phone: validated.phone.trim(),
-        gstin: validated.gstin || null,
-        isActive: validated.isActive,
-        createdById: userId,
-      },
+    const transporter = await db.$transaction(async (tx) => {
+      const created = await tx.transporter.create({
+        data: {
+          name: validated.name.trim(),
+          phone: validated.phone.trim(),
+          gstin: validated.gstin || null,
+          isActive: validated.isActive,
+          createdById: userId,
+        },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Transporter",
+          entityId: created.id,
+          action: "CREATE",
+          after: created,
+        },
+        tx
+      );
+
+      return created;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Transporter",
-        entityId: created.id,
-        action: "CREATE",
-        after: created,
-      },
-      tx
-    );
-
-    return created;
-  });
-
-  revalidatePath("/masters/trucks");
-  revalidateTag(LOOKUP_TAGS.trucks);
-  revalidateTag(LOOKUP_TAGS.transporters);
-  return transporter;
+    revalidatePath("/masters/trucks");
+    revalidateTag(LOOKUP_TAGS.trucks);
+    revalidateTag(LOOKUP_TAGS.transporters);
+    return { transporter };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create transporter." };
+  }
 }
 
 export async function updateTransporter(id: string, data: TransporterFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = transporterSchema.parse(data);
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = transporterSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
 
-  const existing = await db.transporter.findFirst({ where: { id } });
-  if (!existing || existing.deletedAt) {
-    throw new Error("Transporter not found.");
-  }
+    const existing = await db.transporter.findFirst({ where: { id } });
+    if (!existing || existing.deletedAt) {
+      return { error: "Transporter not found." };
+    }
 
-  const updated = await db.$transaction(async (tx) => {
-    const res = await tx.transporter.update({
-      where: { id },
-      data: {
-        name: validated.name.trim(),
-        phone: validated.phone.trim(),
-        gstin: validated.gstin || null,
-        isActive: validated.isActive,
-      },
+    const updated = await db.$transaction(async (tx) => {
+      const res = await tx.transporter.update({
+        where: { id },
+        data: {
+          name: validated.name.trim(),
+          phone: validated.phone.trim(),
+          gstin: validated.gstin || null,
+          isActive: validated.isActive,
+        },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Transporter",
+          entityId: id,
+          action: "UPDATE",
+          before: existing,
+          after: res,
+        },
+        tx
+      );
+
+      return res;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Transporter",
-        entityId: id,
-        action: "UPDATE",
-        before: existing,
-        after: res,
-      },
-      tx
-    );
-
-    return res;
-  });
-
-  revalidatePath("/masters/trucks");
-  revalidateTag(LOOKUP_TAGS.trucks);
-  revalidateTag(LOOKUP_TAGS.transporters);
-  return updated;
+    revalidatePath("/masters/trucks");
+    revalidateTag(LOOKUP_TAGS.trucks);
+    revalidateTag(LOOKUP_TAGS.transporters);
+    return { transporter: updated };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update transporter." };
+  }
 }
 
 export async function deleteTransporter(id: string) {
@@ -232,102 +253,114 @@ export async function getTrucks(params: QueryParams) {
 }
 
 export async function createTruck(data: TruckFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = truckSchema.parse(data);
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = truckSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
 
-  // Check unique registration number
-  const existing = await db.truck.findFirst({
-    where: { registrationNumber: validated.registrationNumber },
-  });
-  if (existing && !existing.deletedAt) {
-    throw new Error(
-      `Truck with registration "${validated.registrationNumber}" already exists.`
-    );
-  }
+    // Check unique registration number
+    const existing = await db.truck.findFirst({
+      where: { registrationNumber: validated.registrationNumber },
+    });
+    if (existing && !existing.deletedAt) {
+      return { error: `Truck with registration "${validated.registrationNumber}" already exists.` };
+    }
 
-  const truck = await db.$transaction(async (tx) => {
-    const created = await tx.truck.create({
-      data: {
-        registrationNumber: validated.registrationNumber,
-        capacityKg: validated.capacityKg,
-        transporterId: validated.transporterId || null,
-        isActive: validated.isActive,
-        createdById: userId,
-      },
-      include: { owner: true },
+    const truck = await db.$transaction(async (tx) => {
+      const created = await tx.truck.create({
+        data: {
+          registrationNumber: validated.registrationNumber,
+          capacityKg: validated.capacityKg,
+          transporterId: validated.transporterId || null,
+          isActive: validated.isActive,
+          createdById: userId,
+        },
+        include: { owner: true },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Truck",
+          entityId: created.id,
+          action: "CREATE",
+          after: created,
+        },
+        tx
+      );
+
+      return created;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Truck",
-        entityId: created.id,
-        action: "CREATE",
-        after: created,
-      },
-      tx
-    );
-
-    return created;
-  });
-
-  revalidatePath("/masters/trucks");
-  revalidateTag(LOOKUP_TAGS.trucks);
-  revalidateTag(LOOKUP_TAGS.transporters);
-  return truck;
+    revalidatePath("/masters/trucks");
+    revalidateTag(LOOKUP_TAGS.trucks);
+    revalidateTag(LOOKUP_TAGS.transporters);
+    return { truck };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create truck." };
+  }
 }
 
 export async function updateTruck(id: string, data: TruckFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = truckSchema.parse(data);
-
-  const existing = await db.truck.findFirst({ where: { id } });
-  if (!existing || existing.deletedAt) {
-    throw new Error("Truck not found.");
-  }
-
-  if (existing.registrationNumber !== validated.registrationNumber) {
-    const duplicate = await db.truck.findFirst({
-      where: { registrationNumber: validated.registrationNumber },
-    });
-    if (duplicate && duplicate.id !== id && !duplicate.deletedAt) {
-      throw new Error(
-        `Truck with registration "${validated.registrationNumber}" already exists.`
-      );
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = truckSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
     }
-  }
+    const validated = parsed.data;
 
-  const updated = await db.$transaction(async (tx) => {
-    const res = await tx.truck.update({
-      where: { id },
-      data: {
-        registrationNumber: validated.registrationNumber,
-        capacityKg: validated.capacityKg,
-        transporterId: validated.transporterId || null,
-        isActive: validated.isActive,
-      },
-      include: { owner: true },
+    const existing = await db.truck.findFirst({ where: { id } });
+    if (!existing || existing.deletedAt) {
+      return { error: "Truck not found." };
+    }
+
+    if (existing.registrationNumber !== validated.registrationNumber) {
+      const duplicate = await db.truck.findFirst({
+        where: { registrationNumber: validated.registrationNumber },
+      });
+      if (duplicate && duplicate.id !== id && !duplicate.deletedAt) {
+        return { error: `Truck with registration "${validated.registrationNumber}" already exists.` };
+      }
+    }
+
+    const updated = await db.$transaction(async (tx) => {
+      const res = await tx.truck.update({
+        where: { id },
+        data: {
+          registrationNumber: validated.registrationNumber,
+          capacityKg: validated.capacityKg,
+          transporterId: validated.transporterId || null,
+          isActive: validated.isActive,
+        },
+        include: { owner: true },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Truck",
+          entityId: id,
+          action: "UPDATE",
+          before: existing,
+          after: res,
+        },
+        tx
+      );
+
+      return res;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Truck",
-        entityId: id,
-        action: "UPDATE",
-        before: existing,
-        after: res,
-      },
-      tx
-    );
-
-    return res;
-  });
-
-  revalidatePath("/masters/trucks");
-  revalidateTag(LOOKUP_TAGS.trucks);
-  revalidateTag(LOOKUP_TAGS.transporters);
-  return updated;
+    revalidatePath("/masters/trucks");
+    revalidateTag(LOOKUP_TAGS.trucks);
+    revalidateTag(LOOKUP_TAGS.transporters);
+    return { truck: updated };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update truck." };
+  }
 }
 
 export async function deleteTruck(id: string) {

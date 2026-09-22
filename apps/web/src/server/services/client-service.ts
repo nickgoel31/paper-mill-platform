@@ -55,114 +55,136 @@ export async function getClients(params: QueryParams) {
   return buildPaginatedResponse(rows, total, Math.floor(skip / take) + 1, take);
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production (Next.js strips `.message` for anything not returned as plain
+ * data). Catching here and returning `{ error }` instead of throwing is what
+ * actually gets a readable message back to the toast.
+ */
 export async function createClient(data: ClientFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = clientSchema.parse(data);
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = clientSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
 
-  // Check unique code
-  const existing = await db.client.findFirst({
-    where: { code: validated.code },
-  });
-  if (existing) {
-    throw new Error(`Client code "${validated.code}" is already in use.`);
-  }
+    // Check unique code
+    const existing = await db.client.findFirst({
+      where: { code: validated.code },
+    });
+    if (existing) {
+      return { error: `Client code "${validated.code}" is already in use.` };
+    }
 
-  const client = await db.$transaction(async (tx) => {
-    const created = await tx.client.create({
-      data: {
-        name: validated.name.trim(),
-        code: validated.code.trim().toUpperCase(),
-        gstin: validated.gstin || null,
-        addressLine1: validated.addressLine1.trim(),
-        addressLine2: validated.addressLine2?.trim() || null,
-        city: validated.city.trim(),
-        state: validated.state,
-        pincode: validated.pincode.trim(),
-        contactPerson: validated.contactPerson?.trim() || null,
-        phone: validated.phone.trim(),
-        whatsappNumber: validated.whatsappNumber.trim(),
-        email: validated.email?.trim() || null,
-        isActive: validated.isActive,
-        createdById: userId,
-      },
+    const client = await db.$transaction(async (tx) => {
+      const created = await tx.client.create({
+        data: {
+          name: validated.name.trim(),
+          code: validated.code.trim().toUpperCase(),
+          gstin: validated.gstin || null,
+          addressLine1: validated.addressLine1.trim(),
+          addressLine2: validated.addressLine2?.trim() || null,
+          city: validated.city.trim(),
+          state: validated.state,
+          pincode: validated.pincode.trim(),
+          contactPerson: validated.contactPerson?.trim() || null,
+          phone: validated.phone.trim(),
+          whatsappNumber: validated.whatsappNumber.trim(),
+          email: validated.email?.trim() || null,
+          isActive: validated.isActive,
+          createdById: userId,
+        },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Client",
+          entityId: created.id,
+          action: "CREATE",
+          after: created,
+        },
+        tx
+      );
+
+      return created;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Client",
-        entityId: created.id,
-        action: "CREATE",
-        after: created,
-      },
-      tx
-    );
-
-    return created;
-  });
-
-  revalidatePath("/masters/clients");
-  revalidateTag(LOOKUP_TAGS.clients);
-  return client;
+    revalidatePath("/masters/clients");
+    revalidateTag(LOOKUP_TAGS.clients);
+    return { client };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create client." };
+  }
 }
 
 export async function updateClient(id: string, data: ClientFormInput) {
-  const { userId } = await requireRole(Role.ADMIN);
-  const validated = clientSchema.parse(data);
-
-  const existing = await db.client.findFirst({ where: { id } });
-  if (!existing || existing.deletedAt) {
-    throw new Error("Client not found or has been deleted.");
-  }
-
-  // Check unique code if changed
-  if (existing.code !== validated.code) {
-    const duplicate = await db.client.findFirst({
-      where: { code: validated.code },
-    });
-    if (duplicate && duplicate.id !== id) {
-      throw new Error(`Client code "${validated.code}" is already in use.`);
+  try {
+    const { userId } = await requireRole(Role.ADMIN);
+    const parsed = clientSchema.safeParse(data);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
     }
-  }
+    const validated = parsed.data;
 
-  const updated = await db.$transaction(async (tx) => {
-    const res = await tx.client.update({
-      where: { id },
-      data: {
-        name: validated.name.trim(),
-        code: validated.code.trim().toUpperCase(),
-        gstin: validated.gstin || null,
-        addressLine1: validated.addressLine1.trim(),
-        addressLine2: validated.addressLine2?.trim() || null,
-        city: validated.city.trim(),
-        state: validated.state,
-        pincode: validated.pincode.trim(),
-        contactPerson: validated.contactPerson?.trim() || null,
-        phone: validated.phone.trim(),
-        whatsappNumber: validated.whatsappNumber.trim(),
-        email: validated.email?.trim() || null,
-        isActive: validated.isActive,
-      },
+    const existing = await db.client.findFirst({ where: { id } });
+    if (!existing || existing.deletedAt) {
+      return { error: "Client not found or has been deleted." };
+    }
+
+    // Check unique code if changed
+    if (existing.code !== validated.code) {
+      const duplicate = await db.client.findFirst({
+        where: { code: validated.code },
+      });
+      if (duplicate && duplicate.id !== id) {
+        return { error: `Client code "${validated.code}" is already in use.` };
+      }
+    }
+
+    const updated = await db.$transaction(async (tx) => {
+      const res = await tx.client.update({
+        where: { id },
+        data: {
+          name: validated.name.trim(),
+          code: validated.code.trim().toUpperCase(),
+          gstin: validated.gstin || null,
+          addressLine1: validated.addressLine1.trim(),
+          addressLine2: validated.addressLine2?.trim() || null,
+          city: validated.city.trim(),
+          state: validated.state,
+          pincode: validated.pincode.trim(),
+          contactPerson: validated.contactPerson?.trim() || null,
+          phone: validated.phone.trim(),
+          whatsappNumber: validated.whatsappNumber.trim(),
+          email: validated.email?.trim() || null,
+          isActive: validated.isActive,
+        },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Client",
+          entityId: id,
+          action: "UPDATE",
+          before: existing,
+          after: res,
+        },
+        tx
+      );
+
+      return res;
     });
 
-    await logAudit(
-      {
-        userId,
-        entityType: "Client",
-        entityId: id,
-        action: "UPDATE",
-        before: existing,
-        after: res,
-      },
-      tx
-    );
-
-    return res;
-  });
-
-  revalidatePath("/masters/clients");
-  revalidateTag(LOOKUP_TAGS.clients);
-  return updated;
+    revalidatePath("/masters/clients");
+    revalidateTag(LOOKUP_TAGS.clients);
+    return { client: updated };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update client." };
+  }
 }
 
 export async function deleteClient(id: string) {

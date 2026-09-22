@@ -1,10 +1,16 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { confirmDispatch } from "@/server/services/dispatch-service";
+
+const LoadingSheetPdfButton = dynamic(
+  () => import("@/components/dispatch/loading-sheet-pdf-button"),
+  { ssr: false }
+);
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -48,12 +54,19 @@ interface LoadingSheetViewProps {
 export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
   const router = useRouter();
 
-  // Loaded Quantities state: map of orderItemId -> loadedKg
+  // Loaded Quantities state: map of orderItemId -> loadedKg. Defaults to the
+  // actual weight of the reels allocated to that line (what's physically
+  // sitting in the warehouse to load), not the order's demanded quantity —
+  // those two numbers can legitimately differ once real reels are matched.
   const [loadedQuantities, setLoadedQuantities] = React.useState<Record<string, number>>(() => {
     const map: Record<string, number> = {};
     batch.orders.forEach((lo: any) => {
       lo.order.items.forEach((it: any) => {
-        map[it.id] = Number(it.quantityKg);
+        const reels = it.allocatedStockItems as any[] | undefined;
+        const reelTotalKg = reels?.length
+          ? reels.reduce((s, r) => s + Number(r.quantityKg), 0)
+          : null;
+        map[it.id] = reelTotalKg ?? Number(it.quantityKg);
       });
     });
     return map;
@@ -189,6 +202,25 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
             <Printer className="h-4 w-4" /> Print Loading Sheet (A4)
           </Button>
 
+          <LoadingSheetPdfButton
+            batch={batch}
+            loadedQuantities={loadedQuantities}
+            vehicleNumber={vehicleNumber}
+            driverName={driverName}
+            driverPhone={driverPhone}
+            gatePassNumber={gatePassNumber}
+            dispatchedAt={dispatchedAt}
+            remarks={remarks}
+            consigneeName={consigneeName}
+            consigneeAddress={consigneeAddress}
+            voucherNumber={voucherNumber}
+            termsOfPayment={termsOfPayment}
+            termsOfDelivery={termsOfDelivery}
+            dispatchThrough={dispatchThrough}
+            destination={destination}
+            vesselFlightNo={vesselFlightNo}
+          />
+
           {!isAlreadyDispatched && (
             <Button
               type="button"
@@ -295,6 +327,7 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
                 <TableHead className="w-[40px] text-center">#</TableHead>
                 <TableHead>Order No.</TableHead>
                 <TableHead>Client & Destination</TableHead>
+                <TableHead>Reel No(s).</TableHead>
                 <TableHead className="text-right">Reel Size</TableHead>
                 <TableHead className="text-right">GSM</TableHead>
                 <TableHead className="text-right">Planned Qty</TableHead>
@@ -304,7 +337,15 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
             <TableBody>
               {batch.orders.flatMap((lo: any) =>
                 lo.order.items.map((it: any, itemIdx: number) => {
-                  const loadedVal = loadedQuantities[it.id] ?? Number(it.quantityKg);
+                  const reels = (it.allocatedStockItems as any[] | undefined) || [];
+                  const reelTotalKg = reels.length
+                    ? reels.reduce((s, r) => s + Number(r.quantityKg), 0)
+                    : null;
+                  const plannedQtyKg = reelTotalKg ?? Number(it.quantityKg);
+                  const loadedVal = loadedQuantities[it.id] ?? plannedQtyKg;
+                  const reelLabel = reels.length
+                    ? reels.map((r) => r.reelNumber || "—").join(", ")
+                    : "Not yet allocated";
 
                   return (
                     <TableRow key={it.id} className="text-xs">
@@ -320,6 +361,9 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
                           {lo.order.client.city}, {lo.order.client.state}
                         </div>
                       </TableCell>
+                      <TableCell className={`font-mono text-[11px] ${reels.length ? "text-slate-700" : "text-amber-600 font-bold"}`}>
+                        {reelLabel}
+                      </TableCell>
                       <TableCell className="text-right font-mono font-bold">
                         {formatWidthInch(it.widthInch)}
                       </TableCell>
@@ -327,7 +371,7 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
                         {it.gsm} GSM
                       </TableCell>
                       <TableCell className="text-right font-mono text-slate-700">
-                        {formatWeightKg(it.quantityKg)}
+                        {formatWeightKg(plannedQtyKg)}
                       </TableCell>
                       <TableCell className="text-right">
                         {isAlreadyDispatched ? (

@@ -225,8 +225,11 @@ export function DecklePlanningWorkspace({
     return map;
   }, [demandItems]);
 
-  // Execute Solver. `excludedReelIds` are inventory reels the planner declined to use.
-  const handleRunOptimization = async (excludedReelIds: string[] = []) => {
+  // Execute Solver. `excludedReelIds` are inventory reels the planner declined
+  // to use. `autoApproveInventory` skips reopening the confirmation dialog —
+  // used when the planner already made their reel selection and this re-run
+  // is just folding the leftover demand back into the cutting plan.
+  const handleRunOptimization = async (excludedReelIds: string[] = [], autoApproveInventory: boolean = false) => {
     if (selectedItems.length === 0) {
       toast.error("Please select at least one demand item for deckle planning.");
       return;
@@ -314,7 +317,16 @@ export function DecklePlanningWorkspace({
           `Optimization solved in ${(result.summary.solve_time_ms / 1000).toFixed(2)}s with ${result.summary.total_trim_percent}% average trim waste!`
         );
       }
-      if (match.allocations.length > 0) setInventoryDialogOpen(true);
+      if (match.allocations.length > 0) {
+        if (autoApproveInventory) {
+          setInventoryApproved(true);
+          toast.success(
+            `${match.allocations.length} reel(s) allocated from inventory — the rest went back into the cutting plan.`
+          );
+        } else {
+          setInventoryDialogOpen(true);
+        }
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to run deckle optimization solver");
     } finally {
@@ -1346,14 +1358,18 @@ export function DecklePlanningWorkspace({
         onOpenChange={setInventoryDialogOpen}
         allocations={inventoryAllocs}
         isBusy={isSolving}
-        onApprove={() => {
-          setInventoryApproved(true);
+        onConfirm={(keptIds) => {
+          const keptSet = new Set(keptIds);
+          const excludedIds = inventoryAllocs
+            .filter((a) => !keptSet.has(a.stockItemId))
+            .map((a) => a.stockItemId);
           setInventoryDialogOpen(false);
-          toast.success("Inventory allocation approved.");
-        }}
-        onRerun={(excludedIds) => {
-          setInventoryDialogOpen(false);
-          handleRunOptimization(excludedIds);
+          if (excludedIds.length === 0) {
+            setInventoryApproved(true);
+            toast.success("Inventory allocation approved.");
+          } else {
+            handleRunOptimization(excludedIds, true);
+          }
         }}
       />
 
