@@ -4,6 +4,7 @@ import { getActiveMachineConstraints } from "@/server/services/order-service";
 import { getClientOptions } from "@/server/services/lookup-service";
 import { getSystemSettings } from "@/server/services/settings-service";
 import { getGsmWeightMap } from "@/server/services/gsm-weight-service";
+import { getPaperTypeChoices } from "@/server/services/paper-type-service";
 import { OrderForm } from "@/components/orders/order-form";
 
 export const metadata = {
@@ -13,11 +14,12 @@ export const metadata = {
 export default async function NewOrderPage() {
   const { tenantId } = await requireRole(Role.ADMIN, Role.SALES);
 
-  const [clients, machineConstraints, settings, gsmWeightMap] = await Promise.all([
+  const [clients, machineConstraints, settings, gsmWeightMap, paperTypeOptions] = await Promise.all([
     getClientOptions(tenantId!),
     getActiveMachineConstraints(tenantId!),
     getSystemSettings(),
     getGsmWeightMap(),
+    getPaperTypeChoices(),
   ]);
 
   return (
@@ -26,6 +28,7 @@ export default async function NewOrderPage() {
       defaultUnit={settings.measurementUnit}
       machineConstraints={machineConstraints}
       gsmWeightMap={gsmWeightMap}
+      paperTypeOptions={paperTypeOptions}
     />
   );
 }

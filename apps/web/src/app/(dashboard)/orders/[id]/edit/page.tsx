@@ -5,6 +5,7 @@ import { getOrderById, getActiveMachineConstraints } from "@/server/services/ord
 import { getClientOptions } from "@/server/services/lookup-service";
 import { getSystemSettings } from "@/server/services/settings-service";
 import { getGsmWeightMap } from "@/server/services/gsm-weight-service";
+import { getPaperTypeChoices } from "@/server/services/paper-type-service";
 import { OrderForm } from "@/components/orders/order-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -23,12 +24,13 @@ export default async function EditOrderPage({
   const { tenantId } = await requireRole(Role.ADMIN, Role.SALES);
   const { id } = await params;
 
-  const [order, clients, machineConstraints, settings, gsmWeightMap] = await Promise.all([
+  const [order, clients, machineConstraints, settings, gsmWeightMap, paperTypeOptions] = await Promise.all([
     getOrderById(id),
     getClientOptions(tenantId!),
     getActiveMachineConstraints(tenantId!),
     getSystemSettings(),
     getGsmWeightMap(),
+    getPaperTypeChoices(),
   ]);
 
   if (!order) {
@@ -73,6 +75,7 @@ export default async function EditOrderPage({
       defaultUnit={settings.measurementUnit}
       machineConstraints={machineConstraints}
       gsmWeightMap={gsmWeightMap}
+      paperTypeOptions={paperTypeOptions}
     />
   );
 }

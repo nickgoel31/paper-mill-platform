@@ -11,6 +11,7 @@ import {
 } from "./base-service";
 import {
   orderFormSchema,
+  orderItemSchema,
   statusTransitionSchema,
   OrderFormInput,
   StatusTransitionInput,
@@ -165,7 +166,7 @@ export interface OrderQueryParams extends QueryParams {
   weightMinKg?: number;
   weightMaxKg?: number;
   paperSize?: import("@/generated/prisma/browser").PaperSize;
-  paperType?: import("@/generated/prisma/browser").PaperType;
+  paperType?: string;
 }
 
 /**
@@ -406,6 +407,9 @@ export async function createOrder(data: OrderFormInput) {
     }
 
     for (const item of validated.items) {
+      // Booking-only lines have no real width/GSM yet — nothing to validate
+      // against a machine until they're edited with real dimensions.
+      if (item.isBookingOnly) continue;
       const widthIn = itemWidthInches(item);
       if (widthIn > maxDeckle) {
         return {
@@ -430,6 +434,7 @@ export async function createOrder(data: OrderFormInput) {
     const created = await tx.order.create({
       data: {
         orderNumber,
+        offlineOrderNo: validated.offlineOrderNo?.trim() || null,
         clientId: validated.clientId,
         orderDate: validated.orderDate,
         deliveryDate: validated.deliveryDate || null,
@@ -440,12 +445,14 @@ export async function createOrder(data: OrderFormInput) {
         createdById: userId,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
-            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            widthInch: new Prisma.Decimal(item.isBookingOnly ? 0 : itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.isBookingOnly ? 0 : item.widthInch.toFixed(2)),
             enteredWidthUnit: item.widthUnit,
-            gsm: item.gsm,
+            gsm: item.isBookingOnly ? 0 : item.gsm,
+            isBookingOnly: item.isBookingOnly,
             paperType: item.paperType,
             size: item.size,
+            bf: item.bf,
             numberOfReels:
               item.numberOfReels != null && item.numberOfReels > 0
                 ? Math.round(item.numberOfReels)
@@ -454,6 +461,7 @@ export async function createOrder(data: OrderFormInput) {
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),
             tolerancePercent: new Prisma.Decimal(item.tolerancePercent.toFixed(2)),
             ratePerKg: item.ratePerKg ? new Prisma.Decimal(item.ratePerKg.toFixed(2)) : null,
+            kgPerInchOverride: item.kgPerInchOverride ? new Prisma.Decimal(item.kgPerInchOverride.toFixed(3)) : null,
           })),
         },
       },
@@ -559,11 +567,39 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
         : OrderPriority.NORMAL;
 
       const items = group.rows.map((r, idx) => {
+        const isBookingOnly = ["true", "1", "yes"].includes((r.bookingOnly || "").trim().toLowerCase());
+        const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? "CM" : "INCH";
+
+        // A booking-only line has no size/GSM yet — just weight against a
+        // client's offline reference. Skip every dimension/machine check.
+        if (isBookingOnly) {
+          const quantityKg = r.quantityKg?.trim() ? parseFloat(r.quantityKg) : NaN;
+          if (isNaN(quantityKg) || quantityKg <= 0) {
+            throw new Error(`Invalid "quantityKg" on line ${idx + 1} of this order: "${r.quantityKg}"`);
+          }
+          const ratePerKg = r.ratePerKg?.trim() ? parseFloat(r.ratePerKg) : null;
+          return {
+            widthInch: new Prisma.Decimal(0),
+            enteredWidth: new Prisma.Decimal(0),
+            enteredWidthUnit: widthUnit as any,
+            gsm: 0,
+            isBookingOnly: true,
+            paperType: "NATURAL" as any,
+            size: "NORMAL" as any,
+            bf: 18,
+            numberOfReels: null,
+            remark: r.remark?.trim() || null,
+            quantityKg: new Prisma.Decimal(quantityKg.toFixed(3)),
+            tolerancePercent: new Prisma.Decimal(5.0),
+            ratePerKg: ratePerKg && !isNaN(ratePerKg) ? new Prisma.Decimal(ratePerKg.toFixed(2)) : null,
+            kgPerInchOverride: null,
+          };
+        }
+
         const gsm = parseInt(r.gsm, 10);
         if (isNaN(gsm) || gsm <= 0) {
           throw new Error(`Invalid "gsm" on line ${idx + 1} of this order: "${r.gsm}"`);
         }
-        const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? "CM" : "INCH";
         const numberOfReelsForCalc =
           r.numberOfReels?.trim() && parseInt(r.numberOfReels, 10) > 0 ? parseInt(r.numberOfReels, 10) : 1;
         const kgPerInch = gsmWeightMap[gsm];
@@ -607,24 +643,33 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
         if (compatibleMachines.length === 0) {
           throw new Error(`GSM ${gsm} on line ${idx + 1} cannot be run on any active machine.`);
         }
-        const paperType = (r.paperType || "").toUpperCase() === "BY" ? "BY" : "NATURAL";
+        const paperType = r.paperType?.trim() ? r.paperType.trim().toUpperCase() : "NATURAL";
         const size = (r.size || "").toUpperCase() === "BABY" ? "BABY" : "NORMAL";
+        const bfRaw = r.bf?.trim() ? parseInt(r.bf, 10) : 18;
+        const bf = !isNaN(bfRaw) && bfRaw > 0 ? bfRaw : 18;
         const numberOfReels = r.numberOfReels?.trim() ? parseInt(r.numberOfReels, 10) : null;
         const tolerancePercent = r.tolerancePercent?.trim() ? parseFloat(r.tolerancePercent) : 5.0;
         const ratePerKg = r.ratePerKg?.trim() ? parseFloat(r.ratePerKg) : null;
+        const kgPerInchOverride = r.kgPerInchOverride?.trim() ? parseFloat(r.kgPerInchOverride) : null;
 
         return {
           widthInch: new Prisma.Decimal(widthIn.toFixed(2)),
           enteredWidth: new Prisma.Decimal(widthRaw.toFixed(2)),
           enteredWidthUnit: widthUnit as any,
           gsm,
+          isBookingOnly: false,
           paperType: paperType as any,
           size: size as any,
+          bf,
           numberOfReels: numberOfReels && numberOfReels > 0 ? numberOfReels : null,
           remark: r.remark?.trim() || null,
           quantityKg: new Prisma.Decimal(quantityKg.toFixed(3)),
           tolerancePercent: new Prisma.Decimal((isNaN(tolerancePercent) ? 5.0 : tolerancePercent).toFixed(2)),
           ratePerKg: ratePerKg && !isNaN(ratePerKg) ? new Prisma.Decimal(ratePerKg.toFixed(2)) : null,
+          kgPerInchOverride:
+            kgPerInchOverride && !isNaN(kgPerInchOverride) && kgPerInchOverride > 0
+              ? new Prisma.Decimal(kgPerInchOverride.toFixed(3))
+              : null,
         };
       });
 
@@ -633,6 +678,7 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
         const order = await tx.order.create({
           data: {
             orderNumber,
+            offlineOrderNo: first.offlineOrderNo?.trim() || null,
             clientId: client.id,
             orderDate,
             deliveryDate,
@@ -699,6 +745,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
     // Validate items against machine constraints
     const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
     for (const item of validated.items) {
+      if (item.isBookingOnly) continue;
       const widthIn = itemWidthInches(item);
       if (widthIn > maxDeckle) {
         return {
@@ -714,6 +761,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
     const res = await tx.order.update({
       where: { id },
       data: {
+        offlineOrderNo: validated.offlineOrderNo?.trim() || null,
         clientId: validated.clientId,
         orderDate: validated.orderDate,
         deliveryDate: validated.deliveryDate || null,
@@ -722,12 +770,14 @@ export async function updateOrder(id: string, data: OrderFormInput) {
         otherNotes: validated.otherNotes?.trim() || null,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
-            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
+            widthInch: new Prisma.Decimal(item.isBookingOnly ? 0 : itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.isBookingOnly ? 0 : item.widthInch.toFixed(2)),
             enteredWidthUnit: item.widthUnit,
-            gsm: item.gsm,
+            gsm: item.isBookingOnly ? 0 : item.gsm,
+            isBookingOnly: item.isBookingOnly,
             paperType: item.paperType,
             size: item.size,
+            bf: item.bf,
             numberOfReels:
               item.numberOfReels != null && item.numberOfReels > 0
                 ? Math.round(item.numberOfReels)
@@ -736,6 +786,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
             quantityKg: new Prisma.Decimal(item.quantityKg.toFixed(3)),
             tolerancePercent: new Prisma.Decimal(item.tolerancePercent.toFixed(2)),
             ratePerKg: item.ratePerKg ? new Prisma.Decimal(item.ratePerKg.toFixed(2)) : null,
+            kgPerInchOverride: item.kgPerInchOverride ? new Prisma.Decimal(item.kgPerInchOverride.toFixed(3)) : null,
           })),
         },
       },
@@ -763,6 +814,98 @@ export async function updateOrder(id: string, data: OrderFormInput) {
     return { order: updated };
   } catch (err: any) {
     return { error: err?.message || "Failed to update sales order." };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// ADD A SINGLE LINE ITEM (mid-order addition, any status short of dispatched)
+// -----------------------------------------------------------------------------
+
+/**
+ * Appends one new line item to an existing order without touching any
+ * existing line — unlike `updateOrder`, which replaces the whole item set and
+ * is only allowed while the order is still DRAFT/CONFIRMED. This lets sales
+ * add a size the client asked for after the order's already been planned or
+ * put into production, without disturbing patternCuts/stockItems already
+ * linked to the other lines. The new line is picked up automatically by
+ * deckle planning and stock-matching on their next (always-live) query.
+ */
+export async function addOrderItem(orderId: string, item: import("@/lib/schemas/order").OrderItemInput) {
+  try {
+    const { userId, tenantId } = await requireRole(Role.ADMIN, Role.SALES);
+    const parsed = orderItemSchema.safeParse(item);
+    if (!parsed.success) {
+      return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+    }
+    const validated = parsed.data;
+
+    const order = await db.order.findFirst({ where: { id: orderId } });
+    if (!order) return { error: "Order not found." };
+    if (order.status === OrderStatus.DISPATCHED || order.status === OrderStatus.CANCELLED) {
+      return { error: `Order #${order.orderNumber} is ${order.status} and can no longer take new line items.` };
+    }
+
+    if (!validated.isBookingOnly) {
+      const { machines, maxDeckle } = await getActiveMachineConstraints(tenantId!);
+      const widthIn = itemWidthInches(validated);
+      if (widthIn > maxDeckle) {
+        return {
+          error: `Width ${formatWidthInch(widthIn, validated.widthUnit)} exceeds the largest active machine deckle of ${maxDeckle.toFixed(2)}".`,
+        };
+      }
+      const compatibleMachines = machines.filter((m) => validated.gsm >= m.minGsm && validated.gsm <= m.maxGsm);
+      if (compatibleMachines.length === 0) {
+        return { error: `GSM ${validated.gsm} cannot be run on any active machine.` };
+      }
+    }
+
+    const created = await db.$transaction(async (tx) => {
+      const row = await tx.orderItem.create({
+        data: {
+          orderId,
+          widthInch: new Prisma.Decimal(validated.isBookingOnly ? 0 : itemWidthInches(validated).toFixed(2)),
+          enteredWidth: new Prisma.Decimal(validated.isBookingOnly ? 0 : validated.widthInch.toFixed(2)),
+          enteredWidthUnit: validated.widthUnit,
+          gsm: validated.isBookingOnly ? 0 : validated.gsm,
+          isBookingOnly: validated.isBookingOnly,
+          paperType: validated.paperType,
+          size: validated.size,
+          bf: validated.bf,
+          numberOfReels:
+            validated.numberOfReels != null && validated.numberOfReels > 0
+              ? Math.round(validated.numberOfReels)
+              : null,
+          remark: validated.remark?.trim() || null,
+          quantityKg: new Prisma.Decimal(validated.quantityKg.toFixed(3)),
+          tolerancePercent: new Prisma.Decimal(validated.tolerancePercent.toFixed(2)),
+          ratePerKg: validated.ratePerKg ? new Prisma.Decimal(validated.ratePerKg.toFixed(2)) : null,
+          kgPerInchOverride: validated.kgPerInchOverride
+            ? new Prisma.Decimal(validated.kgPerInchOverride.toFixed(3))
+            : null,
+        },
+      });
+
+      await logAudit(
+        {
+          userId,
+          entityType: "Order",
+          entityId: orderId,
+          action: "ADD_ITEM",
+          after: { orderNumber: order.orderNumber, itemId: row.id, gsm: row.gsm, quantityKg: Number(row.quantityKg) },
+        },
+        tx
+      );
+
+      return row;
+    });
+
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/orders");
+    revalidatePath("/deckle");
+    revalidateTag(DASHBOARD_TAG);
+    return { item: created };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to add line item." };
   }
 }
 
@@ -848,6 +991,14 @@ function isOrderDeletable(order: { items: { producedKg: any; dispatchedKg: any }
   return !order.items.some((it) => Number(it.producedKg || 0) > 0 || Number(it.dispatchedKg || 0) > 0);
 }
 
+function friendlyDeleteError(err: unknown, label: string): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/foreign key/i.test(msg)) {
+    return new Error(`Can't delete this ${label} — other records still reference it (e.g. a dispatch, invoice, or production run).`);
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 export async function deleteOrder(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
@@ -859,7 +1010,11 @@ export async function deleteOrder(id: string) {
     );
   }
 
-  await db.order.delete({ where: { id } });
+  try {
+    await db.order.delete({ where: { id } });
+  } catch (err) {
+    throw friendlyDeleteError(err, "order");
+  }
   await logAudit({
     userId,
     entityType: "Order",
@@ -880,25 +1035,54 @@ export async function deleteOrders(ids: string[]) {
   const deletable = orders.filter(isOrderDeletable);
   const blocked = orders.filter((o) => !isOrderDeletable(o));
 
+  let deletedCount = 0;
+  const failed: { id: string; label: string; reason: string }[] = [];
+
   if (deletable.length > 0) {
-    await db.order.deleteMany({ where: { id: { in: deletable.map((o) => o.id) } } });
-    await logAudit({
-      userId,
-      entityType: "Order",
-      entityId: "bulk-delete",
-      action: "DELETE",
-      before: { count: deletable.length, orderNumbers: deletable.map((o) => o.orderNumber) },
-    });
+    try {
+      await db.order.deleteMany({ where: { id: { in: deletable.map((o) => o.id) } } });
+      deletedCount = deletable.length;
+      await logAudit({
+        userId,
+        entityType: "Order",
+        entityId: "bulk-delete",
+        action: "DELETE",
+        before: { count: deletable.length, orderNumbers: deletable.map((o) => o.orderNumber) },
+      });
+    } catch (err) {
+      // deleteMany is all-or-nothing on a constraint failure — fall back to
+      // one-by-one so a single blocked order doesn't stop the rest.
+      for (const o of deletable) {
+        try {
+          await db.order.delete({ where: { id: o.id } });
+          deletedCount++;
+        } catch (rowErr) {
+          failed.push({ id: o.id, label: o.orderNumber, reason: friendlyDeleteError(rowErr, "order").message });
+        }
+      }
+      if (deletedCount > 0) {
+        await logAudit({
+          userId,
+          entityType: "Order",
+          entityId: "bulk-delete",
+          action: "DELETE",
+          before: { count: deletedCount },
+        });
+      }
+    }
   }
 
   revalidatePath("/orders");
   revalidateTag(DASHBOARD_TAG);
   return {
-    deleted: deletable.length,
-    skipped: blocked.map((o) => ({
-      id: o.id,
-      label: o.orderNumber,
-      reason: "Has production or dispatch recorded — cancel it instead.",
-    })),
+    deleted: deletedCount,
+    skipped: [
+      ...blocked.map((o) => ({
+        id: o.id,
+        label: o.orderNumber,
+        reason: "Has production or dispatch recorded — cancel it instead.",
+      })),
+      ...failed,
+    ],
   };
 }

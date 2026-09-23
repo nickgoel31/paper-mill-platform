@@ -3,10 +3,10 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { OrderStatus, OrderPriority, PaperType, Role } from "@/generated/prisma/browser";
+import { OrderStatus, OrderPriority, Role } from "@/generated/prisma/browser";
 import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
 import { PAPER_SIZE_LABELS } from "@/lib/paper-size";
-import { formatWeightKg, formatCurrencyINR, formatWidthInch } from "@/lib/utils";
+import { formatWeightKg, formatCurrencyINR, formatWidthInch, formatOrderAge } from "@/lib/utils";
 import { transitionOrderStatus } from "@/server/services/order-service";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -436,9 +436,13 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
               <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
                 OVERDUE
               </span>
-            ) : (
+            ) : deliveryDateObj ? (
               <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                 ON SCHEDULE
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                NO DATE SET
               </span>
             )}
           </div>
@@ -446,8 +450,8 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
           <div className="space-y-3 text-xs">
             <div>
               <span className="text-[10px] uppercase font-bold text-slate-400 block">PROMISED DELIVERY DUE DATE</span>
-              <div className="text-xl font-black font-mono text-slate-900 mt-0.5">
-                {deliveryDateObj ? deliveryDateObj.toLocaleDateString("en-IN") : "Open"}
+              <div className={deliveryDateObj ? "text-xl font-black font-mono text-slate-900 mt-0.5" : "text-sm font-bold text-slate-400 italic mt-0.5"}>
+                {deliveryDateObj ? deliveryDateObj.toLocaleDateString("en-IN") : formatOrderAge(order.orderDate)}
               </div>
             </div>
 
@@ -530,12 +534,23 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
                     <span className="px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 font-mono font-bold text-[10px]">
                       {it.gsm} GSM
                     </span>
+                    {it.bf ? (
+                      <span className="block text-[9px] text-slate-400 font-mono mt-0.5">{it.bf} BF</span>
+                    ) : null}
                   </TableCell>
                   <TableCell className="text-[11px] font-semibold text-slate-700">
-                    {PAPER_TYPE_LABELS[it.paperType as PaperType] ?? it.paperType}
+                    {PAPER_TYPE_LABELS[it.paperType] ?? it.paperType}
                   </TableCell>
                   <TableCell className="text-[11px] font-semibold text-slate-700">
                     {PAPER_SIZE_LABELS[it.size as keyof typeof PAPER_SIZE_LABELS] ?? it.size ?? "Normal"}
+                    {it.kgPerInchOverride && (
+                      <span
+                        className="block text-[9px] font-bold text-amber-700 mt-0.5"
+                        title={`This line uses ${Number(it.kgPerInchOverride)} kg/inch instead of the mill's GSM chart default.`}
+                      >
+                        {Number(it.kgPerInchOverride)} kg/in override
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-slate-700">
                     {it.numberOfReels ? `${it.numberOfReels}` : "—"}

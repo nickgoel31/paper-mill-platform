@@ -43,7 +43,7 @@ import {
   offlineTransitionOrderStatus,
 } from "@/lib/offline/wrapped-actions";
 import { OfflineEmptyState } from "@/components/shared/offline-empty-state";
-import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
+import { formatWeightKg, formatCurrencyINR, formatOrderAge } from "@/lib/utils";
 import { CsvImportDialog } from "@/components/shared/csv-import-dialog";
 import {
   ShoppingCart,
@@ -296,6 +296,7 @@ export function OrderList({
           gsm: it.gsm,
           paperType: it.paperType,
           size: it.size,
+          bf: it.bf,
           quantityKg: Number(it.quantityKg),
           producedKg: Number(it.producedKg),
           dispatchedKg: Number(it.dispatchedKg),
@@ -317,6 +318,7 @@ export function OrderList({
         { key: "gsm", header: "gsm" },
         { key: "paperType", header: "paperType" },
         { key: "size", header: "size" },
+        { key: "bf", header: "bf" },
         { key: "quantityKg", header: "quantityKg" },
         { key: "producedKg", header: "producedKg" },
         { key: "dispatchedKg", header: "dispatchedKg" },
@@ -530,7 +532,13 @@ export function OrderList({
       header: "Delivery Due",
       cell: ({ row }) => {
         const d = row.original.deliveryDate ? new Date(row.original.deliveryDate) : null;
-        if (!d) return <span className="text-slate-400 text-xs">—</span>;
+        if (!d) {
+          return (
+            <span className="text-slate-400 text-xs italic">
+              {formatOrderAge(row.original.orderDate)}
+            </span>
+          );
+        }
 
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -769,10 +777,12 @@ export function OrderList({
           "widthUnit (INCH/CM)",
           "paperType (NATURAL/BY)",
           "size (BABY/NORMAL)",
+          "bf (Burst Factor, default 18)",
           "numberOfReels",
           "remark",
           "tolerancePercent",
           "ratePerKg",
+          "kgPerInchOverride (this party's own kg/inch for this GSM, overriding the mill's GSM Weight Chart)",
           "notes",
           "otherNotes",
         ]}

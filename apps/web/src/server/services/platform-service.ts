@@ -85,78 +85,93 @@ async function assertCodeSlugFree(code: string, slug: string, exceptId?: string)
   }
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function createTenant(data: CreateTenantInput) {
-  await requirePlatform();
-  const v = createTenantSchema.parse(data);
-  const slug = v.slug || slugify(v.name);
-  const adminEmail = v.adminEmail.toLowerCase().trim();
+  try {
+    await requirePlatform();
+    const v = createTenantSchema.parse(data);
+    const slug = v.slug || slugify(v.name);
+    const adminEmail = v.adminEmail.toLowerCase().trim();
 
-  if (isPlatformEmail(adminEmail)) {
-    throw new Error("A mill admin cannot use a platform (@twjlabs.com) e-mail.");
+    if (isPlatformEmail(adminEmail)) {
+      return { error: "A mill admin cannot use a platform (@twjlabs.com) e-mail." };
+    }
+    await assertCodeSlugFree(v.code, slug);
+
+    const emailTaken = await db.user.findUnique({ where: { email: adminEmail } });
+    if (emailTaken) return { error: `E-mail "${adminEmail}" is already registered.` };
+
+    const passwordHash = await bcrypt.hash(v.adminPassword, 10);
+
+    const tenant = await db.tenant.create({
+      data: {
+        name: v.name.trim(),
+        code: v.code,
+        slug,
+        gstin: v.gstin || null,
+        cin: v.cin || null,
+        address: v.address || null,
+        city: v.city || null,
+        state: v.state || null,
+        phone: v.phone || null,
+        email: v.email || null,
+      },
+    });
+
+    await db.user.create({
+      data: {
+        tenantId: tenant.id,
+        name: v.adminName.trim(),
+        email: adminEmail,
+        passwordHash,
+        role: Role.ADMIN,
+        isActive: true,
+      },
+    });
+
+    revalidatePath("/platform");
+    return { tenant };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create mill." };
   }
-  await assertCodeSlugFree(v.code, slug);
-
-  const emailTaken = await db.user.findUnique({ where: { email: adminEmail } });
-  if (emailTaken) throw new Error(`E-mail "${adminEmail}" is already registered.`);
-
-  const passwordHash = await bcrypt.hash(v.adminPassword, 10);
-
-  const tenant = await db.tenant.create({
-    data: {
-      name: v.name.trim(),
-      code: v.code,
-      slug,
-      gstin: v.gstin || null,
-      address: v.address || null,
-      city: v.city || null,
-      state: v.state || null,
-      phone: v.phone || null,
-      email: v.email || null,
-    },
-  });
-
-  await db.user.create({
-    data: {
-      tenantId: tenant.id,
-      name: v.adminName.trim(),
-      email: adminEmail,
-      passwordHash,
-      role: Role.ADMIN,
-      isActive: true,
-    },
-  });
-
-  revalidatePath("/platform");
-  return tenant;
 }
 
 export async function updateTenant(id: string, data: TenantInput) {
-  await requirePlatform();
-  const v = tenantSchema.parse(data);
-  const existing = await db.tenant.findFirst({ where: { id } });
-  if (!existing) throw new Error("Mill not found.");
+  try {
+    await requirePlatform();
+    const v = tenantSchema.parse(data);
+    const existing = await db.tenant.findFirst({ where: { id } });
+    if (!existing) return { error: "Mill not found." };
 
-  const slug = v.slug || slugify(v.name);
-  await assertCodeSlugFree(v.code, slug, id);
+    const slug = v.slug || slugify(v.name);
+    await assertCodeSlugFree(v.code, slug, id);
 
-  const tenant = await db.tenant.update({
-    where: { id },
-    data: {
-      name: v.name.trim(),
-      code: v.code,
-      slug,
-      gstin: v.gstin || null,
-      address: v.address || null,
-      city: v.city || null,
-      state: v.state || null,
-      phone: v.phone || null,
-      email: v.email || null,
-    },
-  });
+    const tenant = await db.tenant.update({
+      where: { id },
+      data: {
+        name: v.name.trim(),
+        code: v.code,
+        slug,
+        gstin: v.gstin || null,
+        cin: v.cin || null,
+        address: v.address || null,
+        city: v.city || null,
+        state: v.state || null,
+        phone: v.phone || null,
+        email: v.email || null,
+      },
+    });
 
-  revalidatePath("/platform");
-  revalidatePath(`/platform/mills/${id}`);
-  return tenant;
+    revalidatePath("/platform");
+    revalidatePath(`/platform/mills/${id}`);
+    return { tenant };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update mill." };
+  }
 }
 
 export async function updateTenantWhatsAppSettings(
@@ -168,58 +183,70 @@ export async function updateTenantWhatsAppSettings(
     whatsappApiVersion?: string | null;
   }
 ) {
-  await requirePlatform();
-  const existing = await db.tenant.findFirst({ where: { id } });
-  if (!existing) throw new Error("Mill not found.");
+  try {
+    await requirePlatform();
+    const existing = await db.tenant.findFirst({ where: { id } });
+    if (!existing) return { error: "Mill not found." };
 
-  if (data.whatsappEnabled && (!data.whatsappAccessToken?.trim() || !data.whatsappPhoneNumberId?.trim())) {
-    throw new Error("Access Token and Phone Number ID are required to enable WhatsApp for this mill.");
+    if (data.whatsappEnabled && (!data.whatsappAccessToken?.trim() || !data.whatsappPhoneNumberId?.trim())) {
+      return { error: "Access Token and Phone Number ID are required to enable WhatsApp for this mill." };
+    }
+
+    const tenant = await db.tenant.update({
+      where: { id },
+      data: {
+        whatsappEnabled: data.whatsappEnabled,
+        whatsappAccessToken: data.whatsappAccessToken?.trim() || null,
+        whatsappPhoneNumberId: data.whatsappPhoneNumberId?.trim() || null,
+        whatsappApiVersion: data.whatsappApiVersion?.trim() || null,
+      },
+    });
+
+    revalidatePath(`/platform/mills/${id}`);
+    return { tenant };
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update WhatsApp settings." };
   }
-
-  const tenant = await db.tenant.update({
-    where: { id },
-    data: {
-      whatsappEnabled: data.whatsappEnabled,
-      whatsappAccessToken: data.whatsappAccessToken?.trim() || null,
-      whatsappPhoneNumberId: data.whatsappPhoneNumberId?.trim() || null,
-      whatsappApiVersion: data.whatsappApiVersion?.trim() || null,
-    },
-  });
-
-  revalidatePath(`/platform/mills/${id}`);
-  return tenant;
 }
 
 export async function setTenantActive(id: string, isActive: boolean) {
-  await requirePlatform();
-  await db.tenant.update({ where: { id }, data: { isActive } });
-  revalidatePath("/platform");
-  revalidatePath(`/platform/mills/${id}`);
-  return { success: true };
+  try {
+    await requirePlatform();
+    await db.tenant.update({ where: { id }, data: { isActive } });
+    revalidatePath("/platform");
+    revalidatePath(`/platform/mills/${id}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to update mill status." };
+  }
 }
 
 /** How a mill routes finished reels when a production run completes. */
 export async function setTenantPostProductionMode(id: string, mode: PostProductionMode) {
-  const admin = await requirePlatform();
-  if (!Object.values(PostProductionMode).includes(mode)) {
-    throw new Error("Invalid post-production mode.");
+  try {
+    const admin = await requirePlatform();
+    if (!Object.values(PostProductionMode).includes(mode)) {
+      return { success: false, error: "Invalid post-production mode." };
+    }
+    const existing = await db.tenant.findFirst({ where: { id } });
+    if (!existing) return { success: false, error: "Mill not found." };
+
+    await db.tenant.update({ where: { id }, data: { postProductionMode: mode } });
+    await logAudit({
+      userId: admin.id,
+      entityType: "Tenant",
+      entityId: id,
+      action: "UPDATE_POST_PRODUCTION_MODE",
+      before: { postProductionMode: existing.postProductionMode },
+      after: { postProductionMode: mode },
+    });
+
+    revalidatePath("/platform");
+    revalidatePath(`/platform/mills/${id}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to update post-production mode." };
   }
-  const existing = await db.tenant.findFirst({ where: { id } });
-  if (!existing) throw new Error("Mill not found.");
-
-  await db.tenant.update({ where: { id }, data: { postProductionMode: mode } });
-  await logAudit({
-    userId: admin.id,
-    entityType: "Tenant",
-    entityId: id,
-    action: "UPDATE_POST_PRODUCTION_MODE",
-    before: { postProductionMode: existing.postProductionMode },
-    after: { postProductionMode: mode },
-  });
-
-  revalidatePath("/platform");
-  revalidatePath(`/platform/mills/${id}`);
-  return { success: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -274,63 +301,75 @@ export async function listMillsForSwitcher() {
 // ---------------------------------------------------------------------------
 
 export async function createTenantUser(tenantId: string, data: TenantUserInput) {
-  await requirePlatform();
-  const v = tenantUserSchema.parse(data);
-  const email = v.email.toLowerCase().trim();
+  try {
+    await requirePlatform();
+    const v = tenantUserSchema.parse(data);
+    const email = v.email.toLowerCase().trim();
 
-  const tenant = await db.tenant.findFirst({ where: { id: tenantId } });
-  if (!tenant) throw new Error("Mill not found.");
-  if (isPlatformEmail(email)) {
-    throw new Error("This e-mail domain is reserved for platform staff.");
+    const tenant = await db.tenant.findFirst({ where: { id: tenantId } });
+    if (!tenant) return { success: false, error: "Mill not found." };
+    if (isPlatformEmail(email)) {
+      return { success: false, error: "This e-mail domain is reserved for platform staff." };
+    }
+
+    const taken = await db.user.findUnique({ where: { email } });
+    if (taken) return { success: false, error: `E-mail "${email}" is already registered.` };
+
+    const passwordHash = await bcrypt.hash(v.password, 10);
+    await db.user.create({
+      data: {
+        tenantId,
+        name: v.name.trim(),
+        email,
+        passwordHash,
+        role: v.role,
+        isActive: v.isActive,
+      },
+    });
+
+    revalidatePath(`/platform/mills/${tenantId}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to create staff account." };
   }
-
-  const taken = await db.user.findUnique({ where: { email } });
-  if (taken) throw new Error(`E-mail "${email}" is already registered.`);
-
-  const passwordHash = await bcrypt.hash(v.password, 10);
-  await db.user.create({
-    data: {
-      tenantId,
-      name: v.name.trim(),
-      email,
-      passwordHash,
-      role: v.role,
-      isActive: v.isActive,
-    },
-  });
-
-  revalidatePath(`/platform/mills/${tenantId}`);
-  return { success: true };
 }
 
 export async function updateTenantUser(tenantId: string, data: UpdateTenantUserInput) {
-  await requirePlatform();
-  const v = updateTenantUserSchema.parse(data);
+  try {
+    await requirePlatform();
+    const v = updateTenantUserSchema.parse(data);
 
-  const res = await db.user.updateMany({
-    where: { id: v.userId, tenantId },
-    data: { name: v.name.trim(), role: v.role, isActive: v.isActive },
-  });
-  if (res.count === 0) throw new Error("User not found in this mill.");
+    const res = await db.user.updateMany({
+      where: { id: v.userId, tenantId },
+      data: { name: v.name.trim(), role: v.role, isActive: v.isActive },
+    });
+    if (res.count === 0) return { success: false, error: "User not found in this mill." };
 
-  revalidatePath(`/platform/mills/${tenantId}`);
-  return { success: true };
+    revalidatePath(`/platform/mills/${tenantId}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to update staff account." };
+  }
 }
 
 export async function resetTenantUserPassword(
   tenantId: string,
   data: ResetTenantUserPasswordInput
 ) {
-  await requirePlatform();
-  const v = resetTenantUserPasswordSchema.parse(data);
-  const passwordHash = await bcrypt.hash(v.newPassword, 10);
+  try {
+    await requirePlatform();
+    const v = resetTenantUserPasswordSchema.parse(data);
+    const passwordHash = await bcrypt.hash(v.newPassword, 10);
 
-  const res = await db.user.updateMany({
-    where: { id: v.userId, tenantId },
-    data: { passwordHash },
-  });
-  if (res.count === 0) throw new Error("User not found in this mill.");
+    const res = await db.user.updateMany({
+      where: { id: v.userId, tenantId },
+      data: { passwordHash },
+    });
+    if (res.count === 0) return { success: false, error: "User not found in this mill." };
 
-  revalidatePath(`/platform/mills/${tenantId}`);
-  return { success: true };
+    revalidatePath(`/platform/mills/${tenantId}`);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Failed to reset password." };
+  }
 }

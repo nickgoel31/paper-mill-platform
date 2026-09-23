@@ -87,15 +87,26 @@ export async function getPendingDemandItems() {
 
   const items = await db.orderItem.findMany({
     where: {
+      // Booking-only lines have no real size/GSM yet — never surface them
+      // for planning until they're edited with real dimensions.
+      isBookingOnly: false,
+      // IN_PRODUCTION is included deliberately: it's the status an order
+      // sits in the moment it falls short of full production — a
+      // deallocated reel, a short/wasted run, etc. Without it, a line that's
+      // gone through production once but still has unmet demand would never
+      // resurface here for replanning or stock-matching.
       order: {
-        status: { in: [OrderStatus.CONFIRMED, OrderStatus.PLANNED] },
+        status: { in: [OrderStatus.CONFIRMED, OrderStatus.PLANNED, OrderStatus.IN_PRODUCTION] },
       },
-      // Exclude items already assigned to active (non-cancelled) production runs
+      // Exclude items already spoken for by an upcoming/in-progress run —
+      // but NOT a COMPLETED one. A completed run's cuts are history; if the
+      // line still has unmet demand after that (see above), it must be
+      // replanned, not treated as already handled.
       patternCuts: {
         none: {
           cuttingPattern: {
             productionRun: {
-              status: { notIn: [RunStatus.CANCELLED] },
+              status: { in: [RunStatus.PLANNED, RunStatus.RELEASED, RunStatus.RUNNING] },
             },
           },
         },
@@ -122,7 +133,18 @@ export async function getPendingDemandItems() {
     ],
   });
 
-  return items.map((it) => ({
+  // Now that IN_PRODUCTION orders are in scope, some lines returned above may
+  // already be fully (or near-enough, within tolerance) produced — e.g. the
+  // sibling lines of an order that's short on just one line. Those aren't
+  // "pending demand" and would only clutter the planner, so drop them here.
+  const stillPending = items.filter((it) => {
+    const demand = Number(it.quantityKg);
+    const tol = Number(it.tolerancePercent || 5.0);
+    const minAcceptable = demand * (1.0 - tol / 100.0);
+    return Number(it.producedKg || 0) < minAcceptable;
+  });
+
+  return stillPending.map((it) => ({
     id: it.id,
     orderId: it.order.id,
     orderNumber: it.order.orderNumber,
@@ -138,6 +160,7 @@ export async function getPendingDemandItems() {
     deliveryDate: it.order.deliveryDate,
     orderDate: it.order.orderDate,
     priority: it.order.priority,
+    kgPerInchOverride: it.kgPerInchOverride ? Number(it.kgPerInchOverride) : null,
   }));
 }
 
@@ -187,28 +210,39 @@ export async function getMatchableInventory() {
  * production-run weight computed from `run_length_m` at completion) close to
  * what actually comes off the winder. Trim % is a pure width ratio and is
  * left untouched.
+ *
+ * `overrideMap` (orderItemId -> kg/inch) lets a specific party's paper for
+ * this GSM be calibrated differently from the mill's general chart — it only
+ * changes that cut's *weight* estimate. `run_length_m` stays driven by the
+ * mill's own chart value for the whole run: the physical length wound on the
+ * machine is shared by every cut in the pattern, so one customer's override
+ * can't change it — only what that cut's share of it is expected to weigh.
  */
 function applyGsmWeightProfiles(
   response: OptimizeResponse,
-  weightMap: Record<number, number>
+  weightMap: Record<number, number>,
+  overrideMap: Record<string, number> = {}
 ): OptimizeResponse {
-  if (Object.keys(weightMap).length === 0) return response;
+  if (Object.keys(weightMap).length === 0 && Object.keys(overrideMap).length === 0) return response;
 
   const runs = response.runs.map((run) => {
-    const kgPerInch = weightMap[run.gsm];
-    if (!kgPerInch) return run;
+    const millKgPerInch = weightMap[run.gsm];
+    // No mill baseline for this GSM at all — nothing to derive run length
+    // from, so leave the run untouched (an override alone can't drive the
+    // physical winding length; see comment above).
+    if (!millKgPerInch) return run;
 
-    // Equivalent standard reel length (m) that yields `kgPerInch` kg per inch
-    // of width at this GSM: kgPerInch = widthM_per_inch(0.0254) * lengthM * gsm/1000.
-    const equivalentLengthM = (kgPerInch * 1000) / (0.0254 * run.gsm);
+    // Equivalent standard reel length (m) that yields `millKgPerInch` kg per
+    // inch of width at this GSM: kgPerInch = 0.0254 * lengthM * gsm/1000.
+    const equivalentLengthM = (millKgPerInch * 1000) / (0.0254 * run.gsm);
 
     let totalPlannedKg = 0;
     const patterns = run.patterns.map((pat) => {
       const runLengthM = equivalentLengthM * pat.repetitions;
-      const estimatedKg = pat.cuts.reduce(
-        (acc, c) => acc + c.width_inch * kgPerInch * pat.repetitions * c.count,
-        0
-      );
+      const estimatedKg = pat.cuts.reduce((acc, c) => {
+        const rate = (c.order_item_id && overrideMap[c.order_item_id]) || millKgPerInch;
+        return acc + c.width_inch * rate * pat.repetitions * c.count;
+      }, 0);
       totalPlannedKg += estimatedKg;
       return { ...pat, run_length_m: runLengthM, estimated_kg: Math.round(estimatedKg) };
     });
@@ -219,6 +253,111 @@ function applyGsmWeightProfiles(
   return {
     ...response,
     runs,
+    summary: { ...response.summary, total_kg: Math.round(runs.reduce((a, r) => a + r.total_planned_kg, 0)) },
+  };
+}
+
+/**
+ * The solver picks lane counts to minimize trim% with no regard for how much
+ * of that width is actually still needed — e.g. a 126" deckle fits exactly 3
+ * lanes of a 42" reel at 0% trim, so it happily cuts 3 physical reels even
+ * when the order only had one more reel's worth of demand left. That's not a
+ * data bug, just a trim-vs-overproduction tradeoff the solver resolves the
+ * wrong way for a single dominant width — so cap it here: any single-item
+ * pattern (one order item, no one else sharing the width) has its lane count
+ * capped so this run's cut of that item stays within ~10% of what was actually
+ * asked for (payload.items[].quantity_kg, already net of what's produced so
+ * far). Mixed-item patterns are left untouched — shrinking one item's lanes
+ * there would also waste the other items' careful width-fit.
+ */
+function capSingleItemOverproduction(
+  response: OptimizeResponse,
+  machines: SolverRequestPayload["machines"],
+  items: SolverRequestPayload["items"]
+): OptimizeResponse {
+  const machineById = new Map(machines.map((m) => [m.id, m]));
+  const demandKgByItem: Record<string, number> = Object.fromEntries(
+    items.map((it) => [it.order_item_id, it.quantity_kg])
+  );
+  const orderNumberByItem: Record<string, string> = Object.fromEntries(
+    items.filter((it) => it.order_number).map((it) => [it.order_item_id, it.order_number as string])
+  );
+  const plannedSoFar: Record<string, number> = {};
+  const warnings: string[] = [...response.warnings];
+
+  const runs = response.runs.map((run) => {
+    const machine = machineById.get(run.machine_id);
+    let totalPlannedKg = 0;
+
+    const patterns = run.patterns.map((pat) => {
+      if (pat.cuts.length !== 1 || pat.cuts[0].count <= 1 || !machine) {
+        totalPlannedKg += pat.estimated_kg;
+        if (pat.cuts.length === 1) {
+          plannedSoFar[pat.cuts[0].order_item_id] =
+            (plannedSoFar[pat.cuts[0].order_item_id] || 0) + pat.estimated_kg;
+        }
+        return pat;
+      }
+
+      const cut = pat.cuts[0];
+      const demand = demandKgByItem[cut.order_item_id];
+      const already = plannedSoFar[cut.order_item_id] || 0;
+      // No ground-truth demand for this id (e.g. a stock-preset filler item
+      // with quantity_kg 0) — that's intentional filler, leave it alone.
+      if (demand == null || demand <= 0) {
+        totalPlannedKg += pat.estimated_kg;
+        return pat;
+      }
+
+      const allowance = demand * 1.1; // 10% slack over the exact remaining ask
+      const kgPerLane = pat.estimated_kg / cut.count;
+      const remainingAllowance = allowance - already;
+      const maxLanes = Math.max(1, Math.floor(remainingAllowance / Math.max(1, kgPerLane)));
+
+      if (maxLanes >= cut.count) {
+        totalPlannedKg += pat.estimated_kg;
+        plannedSoFar[cut.order_item_id] = already + pat.estimated_kg;
+        return pat;
+      }
+
+      const newCount = maxLanes;
+      const newUsedWidth = Number((cut.width_inch * newCount).toFixed(2));
+      const newTrimWidth = Number((machine.max_deckle_inch - newUsedWidth).toFixed(2));
+      const newTrimPercent = Number(((newTrimWidth / machine.max_deckle_inch) * 100).toFixed(2));
+      const newKg = Number((kgPerLane * newCount).toFixed(3));
+
+      warnings.push(
+        `Reduced ${orderNumberByItem[cut.order_item_id] || cut.order_item_id} (${cut.width_inch}" @ ${run.gsm} GSM) from ${cut.count} to ${newCount} lane(s) on ${machine.name} — the remaining order demand didn't justify cutting that many reels at once.`
+      );
+
+      totalPlannedKg += newKg;
+      plannedSoFar[cut.order_item_id] = already + newKg;
+
+      return {
+        ...pat,
+        cuts: [{ ...cut, count: newCount }],
+        used_width_inch: newUsedWidth,
+        trim_width_inch: newTrimWidth,
+        trim_percent: newTrimPercent,
+        estimated_kg: Math.round(newKg),
+      };
+    });
+
+    const totalTrimKg = patterns.reduce((acc, p) => acc + (p.estimated_kg * p.trim_percent) / 100, 0);
+    const avgTrimPct = totalPlannedKg > 0 ? (totalTrimKg / totalPlannedKg) * 100 : 0;
+
+    return {
+      ...run,
+      patterns,
+      total_planned_kg: Math.round(totalPlannedKg),
+      total_trim_percent: Number(avgTrimPct.toFixed(2)),
+    };
+  });
+
+  return {
+    ...response,
+    runs,
+    warnings,
     summary: { ...response.summary, total_kg: Math.round(runs.reduce((a, r) => a + r.total_planned_kg, 0)) },
   };
 }
@@ -255,7 +394,23 @@ export async function runSolverOptimization(
 
   const result = await callDeckleSolver(payload, 35000, getSolverFetch());
   const weightMap = await getGsmWeightMap();
-  return applyGsmWeightProfiles(result, weightMap);
+
+  // Per-order-line kg/inch overrides (a specific party's paper for this GSM),
+  // for whichever order lines are actually in this payload.
+  const orderItemIds = payload.items.map((it) => it.order_item_id).filter(Boolean);
+  const overrideRows =
+    orderItemIds.length > 0
+      ? await db.orderItem.findMany({
+          where: { id: { in: orderItemIds }, kgPerInchOverride: { not: null } },
+          select: { id: true, kgPerInchOverride: true },
+        })
+      : [];
+  const overrideMap: Record<string, number> = Object.fromEntries(
+    overrideRows.map((o) => [o.id, Number(o.kgPerInchOverride)])
+  );
+
+  const calibrated = applyGsmWeightProfiles(result, weightMap, overrideMap);
+  return capSingleItemOverproduction(calibrated, payload.machines, payload.items);
 }
 
 // -----------------------------------------------------------------------------

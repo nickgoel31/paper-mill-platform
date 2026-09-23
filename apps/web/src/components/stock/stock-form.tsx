@@ -6,8 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { createStockItem } from "@/server/services/stock-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
-import { PaperType, PaperSize, LengthUnit } from "@/generated/prisma/browser";
-import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { PaperSize, LengthUnit } from "@/generated/prisma/browser";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 import { toInches } from "@/lib/units";
 import { Button } from "@/components/ui/button";
@@ -40,8 +39,9 @@ interface ReelEntry {
   widthInch: string;
   widthUnit: LengthUnit;
   gsm: string;
-  paperType: PaperType;
+  paperType: string;
   size: PaperSize;
+  bf: string;
   quantityKg: string;
   location: string;
   orderItemId?: string;
@@ -68,8 +68,9 @@ interface StockFormProps {
       enteredWidth?: number | null;
       enteredWidthUnit?: LengthUnit;
       gsm: number;
-      paperType: PaperType;
+      paperType: string;
       size?: PaperSize;
+      bf?: number;
       quantityKg: number;
       producedKg: number;
     }>;
@@ -89,6 +90,8 @@ interface StockFormProps {
   gsmWeightMap?: Record<number, number>;
   /** Warehouse Locations master list (Masters → Warehouse Locations). Falls back to a built-in list if empty. */
   locations?: string[];
+  /** Paper Types master list (Masters → Paper Types). */
+  paperTypeOptions?: { value: string; label: string }[];
 }
 
 const COMMON_LOCATIONS = [
@@ -109,6 +112,7 @@ export function StockForm({
   presets = [],
   gsmWeightMap = {},
   locations = [],
+  paperTypeOptions = [],
 }: StockFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -117,6 +121,7 @@ export function StockForm({
   const [manualWeight, setManualWeight] = React.useState<Set<string>>(new Set());
   const locationOptions = locations.length > 0 ? locations : COMMON_LOCATIONS;
   const defaultLocation = locationOptions[0];
+  const defaultPaperType = paperTypeOptions[0]?.value || "NATURAL";
 
   const [reels, setReels] = React.useState<ReelEntry[]>([
     {
@@ -124,8 +129,9 @@ export function StockForm({
       widthInch: "28",
       widthUnit: defaultUnit,
       gsm: "140",
-      paperType: PaperType.NATURAL,
+      paperType: defaultPaperType,
       size: PaperSize.NORMAL,
+      bf: "18",
       quantityKg: "392",
       location: defaultLocation,
     },
@@ -139,8 +145,9 @@ export function StockForm({
         widthInch: String(preset.widthInch),
         widthUnit: defaultUnit,
         gsm: String(preset.gsm),
-        paperType: PaperType.NATURAL,
+        paperType: defaultPaperType,
         size: PaperSize.NORMAL,
+        bf: preset.bf?.match(/\d+/)?.[0] || "18",
         quantityKg: String(preset.standardWeightKg),
         location: preset.defaultLocation || defaultLocation,
       },
@@ -157,8 +164,9 @@ export function StockForm({
         widthInch: lastReel ? lastReel.widthInch : "36",
         widthUnit: lastReel ? lastReel.widthUnit : defaultUnit,
         gsm: lastReel ? lastReel.gsm : "120",
-        paperType: lastReel ? lastReel.paperType : PaperType.NATURAL,
+        paperType: lastReel ? lastReel.paperType : defaultPaperType,
         size: lastReel ? lastReel.size : PaperSize.NORMAL,
+        bf: lastReel ? lastReel.bf : "18",
         quantityKg: lastReel ? lastReel.quantityKg : "500",
         location: lastReel ? lastReel.location : defaultLocation,
       },
@@ -219,6 +227,7 @@ export function StockForm({
                   gsm: String(it.gsm),
                   paperType: it.paperType,
                   size: it.size ?? PaperSize.NORMAL,
+                  bf: String(it.bf ?? 18),
                   quantityKg: String(Math.max(100, it.quantityKg - (it.producedKg || 0))),
                 }
               : r
@@ -269,6 +278,7 @@ export function StockForm({
           gsm: parseInt(r.gsm, 10),
           paperType: r.paperType,
           size: r.size,
+          bf: r.bf?.trim() ? parseInt(r.bf, 10) : 18,
           quantityKg: parseFloat(r.quantityKg),
           location: r.location || defaultLocation,
           orderItemId: r.orderItemId && r.orderItemId !== "none" ? r.orderItemId : undefined,
@@ -505,9 +515,14 @@ export function StockForm({
                         <SelectValue placeholder="Paper type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {PAPER_TYPES.map((pt) => (
-                          <SelectItem key={pt} value={pt} className="text-xs font-medium">
-                            {PAPER_TYPE_LABELS[pt]}
+                        {reel.paperType && !paperTypeOptions.some((pt) => pt.value === reel.paperType) && (
+                          <SelectItem value={reel.paperType} className="text-xs font-medium">
+                            {reel.paperType} (current)
+                          </SelectItem>
+                        )}
+                        {paperTypeOptions.map((pt) => (
+                          <SelectItem key={pt.value} value={pt.value} className="text-xs font-medium">
+                            {pt.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -532,6 +547,20 @@ export function StockForm({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  {/* Burst Factor — informational only, no deckle/matching effect */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">BF</label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="1"
+                      placeholder="18"
+                      value={reel.bf}
+                      onChange={(e) => updateReel(reel.id, "bf", e.target.value)}
+                      className="h-10 rounded-xl bg-white font-mono text-slate-900 border-slate-200 text-sm"
+                    />
                   </div>
 
                   {/* Weight (Kg) */}

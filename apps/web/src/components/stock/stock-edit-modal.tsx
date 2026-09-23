@@ -3,8 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { updateStockItem } from "@/server/services/stock-service";
-import { PaperType, PaperSize, StockStatus, LengthUnit } from "@/generated/prisma/browser";
-import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { PaperSize, StockStatus, LengthUnit } from "@/generated/prisma/browser";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 import {
   Dialog,
@@ -35,24 +34,34 @@ interface StockEditModalProps {
     enteredWidth?: number | null;
     enteredWidthUnit?: LengthUnit;
     gsm: number;
-    paperType: PaperType;
+    paperType: string;
     size: PaperSize;
+    bf?: number;
     quantityKg: number;
     status: StockStatus;
     location?: string | null;
     remarks?: string | null;
   } | null;
   locations?: string[];
+  paperTypeOptions?: { value: string; label: string }[];
   onSuccess: () => void;
 }
 
-export function StockEditModal({ open, onOpenChange, stockItem, locations = [], onSuccess }: StockEditModalProps) {
+export function StockEditModal({
+  open,
+  onOpenChange,
+  stockItem,
+  locations = [],
+  paperTypeOptions = [],
+  onSuccess,
+}: StockEditModalProps) {
   const [reelNumber, setReelNumber] = React.useState("");
   const [widthInch, setWidthInch] = React.useState("");
   const [widthUnit, setWidthUnit] = React.useState<LengthUnit>(LengthUnit.INCH);
   const [gsm, setGsm] = React.useState("");
-  const [paperType, setPaperType] = React.useState<PaperType>(PaperType.NATURAL);
+  const [paperType, setPaperType] = React.useState("NATURAL");
   const [size, setSize] = React.useState<PaperSize>(PaperSize.NORMAL);
+  const [bf, setBf] = React.useState("18");
   const [quantityKg, setQuantityKg] = React.useState("");
   const [status, setStatus] = React.useState<StockStatus>(StockStatus.AVAILABLE);
   const [location, setLocation] = React.useState("");
@@ -68,6 +77,7 @@ export function StockEditModal({ open, onOpenChange, stockItem, locations = [], 
       setGsm(String(stockItem.gsm));
       setPaperType(stockItem.paperType);
       setSize(stockItem.size);
+      setBf(String(stockItem.bf ?? 18));
       setQuantityKg(String(stockItem.quantityKg));
       setStatus(stockItem.status);
       setLocation(stockItem.location || "");
@@ -101,6 +111,7 @@ export function StockEditModal({ open, onOpenChange, stockItem, locations = [], 
         gsm: parseInt(gsm, 10),
         paperType,
         size,
+        bf: bf.trim() ? parseInt(bf, 10) : 18,
         quantityKg: Number(quantityKg),
         status,
         location,
@@ -182,17 +193,20 @@ export function StockEditModal({ open, onOpenChange, stockItem, locations = [], 
               </div>
             </div>
 
-            {/* Paper Type + Size */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Paper Type + Size + BF */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <label className="font-semibold text-slate-800">Paper Type</label>
-                <Select value={paperType} onValueChange={(v) => setPaperType(v as PaperType)}>
+                <Select value={paperType} onValueChange={setPaperType}>
                   <SelectTrigger className="h-9 text-xs bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PAPER_TYPES.map((pt) => (
-                      <SelectItem key={pt} value={pt} className="text-xs">{PAPER_TYPE_LABELS[pt]}</SelectItem>
+                    {paperType && !paperTypeOptions.some((pt) => pt.value === paperType) && (
+                      <SelectItem value={paperType} className="text-xs">{paperType} (current)</SelectItem>
+                    )}
+                    {paperTypeOptions.map((pt) => (
+                      <SelectItem key={pt.value} value={pt.value} className="text-xs">{pt.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -209,6 +223,17 @@ export function StockEditModal({ open, onOpenChange, stockItem, locations = [], 
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="font-semibold text-slate-800">BF</label>
+                <Input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={bf}
+                  onChange={(e) => setBf(e.target.value)}
+                  className="h-9 text-xs bg-white"
+                />
               </div>
             </div>
 

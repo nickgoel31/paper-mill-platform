@@ -16,6 +16,7 @@ export const tenantSchema = z.object({
     .optional()
     .transform((s) => (s ? slugify(s) : "")),
   gstin: z.string().trim().optional().nullable(),
+  cin: z.string().trim().optional().nullable(),
   address: z.string().trim().optional().nullable(),
   city: z.string().trim().optional().nullable(),
   state: z.string().trim().optional().nullable(),

@@ -7,7 +7,7 @@ import {
   allocateStockToOrderItem,
 } from "@/server/services/stock-service";
 import { formatWidthInch, formatWeightKg } from "@/lib/utils";
-import type { PaperType, PaperSize } from "@/generated/prisma/browser";
+import type { PaperSize } from "@/generated/prisma/browser";
 import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
 import {
   Dialog,
@@ -39,7 +39,7 @@ interface StockAllocationModalProps {
     location?: string | null;
     /** Order this reel was cut for; preselected when still eligible. */
     originOrder?: { orderItemId: string } | null;
-    paperType?: PaperType;
+    paperType?: string;
     size?: PaperSize;
   } | null;
   onSuccess: () => void;

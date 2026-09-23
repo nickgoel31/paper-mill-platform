@@ -7,6 +7,26 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Fallback label for a sales order with no promised delivery date — "Created
+ * today" / "Created 1d ago" / "Created 5d ago", relative to when the order
+ * was booked (`orderDate`), not the current instant. Used wherever the UI
+ * would otherwise show an empty delivery date.
+ */
+export function formatOrderAge(orderDate: Date | string | null | undefined): string {
+  if (!orderDate) return "Created recently";
+  const d = new Date(orderDate);
+  if (isNaN(d.getTime())) return "Created recently";
+  const start = new Date(d);
+  start.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  if (days <= 0) return "Created today";
+  if (days === 1) return "Created 1d ago";
+  return `Created ${days}d ago`;
+}
+
 export function formatWeightKg(kg: number | string | null | undefined): string {
   if (kg === null || kg === undefined) return "0.000 MT";
   const num = typeof kg === "string" ? parseFloat(kg) : kg;

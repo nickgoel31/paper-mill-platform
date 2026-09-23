@@ -6,33 +6,37 @@ import Link from "next/link";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { OrderPriority, OrderStatus, PaperType, PaperSize, LengthUnit } from "@/generated/prisma/browser";
+import { OrderPriority, OrderStatus, PaperSize, LengthUnit } from "@/generated/prisma/browser";
 import { toInches, unitLabel } from "@/lib/units";
 import {
   orderFormSchema,
   OrderFormInput,
 } from "@/lib/schemas/order";
 import { offlineCreateOrder, offlineUpdateOrder } from "@/lib/offline/wrapped-actions";
-import { formatWeightKg, formatCurrencyINR } from "@/lib/utils";
+import { formatWeightKg, formatCurrencyINR, formatOrderAge } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
-import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 
 const NEW_ITEM_DEFAULTS = {
+  isBookingOnly: false,
   widthInch: 45.0,
   widthUnit: LengthUnit.INCH,
   gsm: 120,
-  paperType: PaperType.NATURAL,
+  paperType: "NATURAL",
   size: PaperSize.NORMAL,
+  bf: 18,
   numberOfReels: null as number | null,
   remark: "",
   quantityKg: 3000,
   tolerancePercent: 0,
   ratePerKg: null as number | null,
   amount: null as number | null,
+  kgPerInchOverride: null as number | null,
 };
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
@@ -100,6 +104,8 @@ interface OrderFormProps {
   };
   /** `{ gsm: kgPerInch }` from the GSM Weight Chart — used to auto-fill weight from width × reels in real time. */
   gsmWeightMap?: Record<number, number>;
+  /** Paper Types master list (Masters → Paper Types). */
+  paperTypeOptions?: { value: string; label: string }[];
 }
 
 export function OrderForm({
@@ -108,6 +114,7 @@ export function OrderForm({
   defaultUnit = LengthUnit.INCH,
   machineConstraints,
   gsmWeightMap = {},
+  paperTypeOptions = [],
 }: OrderFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
@@ -115,21 +122,27 @@ export function OrderForm({
   // Row indexes whose weight the user has typed directly — auto-fill stops
   // touching that row's weight once they do, until width/GSM/reels changes again.
   const manualWeightRows = React.useRef<Set<number>>(new Set());
+  // Row indexes whose reel count the user has typed directly — protects it
+  // from being overwritten by the weight -> reels auto-calc below.
+  const manualReelsRows = React.useRef<Set<number>>(new Set());
 
   const defaultItems = initialOrder?.items?.map((it: any) => ({
     id: it.id,
+    isBookingOnly: it.isBookingOnly ?? false,
     // Show/edit the value in whatever unit it was originally entered in, not the
     // canonical inches — redisplaying "as entered" should never drift.
     widthInch: Number(it.enteredWidth ?? it.widthInch),
     widthUnit: (it.enteredWidthUnit as LengthUnit) || LengthUnit.INCH,
     gsm: Number(it.gsm),
-    paperType: (it.paperType as PaperType) || PaperType.NATURAL,
+    paperType: it.paperType || "NATURAL",
     size: (it.size as PaperSize) || PaperSize.NORMAL,
+    bf: it.bf ?? 18,
     numberOfReels: it.numberOfReels ?? null,
     remark: it.remark || "",
     quantityKg: Number(it.quantityKg),
     tolerancePercent: Number(it.tolerancePercent || 5.0),
     ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
+    kgPerInchOverride: it.kgPerInchOverride ? Number(it.kgPerInchOverride) : null,
     // Restate the line's original commercial amount for editing; it was
     // originally typed in directly, not derived, so re-derive it here just
     // for display continuity.
@@ -140,14 +153,15 @@ export function OrderForm({
     resolver: zodResolver(orderFormSchema),
     defaultValues: {
       clientId: initialOrder?.clientId || (clients.length > 0 ? clients[0].id : ""),
+      offlineOrderNo: initialOrder?.offlineOrderNo || "",
       orderDate: initialOrder?.orderDate
         ? new Date(initialOrder.orderDate).toISOString().split("T")[0]
         : new Date().toISOString().split("T")[0],
+      // Optional — leave blank rather than forcing a guessed date. Wherever
+      // it's displayed, a blank delivery date falls back to "Created Xd ago".
       deliveryDate: initialOrder?.deliveryDate
         ? new Date(initialOrder.deliveryDate).toISOString().split("T")[0]
-        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split("T")[0],
+        : "",
       priority: initialOrder?.priority || OrderPriority.NORMAL,
       status: initialOrder?.status || OrderStatus.CONFIRMED,
       notes: initialOrder?.notes || "",
@@ -156,19 +170,53 @@ export function OrderForm({
     },
   });
 
-  // Recompute a row's weight from width × reels × the GSM chart's kg/inch,
-  // unless the user has typed a weight for this row directly.
+  // Recompute a row's weight from width × reels × kg/inch — this party's own
+  // override if this line has one, otherwise the GSM chart's default — unless
+  // the user has typed a weight for this row directly.
   const recalcWeight = (idx: number) => {
     if (manualWeightRows.current.has(idx)) return;
     const item = form.getValues(`items.${idx}`);
     const gsm = Number(item?.gsm);
-    const kgPerInch = gsmWeightMap[gsm];
+    const override = Number(item?.kgPerInchOverride);
+    const kgPerInch = override > 0 ? override : gsmWeightMap[gsm];
     const width = Number(item?.widthInch);
     if (!kgPerInch || !width || width <= 0) return;
     const widthInches = toInches(width, item?.widthUnit || LengthUnit.INCH);
     const reels = Number(item?.numberOfReels) > 0 ? Number(item.numberOfReels) : 1;
     const weight = Number((kgPerInch * widthInches * reels).toFixed(2));
     form.setValue(`items.${idx}.quantityKg`, weight, { shouldDirty: true });
+  };
+
+  // Reverse direction: when the mill types GSM + Width + a total Weight
+  // (e.g. "120 GSM, 24 inch, 20 MT") instead of a reel count, back out the
+  // rounded reel count from the GSM Weight Chart automatically. Only runs
+  // once the weight has been typed by hand and the reel count hasn't been —
+  // whichever of the two the user actually typed stays the source of truth.
+  const recalcReelsFromWeight = (idx: number) => {
+    if (manualReelsRows.current.has(idx)) return;
+    if (!manualWeightRows.current.has(idx)) return;
+    const item = form.getValues(`items.${idx}`);
+    const gsm = Number(item?.gsm);
+    const override = Number(item?.kgPerInchOverride);
+    const kgPerInch = override > 0 ? override : gsmWeightMap[gsm];
+    const width = Number(item?.widthInch);
+    const weight = Number(item?.quantityKg);
+    if (!kgPerInch || !width || width <= 0 || !weight || weight <= 0) return;
+    const widthInches = toInches(width, item?.widthUnit || LengthUnit.INCH);
+    const weightPerReel = kgPerInch * widthInches;
+    if (!weightPerReel || weightPerReel <= 0) return;
+    const reels = Math.round(weight / weightPerReel);
+    form.setValue(`items.${idx}.numberOfReels`, reels > 0 ? reels : null, { shouldDirty: true });
+  };
+
+  // Whichever of weight/reels the user typed by hand drives the other —
+  // width/GSM/override changes resync in that same direction.
+  const syncItemCalc = (idx: number) => {
+    if (manualWeightRows.current.has(idx) && !manualReelsRows.current.has(idx)) {
+      recalcReelsFromWeight(idx);
+    } else {
+      recalcWeight(idx);
+    }
   };
 
   // How many identical rows the "Add Reel Size" button inserts at once.
@@ -182,6 +230,11 @@ export function OrderForm({
   const watchedItems = useWatch({
     control: form.control,
     name: "items",
+  });
+
+  const watchedOrderDate = useWatch({
+    control: form.control,
+    name: "orderDate",
   });
 
   const { maxDeckle, minGsm, maxGsm, machines } = machineConstraints;
@@ -206,7 +259,7 @@ export function OrderForm({
   const distinctGsms = React.useMemo(() => {
     const set = new Set<number>();
     (watchedItems || []).forEach((it: any) => {
-      if (it?.gsm && !isNaN(it.gsm)) set.add(Number(it.gsm));
+      if (!it?.isBookingOnly && it?.gsm && !isNaN(it.gsm)) set.add(Number(it.gsm));
     });
     return Array.from(set);
   }, [watchedItems]);
@@ -216,8 +269,11 @@ export function OrderForm({
     const counts = new Map<string, number>();
     const dupes: string[] = [];
     (watchedItems || []).forEach((it: any) => {
-      if (!it || !it.widthInch || !it.gsm) return;
-      const type = PAPER_TYPE_LABELS[it.paperType as PaperType] || it.paperType;
+      if (!it || it.isBookingOnly || !it.widthInch || !it.gsm) return;
+      const type =
+        paperTypeOptions.find((pt) => pt.value === it.paperType)?.label ||
+        PAPER_TYPE_LABELS[it.paperType] ||
+        it.paperType;
       const widthIn = toInches(Number(it.widthInch), it.widthUnit || LengthUnit.INCH);
       const key = `${widthIn.toFixed(2)}" @ ${it.gsm} GSM • ${type}`;
       counts.set(key, (counts.get(key) || 0) + 1);
@@ -373,6 +429,26 @@ export function OrderForm({
                 )}
               />
 
+              {/* Offline / client's own booking reference */}
+              <FormField
+                control={form.control}
+                name="offlineOrderNo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-bold text-slate-700">Offline Order No.</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. diary booking / phone order ref"
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200 font-mono"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Order Date */}
               <FormField
                 control={form.control}
@@ -388,13 +464,13 @@ export function OrderForm({
                 )}
               />
 
-              {/* Promised Delivery Date */}
+              {/* Promised Delivery Date (optional) */}
               <FormField
                 control={form.control}
                 name="deliveryDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-bold text-slate-700">Promised Delivery Date *</FormLabel>
+                    <FormLabel className="text-xs font-bold text-slate-700">Promised Delivery Date</FormLabel>
                     <FormControl>
                       <Input
                         type="date"
@@ -403,6 +479,11 @@ export function OrderForm({
                         className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200"
                       />
                     </FormControl>
+                    {!field.value && (
+                      <p className="text-[10px] text-slate-400">
+                        Not set — will display as &quot;{formatOrderAge(watchedOrderDate)}&quot; until a date is given.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -570,17 +651,35 @@ export function OrderForm({
                 const currentWidth = Number(currentItem?.widthInch) || 0;
                 const currentWidthUnit = (currentItem?.widthUnit as LengthUnit) || LengthUnit.INCH;
                 const currentWidthInches = toInches(currentWidth, currentWidthUnit);
-                const isExceedingDeckle = currentWidthInches > maxDeckle;
+                const isBookingOnly = !!currentItem?.isBookingOnly;
+                const isExceedingDeckle = !isBookingOnly && currentWidthInches > maxDeckle;
 
                 return (
                   <div
                     key={field.id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4 sm:p-5 space-y-4"
+                    className={`rounded-2xl border p-4 sm:p-5 space-y-4 ${
+                      isBookingOnly ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-slate-50/40"
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-900 bg-white border border-slate-200 rounded-lg px-2.5 py-1 font-mono">
-                        Reel Size #{idx + 1}
-                      </span>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-xs font-bold text-slate-900 bg-white border border-slate-200 rounded-lg px-2.5 py-1 font-mono">
+                          {isBookingOnly ? `Booking #${idx + 1}` : `Reel Size #${idx + 1}`}
+                        </span>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.isBookingOnly`}
+                          render={({ field: itField }) => (
+                            <label className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 cursor-pointer select-none">
+                              <Checkbox
+                                checked={itField.value}
+                                onCheckedChange={(v) => itField.onChange(!!v)}
+                              />
+                              Booking only (no size/reel yet)
+                            </label>
+                          )}
+                        />
+                      </div>
                       {fields.length > 1 && (
                         <Button
                           type="button"
@@ -594,10 +693,18 @@ export function OrderForm({
                       )}
                     </div>
 
+                    {isBookingOnly && (
+                      <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 -mt-1">
+                        No size/reel needed yet — this line won&apos;t appear in deckle planning or stock matching until it&apos;s edited with real dimensions.
+                      </p>
+                    )}
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                       {/* Width + unit */}
                       <div>
-                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Width *</FormLabel>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">
+                          Width {!isBookingOnly && "*"}
+                        </FormLabel>
                         <div className="flex items-center gap-1.5 mt-1">
                           <FormField
                             control={form.control}
@@ -608,14 +715,15 @@ export function OrderForm({
                                   <Input
                                     type="number"
                                     step="0.01"
+                                    disabled={isBookingOnly}
                                     {...itField}
                                     onChange={(e) => {
                                       itField.onChange(e);
-                                      recalcWeight(idx);
+                                      syncItemCalc(idx);
                                     }}
                                     className={`h-10 text-sm rounded-xl font-mono ${
                                       isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-white border-slate-200"
-                                    }`}
+                                    } disabled:opacity-50 disabled:bg-slate-100`}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -629,7 +737,7 @@ export function OrderForm({
                               <Select
                                 onValueChange={(val) => {
                                   itField.onChange(val);
-                                  recalcWeight(idx);
+                                  syncItemCalc(idx);
                                 }}
                                 value={itField.value}
                               >
@@ -653,7 +761,9 @@ export function OrderForm({
 
                       {/* GSM */}
                       <div>
-                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">GSM *</FormLabel>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">
+                          GSM {!isBookingOnly && "*"}
+                        </FormLabel>
                         <FormField
                           control={form.control}
                           name={`items.${idx}.gsm`}
@@ -663,12 +773,13 @@ export function OrderForm({
                                 <div className="relative">
                                   <Input
                                     type="number"
+                                    disabled={isBookingOnly}
                                     {...itField}
                                     onChange={(e) => {
                                       itField.onChange(e);
-                                      recalcWeight(idx);
+                                      syncItemCalc(idx);
                                     }}
-                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200 disabled:opacity-50 disabled:bg-slate-100"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
                                     GSM
@@ -696,9 +807,14 @@ export function OrderForm({
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent className="rounded-xl">
-                                  {PAPER_TYPES.map((pt) => (
-                                    <SelectItem key={pt} value={pt} className="text-xs">
-                                      {PAPER_TYPE_LABELS[pt]}
+                                  {itField.value && !paperTypeOptions.some((pt) => pt.value === itField.value) && (
+                                    <SelectItem value={itField.value} className="text-xs">
+                                      {itField.value} (current)
+                                    </SelectItem>
+                                  )}
+                                  {paperTypeOptions.map((pt) => (
+                                    <SelectItem key={pt.value} value={pt.value} className="text-xs">
+                                      {pt.label}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -756,6 +872,7 @@ export function OrderForm({
                                     placeholder="—"
                                     value={itField.value ?? ""}
                                     onChange={(e) => {
+                                      manualReelsRows.current.add(idx);
                                       itField.onChange(
                                         e.target.value ? Math.floor(Number(e.target.value)) : null
                                       );
@@ -778,11 +895,18 @@ export function OrderForm({
                       <div>
                         <FormLabel className="text-[11px] font-bold uppercase text-slate-500 flex items-center gap-1.5">
                           Weight (KG) *
-                          {gsmWeightMap[Number(currentItem?.gsm)] && !manualWeightRows.current.has(idx) && (
-                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md normal-case">
-                              auto (GSM chart)
+                          {!manualWeightRows.current.has(idx) && Number(currentItem?.kgPerInchOverride) > 0 && (
+                            <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md normal-case">
+                              auto (party override)
                             </span>
                           )}
+                          {!manualWeightRows.current.has(idx) &&
+                            !(Number(currentItem?.kgPerInchOverride) > 0) &&
+                            gsmWeightMap[Number(currentItem?.gsm)] && (
+                              <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md normal-case">
+                                auto (GSM chart)
+                              </span>
+                            )}
                         </FormLabel>
                         <FormField
                           control={form.control}
@@ -798,6 +922,7 @@ export function OrderForm({
                                     onChange={(e) => {
                                       manualWeightRows.current.add(idx);
                                       itField.onChange(e);
+                                      recalcReelsFromWeight(idx);
                                     }}
                                     className="h-10 text-sm rounded-xl font-mono font-bold text-slate-900 bg-white border-slate-200"
                                   />
@@ -871,26 +996,100 @@ export function OrderForm({
                       </div>
                     </div>
 
-                    {/* Remark */}
-                    <div>
-                      <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Remark</FormLabel>
-                      <FormField
-                        control={form.control}
-                        name={`items.${idx}.remark`}
-                        render={({ field: itField }) => (
-                          <FormItem className="mt-1">
-                            <FormControl>
-                              <Input
-                                placeholder="e.g. jointless, tight winding"
-                                value={itField.value ?? ""}
-                                onChange={(e) => itField.onChange(e.target.value)}
-                                className="h-10 text-sm rounded-xl bg-white border-slate-200"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {/* Remark */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Remark</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.remark`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <Input
+                                  placeholder="e.g. jointless, tight winding"
+                                  value={itField.value ?? ""}
+                                  onChange={(e) => itField.onChange(e.target.value)}
+                                  className="h-10 text-sm rounded-xl bg-white border-slate-200"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* This party's own kg/inch, overriding the mill's GSM Weight Chart just for this line */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500 flex items-center gap-1.5">
+                          Override kg/inch
+                          <span className="text-[9px] font-semibold text-slate-400 normal-case">
+                            (this party only — optional)
+                          </span>
+                        </FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.kgPerInchOverride`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <div className="relative">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    placeholder={
+                                      gsmWeightMap[Number(currentItem?.gsm)]
+                                        ? `Mill default: ${gsmWeightMap[Number(currentItem?.gsm)]}`
+                                        : "e.g. 15.75"
+                                    }
+                                    value={itField.value ?? ""}
+                                    onChange={(e) => {
+                                      itField.onChange(e.target.value ? Number(e.target.value) : null);
+                                      syncItemCalc(idx);
+                                    }}
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                  />
+                                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
+                                    kg/in
+                                  </span>
+                                </div>
+                              </FormControl>
+                              <p className="text-[10px] text-slate-400 mt-1">
+                                Leave blank to use the mill&apos;s GSM Weight Chart for {currentItem?.gsm || "this"} GSM.
+                              </p>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      {/* Burst Factor — informational only, has no effect on the deckle solver */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">BF</FormLabel>
+                        <FormField
+                          control={form.control}
+                          name={`items.${idx}.bf`}
+                          render={({ field: itField }) => (
+                            <FormItem className="mt-1">
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="1"
+                                  min="1"
+                                  placeholder="18"
+                                  value={itField.value ?? ""}
+                                  onChange={(e) =>
+                                    itField.onChange(e.target.value ? Number(e.target.value) : "")
+                                  }
+                                  className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                     </div>
                   </div>
                 );

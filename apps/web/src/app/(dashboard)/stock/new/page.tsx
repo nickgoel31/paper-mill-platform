@@ -6,6 +6,7 @@ import { getMachineOptions } from "@/server/services/lookup-service";
 import { getSystemSettings } from "@/server/services/settings-service";
 import { getGsmWeightMap } from "@/server/services/gsm-weight-service";
 import { getWarehouseLocationNames } from "@/server/services/warehouse-location-service";
+import { getPaperTypeChoices } from "@/server/services/paper-type-service";
 import { StockForm } from "@/components/stock/stock-form";
 
 export const metadata = {
@@ -15,7 +16,7 @@ export const metadata = {
 export default async function NewStockPage() {
   const { tenantId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.DISPATCH, Role.OPERATOR);
 
-  const [activeMachines, confirmedOrders, stockPresets, settings, gsmWeightMap, locations] = await Promise.all([
+  const [activeMachines, confirmedOrders, stockPresets, settings, gsmWeightMap, locations, paperTypeOptions] = await Promise.all([
     getMachineOptions(tenantId!),
     db.order.findMany({
       where: {
@@ -34,6 +35,7 @@ export default async function NewStockPage() {
             gsm: true,
             paperType: true,
             size: true,
+            bf: true,
             quantityKg: true,
             producedKg: true,
           },
@@ -46,6 +48,7 @@ export default async function NewStockPage() {
     getSystemSettings(),
     getGsmWeightMap(),
     getWarehouseLocationNames(),
+    getPaperTypeChoices(),
   ]);
 
   return (
@@ -56,6 +59,7 @@ export default async function NewStockPage() {
       presets={JSON.parse(JSON.stringify(stockPresets))}
       gsmWeightMap={gsmWeightMap}
       locations={locations}
+      paperTypeOptions={paperTypeOptions}
     />
   );
 }

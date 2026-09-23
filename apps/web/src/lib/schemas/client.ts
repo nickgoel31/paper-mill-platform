@@ -8,10 +8,13 @@ export const clientSchema = z.object({
     .min(2, "Client code must be at least 2 characters")
     .max(20, "Client code must be at most 20 characters")
     .regex(/^[A-Z0-9_-]+$/, "Code must be uppercase alphanumeric (e.g. AMBER-01)"),
+  // Fully optional: missing/undefined/null/blank all pass through as "no
+  // GSTIN yet" — only a non-blank value gets format-checked.
   gstin: z
     .string()
-    .trim()
-    .transform((v) => (v === "" ? undefined : v.toUpperCase()))
+    .optional()
+    .nullable()
+    .transform((v) => (v && v.trim() !== "" ? v.trim().toUpperCase() : undefined))
     .pipe(
       z
         .string()

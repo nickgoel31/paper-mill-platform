@@ -173,6 +173,11 @@ export const navConfig: NavItem[] = [
         href: "/masters/locations",
         allowedRoles: [Role.ADMIN, Role.PLANNER, Role.SALES, Role.DISPATCH, Role.OPERATOR],
       },
+      {
+        title: "Paper Types",
+        href: "/masters/paper-types",
+        allowedRoles: [Role.ADMIN, Role.PLANNER, Role.SALES, Role.DISPATCH, Role.OPERATOR],
+      },
     ],
   },
 

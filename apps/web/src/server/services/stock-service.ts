@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { requireRole } from "@/server/auth-helpers";
-import { Role, StockStatus, OrderStatus, PaperType, PaperSize, LengthUnit, Prisma } from "@/generated/prisma/browser";
+import { Role, StockStatus, OrderStatus, PaperSize, LengthUnit, Prisma } from "@/generated/prisma/browser";
 import { logAudit } from "./audit-service";
 import {
   QueryParams,
@@ -29,7 +29,7 @@ function endOfDayExclusive(dateStr: string): Date {
 
 export interface StockQueryParams extends QueryParams {
   gsm?: number;
-  paperType?: PaperType;
+  paperType?: string;
   size?: PaperSize;
   minWidth?: number;
   maxWidth?: number;
@@ -284,7 +284,7 @@ export async function getStockItemsForExport(params: StockQueryParams) {
 export async function getPendingEligibleOrderItemsForStock(
   widthInch: number,
   gsm: number,
-  paperType?: PaperType,
+  paperType?: string,
   size?: PaperSize
 ) {
   const widthDec = new Prisma.Decimal(widthInch.toFixed(2));
@@ -379,8 +379,9 @@ export async function createStockItem(input: {
   location?: string;
   remarks?: string;
   orderItemId?: string;
-  paperType?: PaperType;
+  paperType?: string;
   size?: PaperSize;
+  bf?: number;
 }) {
   const { userId } = await requireRole(
     Role.ADMIN,
@@ -401,14 +402,17 @@ export async function createStockItem(input: {
   const widthInches = toInches(input.widthInch, widthUnit);
 
   const isAllocated = Boolean(input.orderItemId && input.orderItemId !== "none");
-  let paperType = input.paperType ?? PaperType.NATURAL;
+  let paperType = input.paperType ?? "NATURAL";
   let size = input.size ?? PaperSize.NORMAL;
+  // BF is informational only (no deckle/matching involvement) — inherit from
+  // the linked order line as a convenience when not given explicitly.
+  let bf = input.bf ?? 18;
 
   // A reel pre-linked to an order line must be the same paper type/size as that line.
   if (isAllocated && input.orderItemId) {
     const line = await db.orderItem.findFirst({
       where: { id: input.orderItemId },
-      select: { paperType: true, size: true },
+      select: { paperType: true, size: true, bf: true },
     });
     if (line && input.paperType && input.paperType !== line.paperType) {
       throw new Error(
@@ -423,6 +427,7 @@ export async function createStockItem(input: {
     if (line) {
       paperType = line.paperType;
       size = line.size;
+      if (!input.bf) bf = line.bf;
     }
   }
 
@@ -440,6 +445,7 @@ export async function createStockItem(input: {
         gsm: input.gsm,
         paperType,
         size,
+        bf,
         quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
         status: isAllocated ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
         location: defaultLocation,
@@ -550,8 +556,9 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     enteredWidth: number;
     enteredWidthUnit: LengthUnit;
     gsm: number;
-    paperType: PaperType;
+    paperType: string;
     size: PaperSize;
+    bf: number;
     quantityKg: number;
     orderItemId: string | null;
     location: string;
@@ -566,8 +573,12 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
       const gsm = parseInt(r.gsm, 10);
       if (isNaN(gsm) || gsm <= 0) throw new Error(`Invalid "gsm": "${r.gsm}"`);
       const widthUnit = (r.widthUnit || "").toUpperCase() === "CM" ? LengthUnit.CM : LengthUnit.INCH;
-      let paperType = (r.paperType || "").toUpperCase() === "BY" ? PaperType.BY : PaperType.NATURAL;
+      let paperType = r.paperType?.trim() ? r.paperType.trim().toUpperCase() : "NATURAL";
       let size = (r.size || "").toUpperCase() === "BABY" ? PaperSize.BABY : PaperSize.NORMAL;
+      let bf = (() => {
+        const parsed = r.bf?.trim() ? parseInt(r.bf, 10) : NaN;
+        return !isNaN(parsed) && parsed > 0 ? parsed : 18;
+      })();
       const reelNumber = r.reelNumber?.trim() || "";
       const orderNumber = r.orderNumber?.trim() || "";
       const kgPerInch = gsmWeightMap[gsm];
@@ -619,6 +630,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         orderItemId = match.id;
         paperType = match.paperType;
         size = match.size;
+        if (!r.bf?.trim()) bf = match.bf;
       }
 
       validRows.push({
@@ -630,6 +642,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         gsm,
         paperType,
         size,
+        bf,
         quantityKg,
         orderItemId,
         location: r.location?.trim() || defaultLocation,
@@ -659,6 +672,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
           gsm: vr.gsm,
           paperType: vr.paperType,
           size: vr.size,
+          bf: vr.bf,
           quantityKg: new Prisma.Decimal(vr.quantityKg.toFixed(3)),
           status: vr.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
           location: vr.location,
@@ -784,8 +798,9 @@ export async function updateStockItem(input: {
   widthInch: number;
   widthUnit: LengthUnit;
   gsm: number;
-  paperType: PaperType;
+  paperType: string;
   size: PaperSize;
+  bf?: number;
   quantityKg: number;
   status: StockStatus;
   location: string;
@@ -831,6 +846,7 @@ export async function updateStockItem(input: {
         gsm: input.gsm,
         paperType: input.paperType,
         size: input.size,
+        bf: input.bf || 18,
         quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
         status: input.status,
         location: input.location,
@@ -1136,6 +1152,14 @@ export async function deallocateStock(stockItemId: string, reason?: string) {
 // must be deallocated or reversed through the normal flow first.
 // -----------------------------------------------------------------------------
 
+function friendlyStockDeleteError(err: unknown): Error {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/foreign key/i.test(msg)) {
+    return new Error("Can't delete this reel — other records still reference it (e.g. an order line or production run).");
+  }
+  return err instanceof Error ? err : new Error(msg);
+}
+
 export async function deleteStockItem(id: string) {
   const { userId } = await requireRole(Role.ADMIN);
 
@@ -1147,7 +1171,11 @@ export async function deleteStockItem(id: string) {
     );
   }
 
-  await db.stockItem.delete({ where: { id } });
+  try {
+    await db.stockItem.delete({ where: { id } });
+  } catch (err) {
+    throw friendlyStockDeleteError(err);
+  }
   await logAudit({
     userId,
     entityType: "StockItem",
@@ -1167,24 +1195,53 @@ export async function deleteStockItems(ids: string[]) {
   const deletable = items.filter((i) => i.status === StockStatus.AVAILABLE);
   const blocked = items.filter((i) => i.status !== StockStatus.AVAILABLE);
 
+  let deletedCount = 0;
+  const failed: { id: string; label: string; reason: string }[] = [];
+
   if (deletable.length > 0) {
-    await db.stockItem.deleteMany({ where: { id: { in: deletable.map((i) => i.id) } } });
-    await logAudit({
-      userId,
-      entityType: "StockItem",
-      entityId: "bulk-delete",
-      action: "DELETE",
-      before: { count: deletable.length },
-    });
+    try {
+      await db.stockItem.deleteMany({ where: { id: { in: deletable.map((i) => i.id) } } });
+      deletedCount = deletable.length;
+      await logAudit({
+        userId,
+        entityType: "StockItem",
+        entityId: "bulk-delete",
+        action: "DELETE",
+        before: { count: deletable.length },
+      });
+    } catch (err) {
+      // deleteMany is all-or-nothing on a constraint failure — fall back to
+      // one-by-one so a single blocked reel doesn't stop the rest.
+      for (const i of deletable) {
+        try {
+          await db.stockItem.delete({ where: { id: i.id } });
+          deletedCount++;
+        } catch (rowErr) {
+          failed.push({ id: i.id, label: i.reelNumber || i.id, reason: friendlyStockDeleteError(rowErr).message });
+        }
+      }
+      if (deletedCount > 0) {
+        await logAudit({
+          userId,
+          entityType: "StockItem",
+          entityId: "bulk-delete",
+          action: "DELETE",
+          before: { count: deletedCount },
+        });
+      }
+    }
   }
 
   revalidatePath("/stock");
   return {
-    deleted: deletable.length,
-    skipped: blocked.map((i) => ({
-      id: i.id,
-      label: i.reelNumber || i.id,
-      reason: `${i.status} reels can't be deleted — deallocate first.`,
-    })),
+    deleted: deletedCount,
+    skipped: [
+      ...blocked.map((i) => ({
+        id: i.id,
+        label: i.reelNumber || i.id,
+        reason: `${i.status} reels can't be deleted — deallocate first.`,
+      })),
+      ...failed,
+    ],
   };
 }

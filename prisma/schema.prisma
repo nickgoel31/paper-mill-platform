@@ -36,11 +36,6 @@ enum OrderPriority {
   STOCK
 }
 
-enum PaperType {
-  NATURAL
-  BY
-}
-
 // Reel/sheet size category, hardcoded per mill request (two sizes only).
 enum PaperSize {
   BABY
@@ -126,6 +121,8 @@ model Tenant {
   slug      String   @unique
   code      String   @unique
   gstin     String?
+  // Corporate Identification Number — company registration reference, distinct from GSTIN.
+  cin       String?
   address   String?
   city      String?
   state     String?
@@ -159,6 +156,7 @@ model Tenant {
   settings      SystemSetting[]
   payments      Payment[]
   warehouseLocations WarehouseLocation[]
+  paperTypeOptions   PaperTypeOption[]
 }
 
 model User {
@@ -190,6 +188,7 @@ model User {
   auditLogs           AuditLog[]
   recordedPayments    Payment[]
   createdWarehouseLocations WarehouseLocation[]
+  createdPaperTypeOptions   PaperTypeOption[]
 
   @@index([role])
   @@index([email])
@@ -315,6 +314,9 @@ model Order {
   id           String        @id @default(cuid())
   tenantId     String?
   orderNumber  String
+  // The client's own PO/booking reference (paper diary, phone order, etc.) —
+  // lets the mill match this system order back to an offline booking number.
+  offlineOrderNo String?
   clientId     String
   orderDate    DateTime      @default(now())
   deliveryDate DateTime?
@@ -351,14 +353,27 @@ model OrderItem {
   enteredWidth     Decimal?
   enteredWidthUnit LengthUnit @default(INCH)
   gsm              Int
-  paperType        PaperType @default(NATURAL) @map("paperKind")
+  // Mill-configurable — see PaperTypeOption master data (was a fixed enum).
+  paperType        String @default("NATURAL") @map("paperKind")
   size             PaperSize @default(NORMAL) @map("paperSize")
+  // Burst Factor — a paper-quality spec, purely informational/commercial.
+  // Not used by the deckle solver or any matching logic.
+  bf               Int @default(18)
+  // A line booked with just a weight (no size/reels known yet — e.g. an
+  // offline phone booking). widthInch/gsm are stored as 0 for these and the
+  // line is excluded from deckle planning/stock-matching until it's edited
+  // with real dimensions.
+  isBookingOnly    Boolean @default(false)
   paperColour      String?
   numberOfReels    Int?
   remark           String?
   quantityKg       Decimal
   tolerancePercent Decimal @default(5.00)
   ratePerKg        Decimal?
+  // This party's own calibrated kg-per-inch for this GSM, when it differs
+  // from the mill's general GsmWeightProfile chart. Set per order line;
+  // null means "use the mill's chart default" (unchanged behavior).
+  kgPerInchOverride Decimal?
   producedKg       Decimal @default(0)
   dispatchedKg     Decimal @default(0)
   createdAt        DateTime @default(now())
@@ -514,8 +529,12 @@ model StockItem {
   reelNumber      String?
   widthInch       Decimal
   gsm             Int
-  paperType       PaperType   @default(NATURAL) @map("paperKind")
+  // Mill-configurable — see PaperTypeOption master data (was a fixed enum).
+  paperType       String      @default("NATURAL") @map("paperKind")
   size            PaperSize   @default(NORMAL) @map("paperSize")
+  // Burst Factor — a paper-quality spec, purely informational/commercial.
+  // Not used by the deckle solver or any matching logic.
+  bf              Int         @default(18)
   enteredWidth    Decimal?
   enteredWidthUnit LengthUnit @default(INCH)
   quantityKg      Decimal
@@ -770,6 +789,26 @@ model WarehouseLocation {
   id          String   @id @default(cuid())
   tenantId    String?
   name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  tenant    Tenant? @relation(fields: [tenantId], references: [id])
+  createdBy User?   @relation(fields: [createdById], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+// Mill-configurable paper types (was a fixed NATURAL/BY enum) — the values
+// offered on Sales Order lines and Inventory Stock. `name` is the stored
+// value (matches existing OrderItem/StockItem.paperType rows); `label` is
+// an optional nicer display string.
+model PaperTypeOption {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  label       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById String?

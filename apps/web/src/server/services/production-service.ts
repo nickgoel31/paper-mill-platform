@@ -573,7 +573,7 @@ export async function completeProductionRun(input: {
             orderItemId: allocateNow ? item!.id : null,
             originOrderItemId: item ? item.id : null,
             // Reels cut for an order take that line's paper type/size; others default.
-            ...(item ? { paperType: item.paperType, size: item.size } : {}),
+            ...(item ? { paperType: item.paperType, size: item.size, bf: item.bf } : {}),
             productionRunId: input.runId,
           },
         });

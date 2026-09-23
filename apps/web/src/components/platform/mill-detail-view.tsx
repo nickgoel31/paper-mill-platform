@@ -40,6 +40,7 @@ type Tenant = {
   code: string;
   slug: string;
   gstin: string | null;
+  cin: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -93,7 +94,14 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     try {
-      await fn();
+      const res: any = await fn();
+      // These actions return { error } / { success: false } instead of
+      // throwing (a thrown Server Action error is redacted to a generic
+      // message in production), so check the result shape, not just catch.
+      if (res && (res.error || res.success === false)) {
+        toast.error(res.error || "Failed");
+        return false;
+      }
       toast.success(ok);
       router.refresh();
       return true;
@@ -115,6 +123,7 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
           code: String(fd.get("code") || ""),
           slug: String(fd.get("slug") || ""),
           gstin: String(fd.get("gstin") || ""),
+          cin: String(fd.get("cin") || ""),
           address: String(fd.get("address") || ""),
           city: String(fd.get("city") || ""),
           state: String(fd.get("state") || ""),
@@ -249,6 +258,7 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
           <F label="Code *" name="code" required defaultValue={tenant.code} maxLength={12} />
           <F label="Slug" name="slug" defaultValue={tenant.slug} />
           <F label="GSTIN" name="gstin" defaultValue={tenant.gstin ?? ""} />
+          <F label="CIN" name="cin" defaultValue={tenant.cin ?? ""} />
           <F label="City" name="city" defaultValue={tenant.city ?? ""} />
           <F label="State" name="state" defaultValue={tenant.state ?? ""} />
           <F label="Phone" name="phone" defaultValue={tenant.phone ?? ""} />

@@ -33,8 +33,8 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { StockStatus, Role, PaperType, PaperSize } from "@/generated/prisma/browser";
-import { PAPER_TYPE_LABELS, PAPER_TYPES } from "@/lib/paper-type";
+import { StockStatus, Role, PaperSize } from "@/generated/prisma/browser";
+import { PAPER_TYPE_LABELS } from "@/lib/paper-type";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 import {
   getStockItems,
@@ -80,8 +80,9 @@ interface StockItemRow {
   reelNumber?: string | null;
   widthInch: any;
   gsm: number;
-  paperType: PaperType;
+  paperType: string;
   size: PaperSize;
+  bf?: number;
   quantityKg: any;
   status: StockStatus;
   location: string | null;
@@ -131,9 +132,17 @@ interface StockListProps {
   userRole: Role;
   displayUnit?: "INCH" | "CM";
   locations?: string[];
+  paperTypeOptions?: { value: string; label: string }[];
 }
 
-export function StockList({ initialData, initialStats, userRole, displayUnit = "INCH", locations = [] }: StockListProps) {
+export function StockList({
+  initialData,
+  initialStats,
+  userRole,
+  displayUnit = "INCH",
+  locations = [],
+  paperTypeOptions = [],
+}: StockListProps) {
   const [data, setData] = React.useState(initialData.rows);
   const [total, setTotal] = React.useState(initialData.total);
   const [page, setPage] = React.useState(initialData.page);
@@ -230,7 +239,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
     () => ({
       status: statusFilter === "ALL" ? undefined : (statusFilter as StockStatus),
       gsm: gsmFilter === "ALL" ? undefined : Number(gsmFilter),
-      paperType: paperTypeFilter === "ALL" ? undefined : (paperTypeFilter as PaperType),
+      paperType: paperTypeFilter === "ALL" ? undefined : paperTypeFilter,
       size: sizeFilter === "ALL" ? undefined : (sizeFilter as PaperSize),
       location: locationFilter === "ALL" ? undefined : locationFilter,
       dateFrom: dateFrom || undefined,
@@ -353,6 +362,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         gsm: r.gsm,
         paperType: r.paperType,
         size: r.size,
+        bf: r.bf ?? 18,
         quantityKg: Number(r.quantityKg),
         status: r.status,
         location: r.location || "",
@@ -366,6 +376,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         { key: "gsm", header: "gsm" },
         { key: "paperType", header: "paperType" },
         { key: "size", header: "size" },
+        { key: "bf", header: "bf" },
         { key: "quantityKg", header: "quantityKg" },
         { key: "status", header: "status" },
         { key: "location", header: "location" },
@@ -518,6 +529,13 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
         <span className="text-xs font-semibold text-slate-700">
           {PAPER_SIZE_LABELS[row.original.size] ?? row.original.size ?? "Normal"}
         </span>
+      ),
+    },
+    {
+      accessorKey: "bf",
+      header: "BF",
+      cell: ({ row }) => (
+        <span className="text-xs font-mono text-slate-600">{row.original.bf ?? 18}</span>
       ),
     },
     {
@@ -730,6 +748,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           "widthUnit (INCH/CM)",
           "paperType (NATURAL/BY)",
           "size (BABY/NORMAL)",
+          "bf (Burst Factor, default 18)",
           "location",
           "remarks",
           "orderNumber (allocates to that order's matching line)",
@@ -859,9 +878,9 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
             </SelectTrigger>
             <SelectContent className="rounded-xl">
               <SelectItem value="ALL">All Paper Types</SelectItem>
-              {PAPER_TYPES.map((pt) => (
-                <SelectItem key={pt} value={pt}>
-                  {PAPER_TYPE_LABELS[pt]}
+              {paperTypeOptions.map((pt) => (
+                <SelectItem key={pt.value} value={pt.value}>
+                  {pt.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1059,6 +1078,7 @@ export function StockList({ initialData, initialStats, userRole, displayUnit = "
           }}
           stockItem={editItem as any}
           locations={locations}
+          paperTypeOptions={paperTypeOptions}
           onSuccess={() => {
             setEditItem(null);
             fetchFilteredStock();

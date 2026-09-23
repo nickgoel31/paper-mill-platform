@@ -28,6 +28,8 @@ import { getPendingDispatchLoadBatches } from "./dispatch-service";
 import { getActiveMachineConstraints } from "./order-service";
 import { generateReelNumber, allocateStockToOrderItem } from "./stock-service";
 import { getSystemSettings } from "./settings-service";
+import { getFirstWarehouseLocationName } from "./warehouse-location-service";
+import { getGsmWeightMap } from "./gsm-weight-service";
 
 /**
  * Every write-capable agent tool below gates itself the same way its
@@ -141,22 +143,14 @@ export async function agentCreateOrder(input: {
     });
 
     if (!client) {
-      const code = input.clientNameOrCode
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, "")
-        .slice(0, 10);
-      client = await db.client.create({
-        data: {
-          name: input.clientNameOrCode,
-          code: code || `CL-${Date.now().toString().slice(-4)}`,
-          addressLine1: "Industrial Area",
-          city: "Delhi",
-          state: "Delhi",
-          pincode: "110001",
-          phone: "9876543210",
-          whatsappNumber: "9876543210",
-        },
-      });
+      // Never fabricate a client's address/phone — those end up on real
+      // invoices and dispatch paperwork. Ask for the real details instead
+      // of inventing placeholder ones (was previously hardcoded to a fake
+      // Delhi address + "9876543210").
+      return {
+        success: false,
+        message: `No client found matching "${input.clientNameOrCode}". Create the client first with their real address and phone number (use the "create client" action), then create the order.`,
+      };
     }
 
     // 2. Resolve order number
@@ -573,6 +567,10 @@ export async function agentCreateStockReel(input: {
   try {
     await requireRole(...AGENT_ROLE.STOCK_WRITE);
     const { reelNumberPrefix } = await getSystemSettings();
+    // Default to the mill's actual first Warehouse Location (Masters →
+    // Warehouse Locations), not a hardcoded bay name that may not even
+    // exist in this mill's location list.
+    const defaultLocation = input.location || (await getFirstWarehouseLocationName()) || "WAREHOUSE-BAY-A";
     const reel = await db.$transaction(async (tx) => {
       const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
       return tx.stockItem.create({
@@ -581,7 +579,7 @@ export async function agentCreateStockReel(input: {
           widthInch: new Prisma.Decimal(input.widthInch.toFixed(2)),
           gsm: input.gsm,
           quantityKg: new Prisma.Decimal(input.quantityKg.toFixed(3)),
-          location: input.location || "BAY-A",
+          location: defaultLocation,
           status: input.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
           orderItemId: input.orderItemId || null,
         },
@@ -722,10 +720,19 @@ export async function agentCreateStockPreset(input: {
 }) {
   try {
     await requireRole(...AGENT_ROLE.PRESET_WRITE);
-    const stdWeight = input.standardWeightKg || input.widthInch * 14.0;
+    // Prefer the mill's own calibrated kg/inch from the GSM Weight Chart
+    // (Masters → GSM Weight Chart) over a made-up constant — only fall back
+    // to the generic estimate when that GSM hasn't been calibrated yet.
+    let stdWeight = input.standardWeightKg;
+    if (!stdWeight) {
+      const weightMap = await getGsmWeightMap();
+      const kgPerInch = weightMap[input.gsm];
+      stdWeight = kgPerInch ? kgPerInch * input.widthInch : input.widthInch * 14.0;
+    }
     const code =
       input.code ||
       `PRESET-${input.gsm}-${Math.round(input.widthInch)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+    const defaultLocation = input.defaultLocation || (await getFirstWarehouseLocationName()) || "WAREHOUSE-BAY-A";
 
     const preset = await db.stockPreset.create({
       data: {
@@ -736,7 +743,7 @@ export async function agentCreateStockPreset(input: {
         standardWeightKg: new Prisma.Decimal(stdWeight.toFixed(3)),
         shade: input.shade || "NATURAL",
         bf: input.bf || "18BF",
-        defaultLocation: input.defaultLocation || "BAY-A (Primary Warehouse)",
+        defaultLocation,
         isActive: true,
       },
     });

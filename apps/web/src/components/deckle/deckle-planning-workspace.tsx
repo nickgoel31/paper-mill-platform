@@ -1108,6 +1108,21 @@ export function DecklePlanningWorkspace({
             </div>
           </div>
 
+          {/* Solver Warnings (e.g. lane counts capped to avoid overproducing an order) */}
+          {solverResult.warnings.length > 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1">
+              <strong className="font-bold flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                {solverResult.warnings.length} Planning Note{solverResult.warnings.length > 1 ? "s" : ""}
+              </strong>
+              {solverResult.warnings.map((w, idx) => (
+                <div key={idx} className="text-[11px]">
+                  • {w}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Unassigned Items */}
           {solverResult.unassigned_items.length > 0 && (
             <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 space-y-1">

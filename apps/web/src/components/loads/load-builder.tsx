@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { formatWeightKg } from "@/lib/utils";
 import { createLoadBatch } from "@/server/services/load-batch-service";
+import { createTruck } from "@/server/services/truck-service";
 import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Truck,
@@ -35,6 +37,9 @@ import {
   Loader2,
   Info,
   CheckCircle2,
+  ChevronsUpDown,
+  Check,
+  Search,
 } from "lucide-react";
 
 interface UnassignedOrder {
@@ -82,11 +87,15 @@ export function LoadBuilder({
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  // Truck list starts from the server-loaded options but grows in place when
+  // a truck is added inline from the picker below, without a page refresh.
+  const [truckList, setTruckList] = React.useState<TruckOption[]>(trucks);
+
   // Right Panel State (This Load)
   const [selectedOrderIds, setSelectedOrderIds] = React.useState<string[]>([]);
-  const [selectedTruckId, setSelectedTruckId] = React.useState<string>(trucks[0]?.id || "");
+  const [selectedTruckId, setSelectedTruckId] = React.useState<string>(truckList[0]?.id || "");
   const [selectedTransporterId, setSelectedTransporterId] = React.useState<string>(
-    trucks[0]?.transporterId || transporters[0]?.id || ""
+    truckList[0]?.transporterId || transporters[0]?.id || ""
   );
   const [driverName, setDriverName] = React.useState("");
   const [driverPhone, setDriverPhone] = React.useState("");
@@ -102,7 +111,7 @@ export function LoadBuilder({
   const [sortBy, setSortBy] = React.useState<"date" | "weight">("date");
 
   // Selected Truck Details
-  const activeTruck = trucks.find((t) => t.id === selectedTruckId);
+  const activeTruck = truckList.find((t) => t.id === selectedTruckId);
   const truckCapacity = activeTruck ? activeTruck.capacityKg : 0;
 
   // Selected Orders Objects
@@ -481,21 +490,13 @@ export function LoadBuilder({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-700">Select Truck *</label>
-                    <Select value={selectedTruckId} onValueChange={setSelectedTruckId}>
-                      <SelectTrigger className="h-8 text-xs bg-white">
-                        <SelectValue placeholder="Select truck" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {trucks.map((t) => (
-                          <SelectItem key={t.id} value={t.id} className="text-xs">
-                            <span className="font-mono font-bold text-primary mr-1.5">
-                              {t.registrationNumber}
-                            </span>
-                            ({(t.capacityKg / 1000).toFixed(0)} MT capacity)
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <TruckPicker
+                      trucks={truckList}
+                      transporters={transporters}
+                      value={selectedTruckId}
+                      onChange={setSelectedTruckId}
+                      onCreated={(t) => setTruckList((prev) => [...prev, t])}
+                    />
                   </div>
 
                   <div className="space-y-1">
@@ -706,5 +707,213 @@ export function LoadBuilder({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Searchable truck dropdown with an inline "Add New Truck" — everything a
+ * dispatcher needs to pick or register a truck without leaving this form.
+ * Adding a truck here calls the same `createTruck` action as Masters →
+ * Trucks (same validation, same permission check), so it's just a shortcut,
+ * not a separate path.
+ */
+function TruckPicker({
+  trucks,
+  transporters,
+  value,
+  onChange,
+  onCreated,
+}: {
+  trucks: { id: string; registrationNumber: string; capacityKg: number; transporterId: string | null }[];
+  transporters: { id: string; name: string }[];
+  value: string;
+  onChange: (id: string) => void;
+  onCreated: (truck: { id: string; registrationNumber: string; capacityKg: number; transporterId: string | null }) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [showAddForm, setShowAddForm] = React.useState(false);
+  const [newReg, setNewReg] = React.useState("");
+  const [newCapacity, setNewCapacity] = React.useState("20000");
+  const [newTransporterId, setNewTransporterId] = React.useState("");
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const selected = trucks.find((t) => t.id === value);
+  const filtered = trucks.filter((t) =>
+    t.registrationNumber.toLowerCase().includes(query.trim().toLowerCase())
+  );
+
+  const resetAddForm = () => {
+    setShowAddForm(false);
+    setNewReg("");
+    setNewCapacity("20000");
+    setNewTransporterId("");
+  };
+
+  const handleAddTruck = async () => {
+    if (!newReg.trim()) {
+      toast.error("Enter the truck's registration number.");
+      return;
+    }
+    const capacity = Number(newCapacity);
+    if (!capacity || capacity <= 0) {
+      toast.error("Enter a valid truck capacity in kg.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const result = await createTruck({
+        registrationNumber: newReg.trim(),
+        capacityKg: capacity,
+        transporterId: newTransporterId || null,
+        isActive: true,
+      });
+      if ("error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.truck) {
+        toast.success(`Truck "${result.truck.registrationNumber}" added.`);
+        onCreated({
+          id: result.truck.id,
+          registrationNumber: result.truck.registrationNumber,
+          capacityKg: result.truck.capacityKg,
+          transporterId: result.truck.transporterId,
+        });
+        onChange(result.truck.id);
+        resetAddForm();
+        setQuery("");
+        setOpen(false);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to add truck");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (!o) resetAddForm();
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-8 w-full text-xs bg-white border border-input rounded-md px-3 flex items-center justify-between gap-2 hover:bg-slate-50 transition-colors"
+        >
+          <span className={selected ? "font-mono font-bold text-primary truncate" : "text-muted-foreground"}>
+            {selected
+              ? `${selected.registrationNumber} (${(selected.capacityKg / 1000).toFixed(0)} MT capacity)`
+              : "Select truck"}
+          </span>
+          <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <div className="p-2 border-b flex items-center gap-1.5">
+          <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-1" />
+          <Input
+            autoFocus
+            placeholder="Search registration number..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="h-8 text-xs border-0 shadow-none focus-visible:ring-0 px-1"
+          />
+        </div>
+
+        <div className="max-h-52 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-xs text-muted-foreground text-center">
+              No trucks match &quot;{query}&quot;.
+            </div>
+          ) : (
+            filtered.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  onChange(t.id);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-3 py-2 text-xs hover:bg-slate-50 flex items-center justify-between ${
+                  t.id === value ? "bg-slate-50" : ""
+                }`}
+              >
+                <span>
+                  <span className="font-mono font-bold text-primary mr-1.5">{t.registrationNumber}</span>
+                  ({(t.capacityKg / 1000).toFixed(0)} MT capacity)
+                </span>
+                {t.id === value && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+              </button>
+            ))
+          )}
+        </div>
+
+        <div className="border-t p-2">
+          {!showAddForm ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm(true);
+                setNewReg(query.trim());
+              }}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-primary hover:bg-slate-50 rounded-md"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add New Truck
+            </button>
+          ) : (
+            <div className="space-y-2 p-1">
+              <Input
+                placeholder="Reg. no. e.g. GJ01AB1234"
+                value={newReg}
+                onChange={(e) => setNewReg(e.target.value.toUpperCase())}
+                className="h-8 text-xs font-mono"
+              />
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Capacity (kg)"
+                  value={newCapacity}
+                  onChange={(e) => setNewCapacity(e.target.value)}
+                  className="h-8 text-xs flex-1"
+                />
+                {transporters.length > 0 && (
+                  <select
+                    value={newTransporterId}
+                    onChange={(e) => setNewTransporterId(e.target.value)}
+                    className="h-8 text-xs border border-input rounded-md px-2 bg-white flex-1"
+                  >
+                    <option value="">No transporter</option>
+                    {transporters.map((tr) => (
+                      <option key={tr.id} value={tr.id}>
+                        {tr.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 text-xs flex-1"
+                  disabled={isSaving}
+                  onClick={handleAddTruck}
+                >
+                  {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save Truck"}
+                </Button>
+                <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={resetAddForm}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

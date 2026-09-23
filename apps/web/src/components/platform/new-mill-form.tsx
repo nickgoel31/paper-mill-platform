@@ -28,11 +28,12 @@ export function NewMillForm() {
     setBusy(true);
     const fd = new FormData(e.currentTarget);
     try {
-      const tenant = await createTenant({
+      const result: any = await createTenant({
         name: String(fd.get("name") || ""),
         code: String(fd.get("code") || ""),
         slug: String(fd.get("slug") || ""),
         gstin: String(fd.get("gstin") || ""),
+        cin: String(fd.get("cin") || ""),
         address: String(fd.get("address") || ""),
         city: String(fd.get("city") || ""),
         state: String(fd.get("state") || ""),
@@ -42,8 +43,12 @@ export function NewMillForm() {
         adminEmail: String(fd.get("adminEmail") || ""),
         adminPassword: String(fd.get("adminPassword") || ""),
       } as any);
-      toast.success(`Mill "${tenant.name}" created.`);
-      router.push(`/platform/mills/${tenant.id}`);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(`Mill "${result.tenant.name}" created.`);
+      router.push(`/platform/mills/${result.tenant.id}`);
       router.refresh();
     } catch (err: any) {
       toast.error(err?.message || "Failed to create mill");
@@ -71,6 +76,7 @@ export function NewMillForm() {
             <F label="Code *" name="code" required placeholder="ACME" maxLength={12} />
             <F label="Slug (optional)" name="slug" placeholder="acme (auto from name)" />
             <F label="GSTIN" name="gstin" />
+            <F label="CIN" name="cin" />
             <F label="City" name="city" />
             <F label="State" name="state" />
             <F label="Phone" name="phone" />
