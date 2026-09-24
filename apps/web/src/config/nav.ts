@@ -16,6 +16,7 @@ import {
   TrendingDown,
   BarChart3,
   ScrollText,
+  FileBarChart,
 } from "lucide-react";
 
 export interface NavItem {
@@ -104,6 +105,13 @@ export const navConfig: NavItem[] = [
         allowedRoles: [Role.ADMIN, Role.DISPATCH],
       },
     ],
+  },
+  {
+    title: "Reports",
+    href: "/reports",
+    icon: FileBarChart,
+    section: "main",
+    allowedRoles: [Role.ADMIN, Role.SALES, Role.PLANNER, Role.DISPATCH],
   },
   {
     title: "Invoices",
