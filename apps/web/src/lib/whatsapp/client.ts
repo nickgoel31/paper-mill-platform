@@ -1,6 +1,180 @@
 import { normalizeIndianPhoneNumber } from "./phone-normalizer";
 import { renderWhatsAppMessage } from "./templates";
 
+function resolveCreds(credentials?: WhatsAppCredentials | null) {
+  const accessToken = credentials?.accessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = credentials?.phoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const apiVersion = credentials?.apiVersion || process.env.WHATSAPP_API_VERSION || "v21.0";
+  const isDryRun = process.env.WHATSAPP_DRY_RUN !== "false" || !accessToken || !phoneNumberId;
+  return { accessToken, phoneNumberId, apiVersion, isDryRun };
+}
+
+/**
+ * Sends a plain freeform text reply — valid within WhatsApp's 24-hour
+ * "customer service window" after the user last messaged in (which is always
+ * true for an AI reply to an inbound message), unlike `sendWhatsAppMessage`'s
+ * pre-approved business templates required for mill-initiated notifications.
+ */
+export async function sendWhatsAppText(input: {
+  phoneNumber: string;
+  text: string;
+  credentials?: WhatsAppCredentials | null;
+}): Promise<SendWhatsAppResult> {
+  const { accessToken, phoneNumberId, apiVersion, isDryRun } = resolveCreds(input.credentials);
+  const normalizedPhone = normalizeIndianPhoneNumber(input.phoneNumber);
+
+  if (isDryRun) {
+    const mockWamid = `dry_run_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    console.log(`[WHATSAPP DRY-RUN] To: +${normalizedPhone} | Text: "${input.text}"\nMock Provider ID: ${mockWamid}`);
+    return { success: true, providerMessageId: mockWamid, isDryRun: true, messageText: input.text, normalizedPhone };
+  }
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizedPhone,
+        type: "text",
+        text: { preview_url: false, body: input.text },
+      }),
+    });
+    const data: any = await res.json();
+    if (!res.ok || data.error) {
+      return {
+        success: false,
+        isDryRun: false,
+        messageText: input.text,
+        normalizedPhone,
+        error: `Meta Graph API error: ${data.error ? data.error.message : `HTTP ${res.status}`}`,
+      };
+    }
+    return {
+      success: true,
+      providerMessageId: data.messages?.[0]?.id || `wamid_${Date.now()}`,
+      isDryRun: false,
+      messageText: input.text,
+      normalizedPhone,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      isDryRun: false,
+      messageText: input.text,
+      normalizedPhone,
+      error: err.message || "Failed to reach WhatsApp Cloud API",
+    };
+  }
+}
+
+/**
+ * Uploads a small text/CSV file to Meta's Media endpoint so it can be
+ * referenced by id in a "document" message. Same dry-run kill switch as
+ * `sendWhatsAppMessage` — nothing uploads for real until WHATSAPP_DRY_RUN is
+ * explicitly "false" and per-tenant credentials are configured.
+ */
+export async function uploadWhatsAppMedia(input: {
+  content: string;
+  filename: string;
+  mimeType: string;
+  credentials?: WhatsAppCredentials | null;
+}): Promise<{ mediaId: string; isDryRun: boolean; error?: string }> {
+  const { accessToken, phoneNumberId, apiVersion, isDryRun } = resolveCreds(input.credentials);
+
+  if (isDryRun) {
+    console.log(`[WHATSAPP DRY-RUN] Would upload media "${input.filename}" (${input.mimeType}, ${input.content.length} bytes)`);
+    return { mediaId: `dry_run_media_${Date.now()}`, isDryRun: true };
+  }
+
+  try {
+    const blob = new Blob([input.content], { type: input.mimeType });
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", input.mimeType);
+    form.append("file", blob, input.filename);
+
+    const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: form,
+    });
+    const data: any = await res.json();
+    if (!res.ok || data.error) {
+      return { mediaId: "", isDryRun: false, error: data.error?.message || `HTTP ${res.status}` };
+    }
+    return { mediaId: data.id, isDryRun: false };
+  } catch (err: any) {
+    return { mediaId: "", isDryRun: false, error: err.message || "Failed to upload media" };
+  }
+}
+
+/** Sends a previously-uploaded media id as a document message. */
+export async function sendWhatsAppDocument(input: {
+  phoneNumber: string;
+  mediaId: string;
+  filename: string;
+  caption?: string;
+  credentials?: WhatsAppCredentials | null;
+}): Promise<SendWhatsAppResult> {
+  const { accessToken, phoneNumberId, apiVersion, isDryRun } = resolveCreds(input.credentials);
+  const normalizedPhone = normalizeIndianPhoneNumber(input.phoneNumber);
+
+  if (isDryRun) {
+    const mockWamid = `dry_run_wamid_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    console.log(
+      `[WHATSAPP DRY-RUN] To: +${normalizedPhone} | Document: ${input.filename} (media ${input.mediaId})\nMock Provider ID: ${mockWamid}`
+    );
+    return {
+      success: true,
+      providerMessageId: mockWamid,
+      isDryRun: true,
+      messageText: `[document: ${input.filename}]`,
+      normalizedPhone,
+    };
+  }
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: normalizedPhone,
+        type: "document",
+        document: { id: input.mediaId, filename: input.filename, caption: input.caption },
+      }),
+    });
+    const data: any = await res.json();
+    if (!res.ok || data.error) {
+      return {
+        success: false,
+        isDryRun: false,
+        messageText: `[document: ${input.filename}]`,
+        normalizedPhone,
+        error: `Meta Graph API error: ${data.error ? data.error.message : `HTTP ${res.status}`}`,
+      };
+    }
+    return {
+      success: true,
+      providerMessageId: data.messages?.[0]?.id || `wamid_${Date.now()}`,
+      isDryRun: false,
+      messageText: `[document: ${input.filename}]`,
+      normalizedPhone,
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      isDryRun: false,
+      messageText: `[document: ${input.filename}]`,
+      normalizedPhone,
+      error: err.message || "Failed to reach WhatsApp Cloud API",
+    };
+  }
+}
+
 export interface SendWhatsAppResult {
   success: boolean;
   providerMessageId?: string;

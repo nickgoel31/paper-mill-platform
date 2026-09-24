@@ -660,7 +660,7 @@ const OPENAI_TOOLS = [
   },
 ];
 
-async function executeAgentTool(name: string, args: any) {
+export async function executeAgentTool(name: string, args: any) {
   switch (name) {
     // Orders
     case "getOrders":
@@ -775,11 +775,11 @@ async function executeAgentTool(name: string, args: any) {
 //  - a turn with a PDF / image attached (PO, invoice, scan) -> the stronger
 //    model, where extraction accuracy matters most.
 //  - everything else (chat, queries, CRUD, edits) -> the cheap model.
-const OPENAI_MODEL_DOC = "gpt-4.1";
-const OPENAI_MODEL_CHAT = "gpt-4.1-mini";
-const MAX_AGENT_STEPS = 10;
+export const OPENAI_MODEL_DOC = "gpt-4.1";
+export const OPENAI_MODEL_CHAT = "gpt-4.1-mini";
+export const MAX_AGENT_STEPS = 10;
 
-function isVisualDoc(f: { type?: string; name?: string; base64?: string }): boolean {
+export function isVisualDoc(f: { type?: string; name?: string; base64?: string }): boolean {
   if (!f?.base64) return false;
   return (
     !!f.type?.startsWith("image/") ||
@@ -789,14 +789,14 @@ function isVisualDoc(f: { type?: string; name?: string; base64?: string }): bool
 }
 
 // The Responses API wants FLAT function tools: { type, name, description, parameters }.
-const RESPONSES_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
+export const RESPONSES_TOOLS = (OPENAI_TOOLS as any[]).map((t) => ({
   type: "function",
   name: t.function.name,
   description: t.function.description,
   parameters: t.function.parameters ?? { type: "object", properties: {} },
 }));
 
-function buildSystemPrompt(userName: string, userRole: string): string {
+export function buildSystemPrompt(userName: string, userRole: string): string {
   return [
     "You are PaperMill AI, the operations assistant embedded in this kraft paper mill's ERP.",
     "",
@@ -843,14 +843,14 @@ function buildSystemPrompt(userName: string, userRole: string): string {
 // anything about OpenAI's wire format, only ours.
 // ---------------------------------------------------------------------------
 
-interface StreamSink {
+export interface StreamSink {
   onTextDelta: (delta: string) => void;
   onFunctionCallDone: (call: { name: string; arguments: string; call_id: string }) => void;
   onResponseId: (id: string) => void;
 }
 
 /** Reads one OpenAI Responses `stream: true` call to completion, firing `sink` callbacks as events arrive. */
-async function streamOpenAIResponse(
+export async function streamOpenAIResponse(
   apiKey: string,
   requestBody: Record<string, unknown>,
   sink: StreamSink

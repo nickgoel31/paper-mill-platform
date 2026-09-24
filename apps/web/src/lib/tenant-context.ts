@@ -18,6 +18,13 @@ export interface TenantContext {
   tenantId: string | null;
   isPlatform: boolean;
   userId?: string;
+  /**
+   * Set together with `userId` only by trusted internal callers acting on
+   * behalf of a real user with no browser session (the WhatsApp webhook,
+   * scheduled jobs) — see `requireRole`'s ALS fallback in auth-helpers.ts.
+   * Never populated from request headers or other client-controlled input.
+   */
+  role?: string;
 }
 
 // Next.js compiles this module once per server layer (RSC / SSR / server actions),

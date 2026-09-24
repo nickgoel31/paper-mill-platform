@@ -14,6 +14,11 @@ import {
   updateTenantWhatsAppSettings,
   factoryResetTenantData,
 } from "@/server/services/platform-service";
+import {
+  createWhatsAppAllowedSender,
+  setWhatsAppAllowedSenderActive,
+  deleteWhatsAppAllowedSender,
+} from "@/server/services/whatsapp-allowed-sender-service";
 import { FACTORY_RESET_CATEGORY_INFO, type FactoryResetCategory } from "@/lib/factory-reset";
 import { Role, PostProductionMode } from "@/generated/prisma/browser";
 import { EnterMillButton } from "@/components/platform/enter-mill-button";
@@ -34,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Loader2, KeyRound, Plus, MessageCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, KeyRound, Plus, MessageCircle, AlertTriangle, Trash2, Bot } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type Tenant = {
@@ -77,6 +82,14 @@ type MillUser = {
   isActive: boolean;
 };
 
+type AllowedSender = {
+  id: string;
+  phoneNumber: string;
+  label: string | null;
+  isActive: boolean;
+  actAsUser: { id: string; name: string; role: Role; isActive: boolean };
+};
+
 const F = ({
   label,
   ...props
@@ -87,12 +100,21 @@ const F = ({
   </label>
 );
 
-export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillUser[] }) {
+export function MillDetailView({
+  tenant,
+  users,
+  allowedSenders,
+}: {
+  tenant: Tenant;
+  users: MillUser[];
+  allowedSenders: AllowedSender[];
+}) {
   const router = useRouter();
   const [busy, setBusy] = React.useState(false);
   const [addingUser, setAddingUser] = React.useState(false);
   const [resetFor, setResetFor] = React.useState<MillUser | null>(null);
   const [waEnabled, setWaEnabled] = React.useState(tenant.whatsappEnabled);
+  const [addingSender, setAddingSender] = React.useState(false);
 
   // Factory reset (Danger Zone)
   const [resetCategories, setResetCategories] = React.useState<Set<FactoryResetCategory>>(new Set());
@@ -180,6 +202,22 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
       "User added."
     );
     if (okDone) setAddingUser(false);
+  }
+
+  async function onAddSender(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const okDone = await run(
+      () =>
+        createWhatsAppAllowedSender({
+          tenantId: tenant.id,
+          phoneNumber: String(fd.get("phoneNumber") || ""),
+          label: String(fd.get("label") || ""),
+          actAsUserId: String(fd.get("actAsUserId") || ""),
+        }),
+      "WhatsApp number added."
+    );
+    if (okDone) setAddingSender(false);
   }
 
   async function onReset(e: React.FormEvent<HTMLFormElement>) {
@@ -475,6 +513,108 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
                 </TableCell>
               </TableRow>
             ))}
+          </TableBody>
+        </Table>
+      </section>
+
+      <section className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <div className="p-5 flex items-center justify-between border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Bot className="h-4 w-4 text-emerald-600" /> WhatsApp AI — Allowed Numbers ({allowedSenders.length})
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Numbers registered here may message this mill's WhatsApp Business number to create
+              orders or pull reports via AI — each acts with the real permissions of the staff user
+              it's mapped to. Requires the Meta webhook secrets to be configured on the Worker.
+            </p>
+          </div>
+          <Button size="sm" className="rounded-xl" onClick={() => setAddingSender((v) => !v)}>
+            <Plus className="h-4 w-4 mr-1" /> Add number
+          </Button>
+        </div>
+
+        {addingSender && (
+          <form onSubmit={onAddSender} className="p-5 border-b border-slate-100 bg-slate-50/50 grid sm:grid-cols-4 gap-3 items-end">
+            <F label="WhatsApp number" name="phoneNumber" required placeholder="9876543210" />
+            <F label="Label (optional)" name="label" placeholder="e.g. Ramesh — Sales" />
+            <label className="block space-y-1">
+              <span className="text-xs font-bold text-slate-700">Acts as staff user</span>
+              <Select name="actAsUserId" defaultValue={users[0]?.id}>
+                <SelectTrigger className="h-10 text-sm rounded-xl bg-white border-slate-200">
+                  <SelectValue placeholder="Select user" />
+                </SelectTrigger>
+                <SelectContent>
+                  {users.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name} ({u.role})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <Button type="submit" disabled={busy || users.length === 0} className="h-10 rounded-xl">
+              Add
+            </Button>
+          </form>
+        )}
+
+        <Table>
+          <TableHeader className="bg-slate-50/70">
+            <TableRow>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Number</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Label</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Acts As</TableHead>
+              <TableHead className="text-[11px] font-bold uppercase text-slate-500">Active</TableHead>
+              <TableHead className="w-20" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {allowedSenders.map((s) => (
+              <TableRow key={s.id} className="text-sm">
+                <TableCell className="font-mono font-semibold text-slate-900">+{s.phoneNumber}</TableCell>
+                <TableCell className="text-slate-600">{s.label || "—"}</TableCell>
+                <TableCell className="text-slate-700">
+                  {s.actAsUser.name} <span className="text-[10px] text-slate-400">({s.actAsUser.role})</span>
+                </TableCell>
+                <TableCell>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      run(
+                        () => setWhatsAppAllowedSenderActive(s.id, !s.isActive),
+                        s.isActive ? "Number deactivated." : "Number activated."
+                      )
+                    }
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                      s.isActive
+                        ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                        : "text-slate-500 bg-slate-50 border-slate-200"
+                    }`}
+                  >
+                    {s.isActive ? "ACTIVE" : "INACTIVE"}
+                  </button>
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-slate-400 hover:text-rose-600"
+                    disabled={busy}
+                    onClick={() => run(() => deleteWhatsAppAllowedSender(s.id), "Number removed.")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+            {allowedSenders.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-xs text-slate-400 py-8">
+                  No numbers registered yet.
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </section>

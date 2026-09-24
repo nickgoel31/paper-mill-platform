@@ -21,6 +21,7 @@ export default auth(async (req) => {
     p.startsWith("/api/auth") ||
     p.startsWith("/api/ai-agent") ||
     p.startsWith("/api/cron") ||
+    p.startsWith("/api/whatsapp") ||
     p === "/api/health" ||
     p.startsWith("/_next") ||
     p === "/favicon.ico" ||

@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { Role } from "@/generated/prisma/browser";
 import { isPlatformEmail } from "@/lib/platform";
 import { headers } from "next/headers";
+import { getTenantContextSync } from "@/lib/tenant-context";
 
 export class UnauthorizedError extends Error {
   constructor(message = "Unauthorized: You must be logged in.") {
@@ -31,6 +32,24 @@ type SessionUser = {
 async function requireSessionUser(opts?: { ignoreViewAs?: boolean }): Promise<SessionUser> {
   const session = await auth();
   if (!session || !session.user) {
+    // No browser session — fall back to an ALS-asserted system actor, set
+    // only by trusted internal callers (the WhatsApp webhook, scheduled
+    // jobs) via runWithTenantContext({ tenantId, userId, role }). This never
+    // reads request headers or other client-controlled input, and the
+    // role/tenantId used are whatever that internal caller looked up from
+    // the database for a real user — no privilege beyond what that user
+    // already has in the app.
+    const ctx = getTenantContextSync();
+    if (ctx?.userId && ctx?.role && ctx?.tenantId) {
+      return {
+        id: ctx.userId,
+        name: null,
+        email: null,
+        role: ctx.role as Role,
+        tenantId: ctx.tenantId,
+        isPlatform: false,
+      };
+    }
     throw new UnauthorizedError();
   }
   const u = session.user as any;

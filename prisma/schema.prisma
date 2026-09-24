@@ -166,6 +166,8 @@ model Tenant {
   warehouseLocations WarehouseLocation[]
   paperTypeOptions   PaperTypeOption[]
   dailyOrderReportLines DailyOrderReportLine[]
+  whatsAppAllowedSenders WhatsAppAllowedSender[]
+  whatsAppInboundMessages WhatsAppInboundMessage[]
 }
 
 model User {
@@ -198,6 +200,8 @@ model User {
   recordedPayments    Payment[]
   createdWarehouseLocations WarehouseLocation[]
   createdPaperTypeOptions   PaperTypeOption[]
+  whatsAppSendersActingAs   WhatsAppAllowedSender[] @relation("WhatsAppSenderActsAs")
+  whatsAppSendersCreated    WhatsAppAllowedSender[] @relation("WhatsAppSenderCreatedBy")
 
   @@index([role])
   @@index([email])
@@ -903,5 +907,54 @@ model DailyOrderReportLine {
   @@unique([tenantId, reportDate, clientId])
   @@index([tenantId, reportDate])
   @@index([clientId])
+}
+
+// -----------------------------------------------------------------------------
+// WHATSAPP AI INBOUND — a phone number is registered (by TWJ platform staff, in
+// the mill's Platform admin page) against exactly one mill AND one existing
+// staff User of that mill. Messages from that number act with that user's real
+// role/permissions (so requireRole() checks still apply normally; nothing here
+// grants privilege that user doesn't already have in the app). See
+// /api/whatsapp/webhook and auth-helpers.ts's ALS system-actor fallback.
+// -----------------------------------------------------------------------------
+
+model WhatsAppAllowedSender {
+  id          String   @id @default(cuid())
+  tenantId    String
+  // Digits-only, country code included (e.g. "919876543210"). Globally unique:
+  // a number can only ever be registered against one mill.
+  phoneNumber String   @unique
+  label       String?
+  actAsUserId String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  actAsUser User   @relation("WhatsAppSenderActsAs", fields: [actAsUserId], references: [id])
+  createdBy User?  @relation("WhatsAppSenderCreatedBy", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([actAsUserId])
+}
+
+/** One row per inbound WhatsApp message, for idempotency (Meta redelivers) and audit. */
+model WhatsAppInboundMessage {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  waMessageId   String   @unique
+  fromPhone     String
+  messageType   String // text | image | document | unknown
+  rawText       String?
+  matched       Boolean  @default(false)
+  replyText     String?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([fromPhone])
 }
 
