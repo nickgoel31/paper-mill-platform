@@ -552,6 +552,8 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
   interface ValidRow {
     rowNum: number;
     reelNumber: string;
+    isAutoNumber: boolean;
+    reelOccurrence: number;
     widthInch: number;
     enteredWidth: number;
     enteredWidthUnit: LengthUnit;
@@ -605,6 +607,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
 
       // reelNumber is a free-text label, not a unique identifier — the real
       // identifier is the database id, so duplicates are allowed here.
+      const isAutoNumber = !reelNumber;
       let finalReelNumber = reelNumber;
       if (!finalReelNumber) {
         finalReelNumber = `${autoPrefix}${String(nextAutoSeq!++).padStart(4, "0")}`;
@@ -636,6 +639,8 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
       validRows.push({
         rowNum,
         reelNumber: finalReelNumber,
+        isAutoNumber,
+        reelOccurrence: 1, // filled in below, once every row's final reelNumber is known
         widthInch: toInches(widthRaw, widthUnit),
         enteredWidth: widthRaw,
         enteredWidthUnit: widthUnit,
@@ -653,6 +658,31 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     }
   }
 
+  // Given (non-auto) reel numbers can legitimately repeat — the physical
+  // machine counter wraps after 9999. Work out each row's duplicate-
+  // occurrence count once, seeded from what's already in the database, then
+  // walked forward in file order so duplicates within this same file also
+  // count against each other correctly.
+  const givenReelNumbers = Array.from(
+    new Set(validRows.filter((vr) => !vr.isAutoNumber).map((vr) => vr.reelNumber))
+  );
+  const runningCounts = new Map<string, number>();
+  if (givenReelNumbers.length > 0) {
+    const existingRows = await db.stockItem.findMany({
+      where: { reelNumber: { in: givenReelNumbers } },
+      select: { reelNumber: true },
+    });
+    for (const row of existingRows) {
+      if (row.reelNumber) runningCounts.set(row.reelNumber, (runningCounts.get(row.reelNumber) || 0) + 1);
+    }
+  }
+  for (const vr of validRows) {
+    if (vr.isAutoNumber) continue;
+    const prev = runningCounts.get(vr.reelNumber) || 0;
+    vr.reelOccurrence = prev + 1;
+    runningCounts.set(vr.reelNumber, prev + 1);
+  }
+
   // Cloudflare D1 doesn't support real transactions (Prisma silently runs
   // $transaction as individual auto-committed queries on D1), so a loop of
   // per-row `create()` calls is still one network round-trip per row no
@@ -666,6 +696,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
       await db.stockItem.createMany({
         data: chunk.map((vr) => ({
           reelNumber: vr.reelNumber,
+          reelOccurrence: vr.reelOccurrence,
           widthInch: new Prisma.Decimal(vr.widthInch.toFixed(2)),
           enteredWidth: new Prisma.Decimal(vr.enteredWidth.toFixed(2)),
           enteredWidthUnit: vr.enteredWidthUnit,
@@ -828,6 +859,18 @@ export async function updateStockItem(input: {
   const stillAllocated = input.status === StockStatus.ALLOCATED;
   const releasingAllocation = existing.status === StockStatus.ALLOCATED && existing.orderItemId && !stillAllocated;
 
+  // The physical machine's own reel counter wraps after 9999, so the same
+  // reelNumber string legitimately gets typed in again later — only
+  // recompute the duplicate-occurrence count when this edit actually
+  // changes it to a new value, so touching other fields doesn't reshuffle it.
+  const newReelNumber = input.reelNumber?.trim() || null;
+  let reelOccurrence = existing.reelOccurrence;
+  if (newReelNumber !== existing.reelNumber) {
+    reelOccurrence = newReelNumber
+      ? (await db.stockItem.count({ where: { reelNumber: newReelNumber, id: { not: input.id } } })) + 1
+      : 1;
+  }
+
   const updated = await db.$transaction(async (tx) => {
     if (releasingAllocation) {
       await tx.orderItem.update({
@@ -839,7 +882,8 @@ export async function updateStockItem(input: {
     const item = await tx.stockItem.update({
       where: { id: input.id },
       data: {
-        reelNumber: input.reelNumber?.trim() || null,
+        reelNumber: newReelNumber,
+        reelOccurrence,
         widthInch: new Prisma.Decimal(widthInches.toFixed(2)),
         enteredWidth: new Prisma.Decimal(input.widthInch.toFixed(2)),
         enteredWidthUnit: input.widthUnit,

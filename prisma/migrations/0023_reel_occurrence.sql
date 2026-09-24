@@ -1,0 +1,1 @@
+ALTER TABLE "StockItem" ADD COLUMN "reelOccurrence" INTEGER NOT NULL DEFAULT 1;

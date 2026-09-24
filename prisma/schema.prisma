@@ -525,8 +525,17 @@ model StockItem {
   productionRunId String?
   originOrderItemId String?
   // Human-facing reel identifier, e.g. "REEL-2609-0001". Monthly-reset, same
-  // convention as Order.orderNumber.
+  // convention as Order.orderNumber. Often overwritten by staff with the
+  // physical machine's own reel-counter tag (which wraps back to 1 after
+  // 9999), so the same reelNumber string legitimately repeats over time —
+  // see reelOccurrence below.
   reelNumber      String?
+  // How many times this exact reelNumber string has been used before (1 =
+  // first time). Sets the duplicate-disambiguation letter prefix and color
+  // shown in the UI (e.g. the 2nd reuse of "4639" displays as "A-4639" in
+  // red) — computed automatically whenever reelNumber is set, never
+  // user-edited directly.
+  reelOccurrence  Int         @default(1)
   widthInch       Decimal
   gsm             Int
   // Mill-configurable — see PaperTypeOption master data (was a fixed enum).

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateLoadingSheetPDF } from "@/lib/pdf/generate-loading-sheet-pdf";
+import { formatReelCode } from "@/lib/reel-code";
 
 /**
  * Isolated so that jsPDF (~350 KB) is only ever in a client-side chunk and
@@ -60,7 +61,7 @@ export default function LoadingSheetPdfButton({
             : null;
           const plannedQtyKg = reelTotalKg ?? Number(it.quantityKg);
           const reelLabel = reels.length
-            ? reels.map((r) => r.reelNumber || "—").join(", ")
+            ? reels.map((r) => formatReelCode(r.reelNumber, r.reelOccurrence || 1) || "—").join(", ")
             : "Not yet allocated";
           return {
             orderNumber: lo.order.orderNumber,

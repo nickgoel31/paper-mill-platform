@@ -12,6 +12,7 @@ const LoadingSheetPdfButton = dynamic(
   { ssr: false }
 );
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
+import { formatReelCode } from "@/lib/reel-code";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -333,7 +334,7 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
                   const plannedQtyKg = reelTotalKg ?? Number(it.quantityKg);
                   const loadedVal = loadedQuantities[it.id] ?? plannedQtyKg;
                   const reelLabel = reels.length
-                    ? reels.map((r) => r.reelNumber || "—").join(", ")
+                    ? reels.map((r) => formatReelCode(r.reelNumber, (r as any).reelOccurrence || 1) || "—").join(", ")
                     : "Not yet allocated";
 
                   return (

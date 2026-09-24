@@ -4,6 +4,7 @@ import * as React from "react";
 import { toast } from "sonner";
 import { updateStockItem } from "@/server/services/stock-service";
 import { PaperSize, StockStatus, LengthUnit } from "@/generated/prisma/browser";
+import { formatReelCode, reelOccurrenceColor, REEL_DUPLICATE_COLOR_CLASSES } from "@/lib/reel-code";
 import { PAPER_SIZE_LABELS, PAPER_SIZES } from "@/lib/paper-size";
 import {
   Dialog,
@@ -30,6 +31,7 @@ interface StockEditModalProps {
   stockItem: {
     id: string;
     reelNumber?: string | null;
+    reelOccurrence?: number;
     widthInch: number;
     enteredWidth?: number | null;
     enteredWidthUnit?: LengthUnit;
@@ -157,6 +159,26 @@ export function StockEditModal({
                 placeholder="Optional label — not a unique key"
                 className="h-9 text-xs font-mono bg-white"
               />
+              {stockItem.reelNumber === reelNumber.trim() && stockItem.reelOccurrence ? (
+                (() => {
+                  const occurrence = stockItem.reelOccurrence!;
+                  const color = reelOccurrenceColor(occurrence);
+                  if (!color) return null;
+                  return (
+                    <p className="text-[10px] text-slate-500">
+                      This machine reel number has been reused before — displays as{" "}
+                      <span className={`font-mono px-1 py-0.5 rounded border ${REEL_DUPLICATE_COLOR_CLASSES[color]}`}>
+                        {formatReelCode(stockItem.reelNumber, occurrence)}
+                      </span>
+                      {" "}(occurrence #{occurrence}) to tell it apart from earlier reels with the same number.
+                    </p>
+                  );
+                })()
+              ) : (
+                <p className="text-[10px] text-slate-400">
+                  If this number was used before, saving will automatically tag it with a letter and color to tell it apart.
+                </p>
+              )}
             </div>
 
             {/* Width + GSM */}

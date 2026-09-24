@@ -49,6 +49,7 @@ import {
   deleteStockItems,
 } from "@/server/services/stock-service";
 import { formatWeightKg, formatWidthInch } from "@/lib/utils";
+import { formatReelCode, reelOccurrenceColor, REEL_DUPLICATE_COLOR_CLASSES } from "@/lib/reel-code";
 import { objectsToCsv, downloadCsv } from "@/lib/csv";
 import { StockAllocationModal } from "./stock-allocation-modal";
 import { StockEditModal } from "./stock-edit-modal";
@@ -83,6 +84,7 @@ interface StockItemRow {
   paperType: string;
   size: PaperSize;
   bf?: number;
+  reelOccurrence?: number;
   quantityKg: any;
   status: StockStatus;
   location: string | null;
@@ -358,6 +360,7 @@ export function StockList({
       }
       const exportRows = (rawRows as any[]).map((r) => ({
         reelNumber: r.reelNumber || "",
+        reelCode: formatReelCode(r.reelNumber, r.reelOccurrence || 1),
         widthInch: Number(r.widthInch),
         gsm: r.gsm,
         paperType: r.paperType,
@@ -372,6 +375,7 @@ export function StockList({
       }));
       const csv = objectsToCsv(exportRows, [
         { key: "reelNumber", header: "reelNumber" },
+        { key: "reelCode", header: "reelCode" },
         { key: "widthInch", header: "widthInch" },
         { key: "gsm", header: "gsm" },
         { key: "paperType", header: "paperType" },
@@ -489,11 +493,22 @@ export function StockList({
     {
       accessorKey: "reelNumber",
       header: "Reel No.",
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-600">
-          {row.original.reelNumber || "—"}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const occurrence = row.original.reelOccurrence || 1;
+        const color = reelOccurrenceColor(occurrence);
+        const code = formatReelCode(row.original.reelNumber, occurrence);
+        if (!code) return <span className="font-mono text-xs text-slate-600">—</span>;
+        return (
+          <span
+            className={`font-mono text-xs px-1.5 py-0.5 rounded-md border ${
+              color ? REEL_DUPLICATE_COLOR_CLASSES[color] : "text-slate-600 border-transparent"
+            }`}
+            title={color ? `Reused reel number — occurrence #${occurrence}` : undefined}
+          >
+            {code}
+          </span>
+        );
+      },
     },
     {
       accessorKey: "widthInch",
