@@ -18,7 +18,7 @@ import {
   type UpdateTenantUserInput,
   type ResetTenantUserPasswordInput,
 } from "@/lib/schemas/platform";
-import { Role, PostProductionMode } from "@/generated/prisma/browser";
+import { Role, PostProductionMode, StockStatus, Prisma } from "@/generated/prisma/browser";
 import { cookies } from "next/headers";
 import { VIEW_AS_COOKIE, createViewAsCookieValue } from "@/lib/view-as";
 import { logAudit } from "./audit-service";
@@ -427,6 +427,31 @@ export async function factoryResetTenantData(input: FactoryResetInput) {
       }
 
       if (want.has("stock")) {
+        // Deleting stock without also deleting the orders it was allocated
+        // to would otherwise leave OrderItem.producedKg stuck at its old
+        // value — showing "produced" progress for reels that no longer
+        // exist. Back it out first, unless the orders are being wiped too
+        // (in which case this is moot).
+        if (!want.has("orders")) {
+          const allocated = await tx.stockItem.findMany({
+            where: { tenantId, status: StockStatus.ALLOCATED, orderItemId: { not: null } },
+            select: { orderItemId: true, quantityKg: true },
+          });
+          const decrementByItem = new Map<string, number>();
+          for (const s of allocated) {
+            if (!s.orderItemId) continue;
+            decrementByItem.set(s.orderItemId, (decrementByItem.get(s.orderItemId) || 0) + Number(s.quantityKg));
+          }
+          for (const [orderItemId, kg] of decrementByItem) {
+            const item = await tx.orderItem.findFirst({ where: { id: orderItemId }, select: { producedKg: true } });
+            if (!item) continue;
+            const newProduced = Math.max(0, Number(item.producedKg) - kg);
+            await tx.orderItem.update({
+              where: { id: orderItemId },
+              data: { producedKg: new Prisma.Decimal(newProduced.toFixed(3)) },
+            });
+          }
+        }
         counts.stockItems = (await tx.stockItem.deleteMany({ where: { tenantId } })).count;
       }
 
