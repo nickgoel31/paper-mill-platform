@@ -382,6 +382,9 @@ export async function createStockItem(input: {
   paperType?: string;
   size?: PaperSize;
   bf?: number;
+  /** The machine-assigned reel number as physically written on the reel.
+   * Leave blank to auto-generate one from the mill's reel number prefix. */
+  reelNumber?: string;
 }) {
   const { userId } = await requireRole(
     Role.ADMIN,
@@ -435,10 +438,18 @@ export async function createStockItem(input: {
   const defaultLocation = input.location || (await getFirstWarehouseLocationName()) || "WAREHOUSE-BAY-A";
 
   const created = await db.$transaction(async (tx) => {
-    const reelNumber = await generateReelNumber(tx, reelNumberPrefix);
+    const manualReelNumber = input.reelNumber?.trim() || "";
+    const reelNumber = manualReelNumber || (await generateReelNumber(tx, reelNumberPrefix));
+    // Same duplicate-reel disambiguation as the CSV import and the reel-code
+    // display (A-4639, B-4639, ...) — a manually typed reel number can
+    // legitimately repeat once the machine's own numbering wraps.
+    const reelOccurrence = manualReelNumber
+      ? (await tx.stockItem.count({ where: { reelNumber: manualReelNumber } })) + 1
+      : 1;
     const item = await tx.stockItem.create({
       data: {
         reelNumber,
+        reelOccurrence,
         widthInch: new Prisma.Decimal(widthInches.toFixed(2)),
         enteredWidth: new Prisma.Decimal(input.widthInch.toFixed(2)),
         enteredWidthUnit: widthUnit,
@@ -968,18 +979,21 @@ export async function allocateStockToOrderItem(
       return { error: `Only AVAILABLE stock can be allocated. Current status: ${stock.status}` };
     }
 
-    // Exact matching validation
-    if (
-      Number(stock.widthInch) !== Number(orderItem.widthInch) ||
-      stock.gsm !== orderItem.gsm
-    ) {
+    // Exact matching validation — report the specific field that differs so
+    // a paper-type or size mismatch doesn't get misread as a GSM problem.
+    if (Number(stock.widthInch) !== Number(orderItem.widthInch)) {
       return {
-        error: `Mismatch: Stock (${stock.widthInch}" @ ${stock.gsm} GSM) does not match order item (${orderItem.widthInch}" @ ${orderItem.gsm} GSM).`,
+        error: `Width mismatch: Stock is ${stock.widthInch}" but the order item needs ${orderItem.widthInch}".`,
+      };
+    }
+    if (stock.gsm !== orderItem.gsm) {
+      return {
+        error: `GSM mismatch: Stock is ${stock.gsm} GSM but the order item needs ${orderItem.gsm} GSM.`,
       };
     }
     if (stock.paperType !== orderItem.paperType) {
       return {
-        error: `Mismatch: Stock is ${stock.paperType} paper but the order item is ${orderItem.paperType}.`,
+        error: `Paper type mismatch: Stock is ${stock.paperType} but the order item needs ${orderItem.paperType}.`,
       };
     }
     if (stock.size !== orderItem.size) {

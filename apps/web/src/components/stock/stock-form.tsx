@@ -45,6 +45,8 @@ interface ReelEntry {
   quantityKg: string;
   location: string;
   orderItemId?: string;
+  /** As physically written on the reel by the machine operator. Blank = auto-generate. */
+  reelNumber?: string;
 }
 
 interface StockFormProps {
@@ -121,7 +123,14 @@ export function StockForm({
   const [manualWeight, setManualWeight] = React.useState<Set<string>>(new Set());
   const locationOptions = locations.length > 0 ? locations : COMMON_LOCATIONS;
   const defaultLocation = locationOptions[0];
-  const defaultPaperType = paperTypeOptions[0]?.value || "NATURAL";
+  // Match the sales order form's default so a freshly-cut reel doesn't
+  // silently default to a different paper type than the order it's meant
+  // for (e.g. alphabetically-first option here vs. "NATURAL" there),
+  // which used to surface as a false "paper type mismatch" on allocation.
+  const defaultPaperType =
+    paperTypeOptions.find((pt) => pt.value === "NATURAL")?.value ||
+    paperTypeOptions[0]?.value ||
+    "NATURAL";
 
   const [reels, setReels] = React.useState<ReelEntry[]>([
     {
@@ -134,6 +143,7 @@ export function StockForm({
       bf: "18",
       quantityKg: "392",
       location: defaultLocation,
+      reelNumber: "",
     },
   ]);
 
@@ -150,6 +160,7 @@ export function StockForm({
         bf: preset.bf?.match(/\d+/)?.[0] || "18",
         quantityKg: String(preset.standardWeightKg),
         location: preset.defaultLocation || defaultLocation,
+        reelNumber: "",
       },
     ]);
     toast.success(`Added ${preset.name} (${preset.widthInch}" / ${preset.gsm} GSM)`);
@@ -169,6 +180,7 @@ export function StockForm({
         bf: lastReel ? lastReel.bf : "18",
         quantityKg: lastReel ? lastReel.quantityKg : "500",
         location: lastReel ? lastReel.location : defaultLocation,
+        reelNumber: "",
       },
     ]);
   };
@@ -282,6 +294,7 @@ export function StockForm({
           quantityKg: parseFloat(r.quantityKg),
           location: r.location || defaultLocation,
           orderItemId: r.orderItemId && r.orderItemId !== "none" ? r.orderItemId : undefined,
+          reelNumber: r.reelNumber?.trim() || undefined,
         });
         createdCount++;
       }
@@ -587,6 +600,23 @@ export function StockForm({
                         kg
                       </span>
                     </div>
+                  </div>
+
+                  {/* Reel Number — as physically written on the reel by the machine operator */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-700">
+                      Reel No.
+                      <span className="ml-1.5 text-[9px] font-bold text-slate-400 normal-case">
+                        (blank = auto-generate)
+                      </span>
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g. 4639"
+                      value={reel.reelNumber ?? ""}
+                      onChange={(e) => updateReel(reel.id, "reelNumber", e.target.value)}
+                      className="h-10 rounded-xl bg-white font-mono font-bold text-slate-900 border-slate-200 text-sm"
+                    />
                   </div>
 
                   {/* Warehouse Location */}

@@ -226,10 +226,8 @@ export function DecklePlanningWorkspace({
   }, [demandItems]);
 
   // Execute Solver. `excludedReelIds` are inventory reels the planner declined
-  // to use. `autoApproveInventory` skips reopening the confirmation dialog —
-  // used when the planner already made their reel selection and this re-run
-  // is just folding the leftover demand back into the cutting plan.
-  const handleRunOptimization = async (excludedReelIds: string[] = [], autoApproveInventory: boolean = false) => {
+  // to use — their demand gets folded back into the cutting plan.
+  const handleRunOptimization = async (excludedReelIds: string[] = []) => {
     if (selectedItems.length === 0) {
       toast.error("Please select at least one demand item for deckle planning.");
       return;
@@ -318,14 +316,13 @@ export function DecklePlanningWorkspace({
         );
       }
       if (match.allocations.length > 0) {
-        if (autoApproveInventory) {
-          setInventoryApproved(true);
-          toast.success(
-            `${match.allocations.length} reel(s) allocated from inventory — the rest went back into the cutting plan.`
-          );
-        } else {
-          setInventoryDialogOpen(true);
-        }
+        // Auto-approve — the planner already reviews/assigns stock matches
+        // from the Step 1 banner; don't interrupt them with a second popup
+        // after the solver runs. They can still open it via "Review reels".
+        setInventoryApproved(true);
+        toast.success(
+          `${match.allocations.length} reel(s) allocated from inventory — the rest went into the cutting plan.`
+        );
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to run deckle optimization solver");
@@ -1383,7 +1380,7 @@ export function DecklePlanningWorkspace({
             setInventoryApproved(true);
             toast.success("Inventory allocation approved.");
           } else {
-            handleRunOptimization(excludedIds, true);
+            handleRunOptimization(excludedIds);
           }
         }}
       />

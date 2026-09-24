@@ -251,7 +251,13 @@ export interface ConfirmDispatchInput {
   vesselFlightNo?: string;
 }
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function confirmDispatch(input: ConfirmDispatchInput) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
   const batch = await db.loadBatch.findFirst({
@@ -272,9 +278,9 @@ export async function confirmDispatch(input: ConfirmDispatchInput) {
     },
   });
 
-  if (!batch) throw new Error("Load batch not found.");
+  if (!batch) return { error: "Load batch not found." };
   if (batch.status === LoadStatus.DISPATCHED || batch.status === LoadStatus.DELIVERED) {
-    throw new Error("This load batch has already been dispatched.");
+    return { error: "This load batch has already been dispatched." };
   }
 
   const result = await db.$transaction(async (tx) => {
@@ -419,6 +425,9 @@ export async function confirmDispatch(input: ConfirmDispatchInput) {
   revalidatePath("/orders");
   revalidatePath("/stock");
   return result;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to confirm dispatch." };
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -523,6 +532,7 @@ export async function getDispatchHistoryForExport(params: DispatchHistoryQueryPa
 }
 
 export async function markDispatchDelivered(dispatchId: string) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.DISPATCH);
 
   const dispatch = await db.dispatch.findFirst({
@@ -543,7 +553,7 @@ export async function markDispatchDelivered(dispatchId: string) {
   });
 
   if (!dispatch || !dispatch.loadBatch) {
-    throw new Error("Dispatch record not found.");
+    return { error: "Dispatch record not found." };
   }
 
   const deliveryTime = new Date();
@@ -603,4 +613,7 @@ export async function markDispatchDelivered(dispatchId: string) {
   revalidatePath("/dispatch");
   revalidateTag(DASHBOARD_TAG);
   return updated;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to mark dispatch as delivered." };
+  }
 }

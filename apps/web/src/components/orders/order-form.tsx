@@ -35,7 +35,6 @@ const NEW_ITEM_DEFAULTS = {
   quantityKg: 3000,
   tolerancePercent: 0,
   ratePerKg: null as number | null,
-  amount: null as number | null,
   kgPerInchOverride: null as number | null,
 };
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -143,10 +142,6 @@ export function OrderForm({
     tolerancePercent: Number(it.tolerancePercent || 5.0),
     ratePerKg: it.ratePerKg ? Number(it.ratePerKg) : null,
     kgPerInchOverride: it.kgPerInchOverride ? Number(it.kgPerInchOverride) : null,
-    // Restate the line's original commercial amount for editing; it was
-    // originally typed in directly, not derived, so re-derive it here just
-    // for display continuity.
-    amount: it.ratePerKg ? Number(it.ratePerKg) * Number(it.quantityKg) : null,
   })) || [{ ...NEW_ITEM_DEFAULTS, widthUnit: defaultUnit, quantityKg: 5000 }];
 
   const form = useForm<any>({
@@ -248,11 +243,12 @@ export function OrderForm({
     );
   }, [watchedItems]);
 
-  // Sum of the amounts the user typed in directly — never derived from
-  // quantity × rate.
+  // Line amount = rate/kg × weight; the order total (excl. GST) is the sum
+  // of those line amounts, recomputed live as rate/weight are typed.
   const totalValueINR = React.useMemo(() => {
     return (watchedItems || []).reduce(
-      (acc: number, item: any) => acc + (Number(item?.amount) || 0),
+      (acc: number, item: any) =>
+        acc + (Number(item?.ratePerKg) || 0) * (Number(item?.quantityKg) || 0),
       0
     );
   }, [watchedItems]);
@@ -296,10 +292,15 @@ export function OrderForm({
         mergedMap.set(key, { ...it });
       } else {
         const existing = mergedMap.get(key);
-        existing.quantityKg = (Number(existing.quantityKg) || 0) + (Number(it.quantityKg) || 0);
+        // Weighted-average the rate across the merged weight so the combined
+        // line's total value stays the same as the sum of its parts.
+        const existingAmount = (Number(existing.ratePerKg) || 0) * (Number(existing.quantityKg) || 0);
+        const itAmount = (Number(it.ratePerKg) || 0) * (Number(it.quantityKg) || 0);
+        const mergedQty = (Number(existing.quantityKg) || 0) + (Number(it.quantityKg) || 0);
+        existing.quantityKg = mergedQty;
         const reels = (Number(existing.numberOfReels) || 0) + (Number(it.numberOfReels) || 0);
         existing.numberOfReels = reels > 0 ? reels : null;
-        existing.amount = (Number(existing.amount) || 0) + (Number(it.amount) || 0) || null;
+        existing.ratePerKg = mergedQty > 0 ? Number(((existingAmount + itAmount) / mergedQty).toFixed(4)) : existing.ratePerKg;
         if (it.remark && !existing.remark) existing.remark = it.remark;
       }
     });
@@ -310,18 +311,7 @@ export function OrderForm({
   const onSubmit = async (formValues: OrderFormInput) => {
     setIsSubmitting(true);
     try {
-      // The mill types the commercial amount directly; back it out into
-      // ratePerKg only for storage/invoicing, never the other way around.
-      const values: OrderFormInput = {
-        ...formValues,
-        items: (formValues.items as any[]).map((it) => ({
-          ...it,
-          ratePerKg:
-            it.amount != null && it.quantityKg > 0
-              ? Number((Number(it.amount) / Number(it.quantityKg)).toFixed(4))
-              : it.ratePerKg ?? null,
-        })),
-      } as OrderFormInput;
+      const values: OrderFormInput = formValues;
 
       if (isEditing) {
         const result = await offlineUpdateOrder(initialOrder.id, values);
@@ -876,7 +866,7 @@ export function OrderForm({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                       {/* Qty (Reels) */}
                       <div>
                         <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Qty (Reels)</FormLabel>
@@ -986,12 +976,12 @@ export function OrderForm({
                         />
                       </div>
 
-                      {/* Amount — manually entered, never auto-calculated */}
+                      {/* Rate per Kg — manually entered; line amount is derived */}
                       <div>
-                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Amount (₹) *</FormLabel>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Rate per Kg (₹)</FormLabel>
                         <FormField
                           control={form.control}
-                          name={`items.${idx}.amount`}
+                          name={`items.${idx}.ratePerKg`}
                           render={({ field: itField }) => (
                             <FormItem className="mt-1">
                               <FormControl>
@@ -999,7 +989,7 @@ export function OrderForm({
                                   <Input
                                     type="number"
                                     step="0.01"
-                                    placeholder="Enter total amount"
+                                    placeholder="Rate per kg"
                                     value={itField.value ?? ""}
                                     onChange={(e) =>
                                       itField.onChange(e.target.value ? Number(e.target.value) : null)
@@ -1007,7 +997,7 @@ export function OrderForm({
                                     className="h-10 text-sm rounded-xl font-mono font-bold text-emerald-700 bg-white border-slate-200"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
-                                    ₹
+                                    ₹/kg
                                   </span>
                                 </div>
                               </FormControl>
@@ -1015,6 +1005,17 @@ export function OrderForm({
                             </FormItem>
                           )}
                         />
+                      </div>
+
+                      {/* Amount — derived live from rate × weight, never typed */}
+                      <div>
+                        <FormLabel className="text-[11px] font-bold uppercase text-slate-500">Line Amount (₹)</FormLabel>
+                        <div className="mt-1 h-10 flex items-center px-3 rounded-xl font-mono font-bold text-slate-700 bg-slate-50 border border-slate-200 text-sm">
+                          {formatCurrencyINR(
+                            (Number(watchedItems?.[idx]?.ratePerKg) || 0) *
+                              (Number(watchedItems?.[idx]?.quantityKg) || 0)
+                          )}
+                        </div>
                       </div>
                     </div>
 

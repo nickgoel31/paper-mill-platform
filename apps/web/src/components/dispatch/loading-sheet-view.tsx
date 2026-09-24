@@ -154,6 +154,11 @@ export function LoadingSheetView({ batch }: LoadingSheetViewProps) {
         vesselFlightNo,
       });
 
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+
       toast.success(
         `Dispatch confirmed! Gate Pass #${result.gatePassNumber} created and WhatsApp notifications enqueued.`
       );

@@ -158,6 +158,8 @@ export function StockList({
   const [paperTypeFilter, setPaperTypeFilter] = React.useState<string>("ALL");
   const [sizeFilter, setSizeFilter] = React.useState<string>("ALL");
   const [locationFilter, setLocationFilter] = React.useState<string>("ALL");
+  const [minWidthFilter, setMinWidthFilter] = React.useState<string>("");
+  const [maxWidthFilter, setMaxWidthFilter] = React.useState<string>("");
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -244,18 +246,42 @@ export function StockList({
       paperType: paperTypeFilter === "ALL" ? undefined : paperTypeFilter,
       size: sizeFilter === "ALL" ? undefined : (sizeFilter as PaperSize),
       location: locationFilter === "ALL" ? undefined : locationFilter,
+      minWidth: minWidthFilter ? Number(minWidthFilter) : undefined,
+      maxWidth: maxWidthFilter ? Number(maxWidthFilter) : undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       search: searchQuery || undefined,
     }),
-    [statusFilter, gsmFilter, paperTypeFilter, sizeFilter, locationFilter, dateFrom, dateTo, searchQuery]
+    [
+      statusFilter,
+      gsmFilter,
+      paperTypeFilter,
+      sizeFilter,
+      locationFilter,
+      minWidthFilter,
+      maxWidthFilter,
+      dateFrom,
+      dateTo,
+      searchQuery,
+    ]
   );
 
   // Jump back to page 1 whenever any filter or the search text changes —
   // otherwise staying on e.g. page 4 after a search can show zero results.
   React.useEffect(() => {
     setPage(1);
-  }, [statusFilter, gsmFilter, paperTypeFilter, sizeFilter, locationFilter, dateFrom, dateTo, searchQuery]);
+  }, [
+    statusFilter,
+    gsmFilter,
+    paperTypeFilter,
+    sizeFilter,
+    locationFilter,
+    minWidthFilter,
+    maxWidthFilter,
+    dateFrom,
+    dateTo,
+    searchQuery,
+  ]);
 
   const fetchFilteredStock = React.useCallback(async () => {
     setIsLoading(true);
@@ -334,6 +360,8 @@ export function StockList({
     setPaperTypeFilter("ALL");
     setSizeFilter("ALL");
     setLocationFilter("ALL");
+    setMinWidthFilter("");
+    setMaxWidthFilter("");
     setDateFrom("");
     setDateTo("");
     setSearchQuery("");
@@ -345,6 +373,8 @@ export function StockList({
     gsmFilter !== "ALL" ||
     paperTypeFilter !== "ALL" ||
     sizeFilter !== "ALL" ||
+    minWidthFilter !== "" ||
+    maxWidthFilter !== "" ||
     locationFilter !== "ALL" ||
     dateFrom !== "" ||
     dateTo !== "" ||
@@ -915,6 +945,28 @@ export function StockList({
               ))}
             </SelectContent>
           </Select>
+
+          <div className="flex items-center gap-1.5">
+            <label className="text-[11px] font-semibold text-slate-500">Width</label>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Min"
+              value={minWidthFilter}
+              onChange={(e) => setMinWidthFilter(e.target.value)}
+              className="h-9 text-xs w-[80px] bg-slate-50/70 border-slate-200 rounded-xl"
+            />
+            <span className="text-slate-300 text-xs">–</span>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="Max"
+              value={maxWidthFilter}
+              onChange={(e) => setMaxWidthFilter(e.target.value)}
+              className="h-9 text-xs w-[80px] bg-slate-50/70 border-slate-200 rounded-xl"
+            />
+            <span className="text-[10px] text-slate-400 font-mono">in</span>
+          </div>
 
           <div className="flex items-center gap-1.5">
             <label className="text-[11px] font-semibold text-slate-500">From</label>

@@ -1555,7 +1555,10 @@ export async function agentMarkDispatchDelivered(input: { dispatchNumberOrId: st
       return { success: false, message: `Dispatch '${input.dispatchNumberOrId}' not found.` };
     }
     const { markDispatchDelivered } = await import("./dispatch-service");
-    await markDispatchDelivered(dispatch.id);
+    const result = await markDispatchDelivered(dispatch.id);
+    if (result && "error" in result && result.error) {
+      return { success: false, message: result.error };
+    }
     return {
       success: true,
       message: `Dispatch #${dispatch.dispatchNumber} marked DELIVERED — delivery WhatsApp notifications enqueued for every client on the load.`,

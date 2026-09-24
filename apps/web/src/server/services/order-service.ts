@@ -446,7 +446,7 @@ export async function createOrder(data: OrderFormInput) {
         orderDate: validated.orderDate,
         deliveryDate: validated.deliveryDate || null,
         priority: validated.priority,
-        status: OrderStatus.DRAFT,
+        status: validated.status || OrderStatus.DRAFT,
         notes: validated.notes?.trim() || null,
         otherNotes: validated.otherNotes?.trim() || null,
         createdById: userId,
@@ -876,6 +876,10 @@ export async function updateOrder(id: string, data: OrderFormInput) {
         orderDate: validated.orderDate,
         deliveryDate: validated.deliveryDate || null,
         priority: validated.priority,
+        // Only DRAFT <-> CONFIRMED here — both are already gated to
+        // ADMIN/SALES above, and edits are only allowed in these two
+        // statuses anyway, so this can't be used to skip later transitions.
+        status: validated.status || existing.status,
         notes: validated.notes?.trim() || null,
         otherNotes: validated.otherNotes?.trim() || null,
         items: {

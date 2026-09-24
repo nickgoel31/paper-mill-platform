@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { formatWeightKg } from "@/lib/utils";
 import { createLoadBatch } from "@/server/services/load-batch-service";
 import { createTruck } from "@/server/services/truck-service";
+import { suggestRouteGroups, RouteGroupSuggestion } from "@/server/services/route-match-service";
 import { OrderPriority, OrderStatus } from "@/generated/prisma/browser";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,7 @@ interface UnassignedOrder {
     code: string;
     city: string;
     state: string;
+    pincode: string;
     whatsappNumber: string;
   };
 }
@@ -109,6 +111,12 @@ export function LoadBuilder({
   const [cityFilter, setCityFilter] = React.useState("ALL");
   const [priorityFilter, setPriorityFilter] = React.useState("ALL");
   const [sortBy, setSortBy] = React.useState<"date" | "weight">("date");
+
+  // AI-assisted route grouping — clusters unassigned orders by destination
+  // city/pincode proximity so the planner can bundle a whole route onto one
+  // truck in one click, instead of eyeballing city names one at a time.
+  const [routeGroups, setRouteGroups] = React.useState<RouteGroupSuggestion[] | null>(null);
+  const [isSuggestingRoutes, setIsSuggestingRoutes] = React.useState(false);
 
   // Selected Truck Details
   const activeTruck = truckList.find((t) => t.id === selectedTruckId);
@@ -243,6 +251,67 @@ export function LoadBuilder({
     setSelectedOrderIds((prev) => prev.filter((id) => id !== orderId));
   };
 
+  // AI Route Grouping — clusters currently-unassigned orders by destination
+  const handleSuggestRoutes = async () => {
+    if (availableOrders.length === 0) {
+      toast.error("No unassigned orders to group.");
+      return;
+    }
+    setIsSuggestingRoutes(true);
+    try {
+      const result = await suggestRouteGroups(
+        availableOrders.map((o) => ({
+          orderId: o.id,
+          orderNumber: o.orderNumber,
+          clientName: o.client.name,
+          city: o.client.city,
+          state: o.client.state,
+          pincode: o.client.pincode,
+          totalKg: o.totalKg,
+        }))
+      );
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      setRouteGroups(result.groups);
+      toast.success(`${result.groups.length} route group(s) suggested.`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to suggest route groups");
+    } finally {
+      setIsSuggestingRoutes(false);
+    }
+  };
+
+  // Adds every order in a suggested route group to the current load, skipping
+  // any that would blow the truck capacity (already-selected orders excluded).
+  const handleUseRouteGroup = (group: RouteGroupSuggestion) => {
+    const idsToAdd = group.orderIds.filter((id) => !selectedOrderIds.includes(id));
+    let runningKg = currentTotalKg;
+    const accepted: string[] = [];
+    const skipped: string[] = [];
+    for (const id of idsToAdd) {
+      const order = unassignedOrders.find((o) => o.id === id);
+      if (!order) continue;
+      if (truckCapacity > 0 && runningKg + order.totalKg > truckCapacity) {
+        skipped.push(order.orderNumber);
+        continue;
+      }
+      runningKg += order.totalKg;
+      accepted.push(id);
+    }
+    if (accepted.length > 0) {
+      setSelectedOrderIds((prev) => [...prev, ...accepted]);
+    }
+    if (skipped.length > 0) {
+      toast.warning(
+        `Added ${accepted.length} order(s); skipped ${skipped.length} (${skipped.join(", ")}) — would exceed truck capacity.`
+      );
+    } else if (accepted.length > 0) {
+      toast.success(`Added ${accepted.length} order(s) from "${group.label}" to this load.`);
+    }
+  };
+
   // Save Batch Handler
   const handleSaveBatch = async () => {
     if (selectedOrderIds.length === 0) {
@@ -266,6 +335,11 @@ export function LoadBuilder({
         notes: notes || null,
         orderIds: selectedOrderIds,
       });
+
+      if ("error" in created) {
+        toast.error(created.error);
+        return;
+      }
 
       toast.success(`Load Batch #${created.batchNumber} created successfully!`);
       router.push(`/loads/${created.id}`);
@@ -363,6 +437,51 @@ export function LoadBuilder({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* AI Route Grouping */}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSuggestRoutes}
+                  disabled={isSuggestingRoutes}
+                  className="h-8 w-full text-xs font-bold gap-1.5 rounded-lg border-sky-200 text-sky-700 hover:bg-sky-50"
+                >
+                  {isSuggestingRoutes ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  Suggest Truck Routes (AI) — by city & pincode
+                </Button>
+
+                {routeGroups && routeGroups.length > 0 && (
+                  <div className="space-y-1.5 p-2 rounded-lg bg-sky-50/60 border border-sky-100">
+                    {routeGroups.map((g, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between gap-2 bg-white rounded-md border border-sky-100 px-2.5 py-1.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold text-slate-900 truncate">{g.label}</div>
+                          <div className="text-[10px] text-slate-500 truncate">
+                            {g.orderIds.length} order(s) • {formatWeightKg(g.totalKg)} • {g.reason}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleUseRouteGroup(g)}
+                          className="h-7 px-2.5 text-[11px] rounded-lg shrink-0 bg-sky-600 hover:bg-sky-700 text-white"
+                        >
+                          Use
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Orders List Container */}

@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { OrderPriority, OrderStatus, PaperSize, LengthUnit } from "@/generated/prisma/browser";
 
+// The create/update form only ever offers these two — anything past
+// CONFIRMED is reached through the dedicated status-transition flow, not by
+// re-submitting this form.
+export const ORDER_FORM_STATUSES = [OrderStatus.DRAFT, OrderStatus.CONFIRMED] as const;
+
 export const orderItemSchema = z.object({
   id: z.string().optional(),
   // A booking taken with just a weight — no size/reels known yet (e.g. an
@@ -105,6 +110,9 @@ export const orderFormSchema = z
       z.coerce.date().optional().nullable()
     ),
     priority: z.nativeEnum(OrderPriority).default(OrderPriority.NORMAL),
+    // Initial workflow status the mill picks on the form itself — CONFIRMED
+    // is what makes the order eligible for deckle planning immediately.
+    status: z.enum(ORDER_FORM_STATUSES).default(OrderStatus.DRAFT),
     notes: z.string().optional().nullable(),
     otherNotes: z
       .string()

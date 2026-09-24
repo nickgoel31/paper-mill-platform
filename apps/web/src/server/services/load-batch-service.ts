@@ -221,9 +221,19 @@ export async function getLoadBatchById(id: string) {
 // MUTATIONS (Create, Update, Mark Planned, Revert, Cancel)
 // -----------------------------------------------------------------------------
 
+/**
+ * Errors thrown from a Server Action are redacted to a generic message in
+ * production. Catching here and returning `{ error }` instead of throwing is
+ * what actually gets a readable message back to the toast.
+ */
 export async function createLoadBatch(data: LoadBatchInput) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
-  const validated = loadBatchSchema.parse(data);
+  const parsed = loadBatchSchema.safeParse(data);
+  if (!parsed.success) {
+    return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+  }
+  const validated = parsed.data;
 
   // Verify all orders are CONFIRMED and unassigned
   const orders = await db.order.findMany({
@@ -237,22 +247,22 @@ export async function createLoadBatch(data: LoadBatchInput) {
   });
 
   if (orders.length !== validated.orderIds.length) {
-    throw new Error("One or more selected orders could not be found.");
+    return { error: "One or more selected orders could not be found." };
   }
 
   for (const o of orders) {
     if (o.status === OrderStatus.CANCELLED || o.status === OrderStatus.DISPATCHED) {
-      throw new Error(
-        `Order #${o.orderNumber} is in status "${o.status}" and cannot be batched into a truck.`
-      );
+      return {
+        error: `Order #${o.orderNumber} is in status "${o.status}" and cannot be batched into a truck.`,
+      };
     }
     const activeBatch = o.loadAssignments.find(
       (la) => la.loadBatch.status !== LoadStatus.CANCELLED
     );
     if (activeBatch) {
-      throw new Error(
-        `Order #${o.orderNumber} is already assigned to active Load Batch #${activeBatch.loadBatch.batchNumber}.`
-      );
+      return {
+        error: `Order #${o.orderNumber} is already assigned to active Load Batch #${activeBatch.loadBatch.batchNumber}.`,
+      };
     }
   }
 
@@ -269,11 +279,11 @@ export async function createLoadBatch(data: LoadBatchInput) {
     const truck = await db.truck.findFirst({ where: { id: validated.truckId } });
     if (truck && totalKg > truck.capacityKg) {
       const overBy = totalKg - truck.capacityKg;
-      throw new Error(
-        `Selected orders total ${(totalKg / 1000).toFixed(2)} MT, which exceeds truck payload capacity of ${(
+      return {
+        error: `Selected orders total ${(totalKg / 1000).toFixed(2)} MT, which exceeds truck payload capacity of ${(
           truck.capacityKg / 1000
-        ).toFixed(2)} MT by ${(overBy / 1000).toFixed(2)} MT (${overBy.toLocaleString("en-IN")} kg).`
-      );
+        ).toFixed(2)} MT by ${(overBy / 1000).toFixed(2)} MT (${overBy.toLocaleString("en-IN")} kg).`,
+      };
     }
   }
 
@@ -330,11 +340,19 @@ export async function createLoadBatch(data: LoadBatchInput) {
   revalidatePath("/load-planning");
   revalidateTag(DASHBOARD_TAG);
   return batch;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to create load batch." };
+  }
 }
 
 export async function updateLoadBatch(id: string, data: LoadBatchInput) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER, Role.SALES);
-  const validated = loadBatchSchema.parse(data);
+  const parsed = loadBatchSchema.safeParse(data);
+  if (!parsed.success) {
+    return { error: parsed.error.issues.map((i) => i.message).join(" ") };
+  }
+  const validated = parsed.data;
 
   const existing = await db.loadBatch.findFirst({
     where: { id },
@@ -342,16 +360,16 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
   });
 
   if (!existing) {
-    throw new Error("Load batch not found.");
+    return { error: "Load batch not found." };
   }
 
   if (
     existing.status !== LoadStatus.DRAFT &&
     existing.status !== LoadStatus.PLANNED
   ) {
-    throw new Error(
-      `Load batch #${existing.batchNumber} is in status "${existing.status}" and cannot be modified.`
-    );
+    return {
+      error: `Load batch #${existing.batchNumber} is in status "${existing.status}" and cannot be modified.`,
+    };
   }
 
   // Calculate new total weight
@@ -372,11 +390,11 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
     const truck = await db.truck.findFirst({ where: { id: validated.truckId } });
     if (truck && totalKg > truck.capacityKg) {
       const overBy = totalKg - truck.capacityKg;
-      throw new Error(
-        `Selected orders total ${(totalKg / 1000).toFixed(2)} MT, exceeding truck capacity of ${(
+      return {
+        error: `Selected orders total ${(totalKg / 1000).toFixed(2)} MT, exceeding truck capacity of ${(
           truck.capacityKg / 1000
-        ).toFixed(2)} MT by ${(overBy / 1000).toFixed(2)} MT.`
-      );
+        ).toFixed(2)} MT by ${(overBy / 1000).toFixed(2)} MT.`,
+      };
     }
   }
 
@@ -425,9 +443,13 @@ export async function updateLoadBatch(id: string, data: LoadBatchInput) {
   revalidatePath("/load-planning");
   revalidateTag(DASHBOARD_TAG);
   return updated;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to update load batch." };
+  }
 }
 
 export async function markBatchPlanned(id: string) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
   const existing = await db.loadBatch.findFirst({
@@ -438,11 +460,11 @@ export async function markBatchPlanned(id: string) {
   });
 
   if (!existing) {
-    throw new Error("Load batch not found.");
+    return { error: "Load batch not found." };
   }
 
   if (existing.status !== LoadStatus.DRAFT) {
-    throw new Error(`Only DRAFT batches can be marked as PLANNED.`);
+    return { error: `Only DRAFT batches can be marked as PLANNED.` };
   }
 
   const orderIds = existing.orders.map((o) => o.orderId);
@@ -481,9 +503,13 @@ export async function markBatchPlanned(id: string) {
   revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to mark load batch as planned." };
+  }
 }
 
 export async function revertBatchToDraft(id: string) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
   const existing = await db.loadBatch.findFirst({
@@ -494,11 +520,11 @@ export async function revertBatchToDraft(id: string) {
   });
 
   if (!existing) {
-    throw new Error("Load batch not found.");
+    return { error: "Load batch not found." };
   }
 
   if (existing.status !== LoadStatus.PLANNED) {
-    throw new Error(`Only PLANNED batches can be reverted to DRAFT.`);
+    return { error: `Only PLANNED batches can be reverted to DRAFT.` };
   }
 
   const orderIds = existing.orders.map((o) => o.orderId);
@@ -537,9 +563,13 @@ export async function revertBatchToDraft(id: string) {
   revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to revert load batch to draft." };
+  }
 }
 
 export async function cancelLoadBatch(id: string, reason?: string) {
+  try {
   const { userId } = await requireRole(Role.ADMIN, Role.PLANNER);
 
   const existing = await db.loadBatch.findFirst({
@@ -550,7 +580,7 @@ export async function cancelLoadBatch(id: string, reason?: string) {
   });
 
   if (!existing) {
-    throw new Error("Load batch not found.");
+    return { error: "Load batch not found." };
   }
 
   if (
@@ -558,9 +588,9 @@ export async function cancelLoadBatch(id: string, reason?: string) {
     existing.status === LoadStatus.DELIVERED ||
     existing.status === LoadStatus.CANCELLED
   ) {
-    throw new Error(
-      `Load batch #${existing.batchNumber} is in status "${existing.status}" and cannot be cancelled.`
-    );
+    return {
+      error: `Load batch #${existing.batchNumber} is in status "${existing.status}" and cannot be cancelled.`,
+    };
   }
 
   const orderIds = existing.orders.map((o) => o.orderId);
@@ -599,4 +629,7 @@ export async function cancelLoadBatch(id: string, reason?: string) {
   revalidateTag(DASHBOARD_TAG);
   revalidatePath("/orders");
   return updated;
+  } catch (err: any) {
+    return { error: err?.message || "Failed to cancel load batch." };
+  }
 }

@@ -69,7 +69,11 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
   const handleMarkPlanned = async () => {
     setIsTransitioning(true);
     try {
-      await markBatchPlanned(batch.id);
+      const result = await markBatchPlanned(batch.id);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(
         `Load Batch #${batch.batchNumber} marked as PLANNED. All ${batch.orders.length} assigned orders flipped to PLANNED.`
       );
@@ -84,7 +88,11 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
   const handleRevertDraft = async () => {
     setIsTransitioning(true);
     try {
-      await revertBatchToDraft(batch.id);
+      const result = await revertBatchToDraft(batch.id);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(
         `Load Batch #${batch.batchNumber} reverted to DRAFT. Assigned orders reverted to CONFIRMED.`
       );
@@ -99,7 +107,11 @@ export function LoadDetailView({ batch, userRole }: LoadDetailViewProps) {
   const handleConfirmCancel = async () => {
     setIsTransitioning(true);
     try {
-      await cancelLoadBatch(batch.id, cancelReason);
+      const result = await cancelLoadBatch(batch.id, cancelReason);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(
         `Load Batch #${batch.batchNumber} cancelled. Assigned orders reverted to CONFIRMED.`
       );

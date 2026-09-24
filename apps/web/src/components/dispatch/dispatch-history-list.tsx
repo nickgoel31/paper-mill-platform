@@ -202,7 +202,11 @@ export function DispatchHistoryList({ initialData }: DispatchHistoryListProps) {
 
   const handleMarkDelivered = async (dispatchId: string) => {
     try {
-      await markDispatchDelivered(dispatchId);
+      const result = await markDispatchDelivered(dispatchId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Marked as DELIVERED and delivery WhatsApp notifications enqueued.");
       fetchData(page, search);
     } catch (err: any) {

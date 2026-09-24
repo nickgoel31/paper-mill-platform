@@ -145,7 +145,11 @@ export function LoadList({
 
   const handleMarkPlanned = async (batchId: string) => {
     try {
-      await markBatchPlanned(batchId);
+      const result = await markBatchPlanned(batchId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Load batch marked as PLANNED. All assigned orders are now PLANNED.");
       fetchData(page, search);
     } catch (err: any) {
@@ -155,7 +159,11 @@ export function LoadList({
 
   const handleCancelBatch = async (batchId: string) => {
     try {
-      await cancelLoadBatch(batchId);
+      const result = await cancelLoadBatch(batchId);
+      if (result && "error" in result && result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Load batch cancelled. All assigned orders reverted to CONFIRMED.");
       fetchData(page, search);
     } catch (err: any) {
