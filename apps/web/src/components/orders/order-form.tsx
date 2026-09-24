@@ -153,6 +153,7 @@ export function OrderForm({
     resolver: zodResolver(orderFormSchema),
     defaultValues: {
       clientId: initialOrder?.clientId || (clients.length > 0 ? clients[0].id : ""),
+      orderNumber: initialOrder?.orderNumber || "",
       offlineOrderNo: initialOrder?.offlineOrderNo || "",
       orderDate: initialOrder?.orderDate
         ? new Date(initialOrder.orderDate).toISOString().split("T")[0]
@@ -424,6 +425,27 @@ export function OrderForm({
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* System order number — editable; leave blank to auto-generate */}
+              <FormField
+                control={form.control}
+                name="orderNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-bold text-slate-700">Order No.</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Auto-generated if left blank (SO-YYMM-0001)"
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value)}
+                        className="h-10 text-xs rounded-xl bg-slate-50/70 border-slate-200 font-mono"
+                      />
+                    </FormControl>
+                    <p className="text-[10px] text-slate-400">Must be unique — leave blank to keep the auto-generated number.</p>
                     <FormMessage />
                   </FormItem>
                 )}

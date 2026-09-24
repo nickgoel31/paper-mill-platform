@@ -188,6 +188,7 @@ function buildOrderWhere(params: OrderQueryParams, search?: string): Prisma.Orde
       ? {
           OR: [
             { orderNumber: { contains: search } },
+            { offlineOrderNo: { contains: search } },
             { client: { name: { contains: search } } },
             { client: { code: { contains: search } } },
             { notes: { contains: search } },
@@ -428,8 +429,14 @@ export async function createOrder(data: OrderFormInput) {
       }
     }
 
+    const customOrderNumber = validated.orderNumber?.trim() || "";
+    if (customOrderNumber) {
+      const dup = await db.order.findFirst({ where: { orderNumber: customOrderNumber } });
+      if (dup) return { error: `Order number "${customOrderNumber}" is already in use.` };
+    }
+
     const order = await db.$transaction(async (tx) => {
-    const orderNumber = await generateOrderNumber(tx, validated.orderDate);
+    const orderNumber = customOrderNumber || (await generateOrderNumber(tx, validated.orderDate));
 
     const created = await tx.order.create({
       data: {
@@ -532,10 +539,81 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
     groups.set(key, g);
   });
 
-  const errors: { row: number; message: string }[] = [];
-  let created = 0;
+  // Batch-prefetch everything the per-group loop used to fetch one at a time
+  // (client lookup, duplicate-order-number check, next order-number sequence)
+  // — this, plus inserting with createMany instead of one create() per order,
+  // is what actually batches the import instead of one round-trip per order.
+  const groupList = Array.from(groups.entries());
 
-  for (const [key, group] of groups) {
+  const clientCodes = Array.from(
+    new Set(groupList.map(([, g]) => g.rows[0].clientCode?.trim()).filter((v): v is string => !!v))
+  );
+  const clientByCode = new Map(
+    clientCodes.length
+      ? (await db.client.findMany({ where: { code: { in: clientCodes } } })).map((c) => [c.code, c] as const)
+      : []
+  );
+
+  const customOrderNumbers = Array.from(
+    new Set(
+      groupList
+        .filter(([key]) => !key.startsWith("__row_"))
+        .map(([, g]) => g.rows[0].orderNumber.trim())
+    )
+  );
+  const existingOrderNumbers = new Set(
+    customOrderNumbers.length
+      ? (
+          await db.order.findMany({
+            where: { orderNumber: { in: customOrderNumbers } },
+            select: { orderNumber: true },
+          })
+        ).map((o) => o.orderNumber)
+      : []
+  );
+  // Guards against two rows in the same file claiming the same custom number.
+  const claimedOrderNumbers = new Set<string>();
+
+  // Auto-numbered orders share the "SO-YYMM-" prefix for whichever month(s)
+  // their orderDate falls in — fetch each distinct month's starting sequence
+  // once, then increment in-memory per row instead of one query per order.
+  const monthPrefix = (d: Date) => `SO-${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, "0")}-`;
+  const neededPrefixes = new Set<string>();
+  for (const [key, g] of groupList) {
+    if (key.startsWith("__row_") || !g.rows[0].orderNumber?.trim()) {
+      const d = g.rows[0].orderDate?.trim() ? new Date(g.rows[0].orderDate.trim()) : new Date();
+      if (!isNaN(d.getTime())) neededPrefixes.add(monthPrefix(d));
+    }
+  }
+  const nextSeqByPrefix = new Map<string, number>();
+  await Promise.all(
+    Array.from(neededPrefixes).map(async (prefix) => {
+      const latest = await db.order.findFirst({
+        where: { orderNumber: { startsWith: prefix } },
+        orderBy: { orderNumber: "desc" },
+        select: { orderNumber: true },
+      });
+      const lastSeqStr = latest?.orderNumber?.split("-").pop();
+      const parsed = lastSeqStr ? parseInt(lastSeqStr, 10) : NaN;
+      nextSeqByPrefix.set(prefix, !isNaN(parsed) ? parsed + 1 : 1);
+    })
+  );
+  const nextAutoOrderNumber = (d: Date) => {
+    const prefix = monthPrefix(d);
+    const seq = nextSeqByPrefix.get(prefix) ?? 1;
+    nextSeqByPrefix.set(prefix, seq + 1);
+    return `${prefix}${String(seq).padStart(4, "0")}`;
+  };
+
+  const errors: { row: number; message: string }[] = [];
+  interface ValidGroup {
+    rowNums: number[];
+    orderRow: Record<string, unknown>;
+    itemRows: Record<string, unknown>[];
+  }
+  const validGroups: ValidGroup[] = [];
+
+  for (const [key, group] of groupList) {
     const rowLabel =
       group.rowNums.length === 1
         ? `${group.rowNums[0]}`
@@ -546,13 +624,15 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
       const clientCode = first.clientCode?.trim() || "";
       if (!clientCode) throw new Error(`"clientCode" is required.`);
 
-      const client = await db.client.findFirst({ where: { code: clientCode } });
+      const client = clientByCode.get(clientCode);
       if (!client) throw new Error(`No client found with code "${clientCode}".`);
 
       const customOrderNumber = key.startsWith("__row_") ? "" : first.orderNumber.trim();
       if (customOrderNumber) {
-        const existing = await db.order.findFirst({ where: { orderNumber: customOrderNumber } });
-        if (existing) throw new Error(`Order number "${customOrderNumber}" already exists.`);
+        if (existingOrderNumbers.has(customOrderNumber) || claimedOrderNumbers.has(customOrderNumber)) {
+          throw new Error(`Order number "${customOrderNumber}" already exists.`);
+        }
+        claimedOrderNumbers.add(customOrderNumber);
       }
 
       const orderDate = first.orderDate?.trim() ? new Date(first.orderDate.trim()) : new Date();
@@ -673,36 +753,59 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
         };
       });
 
-      await db.$transaction(async (tx) => {
-        const orderNumber = customOrderNumber || (await generateOrderNumber(tx, orderDate));
-        const order = await tx.order.create({
-          data: {
-            orderNumber,
-            offlineOrderNo: first.offlineOrderNo?.trim() || null,
-            clientId: client.id,
-            orderDate,
-            deliveryDate,
-            priority,
-            status: OrderStatus.DRAFT,
-            notes: first.notes?.trim() || null,
-            otherNotes: first.otherNotes?.trim() || null,
-            createdById: userId,
-            items: { create: items },
-          },
-        });
-        await logAudit(
-          { userId, entityType: "Order", entityId: order.id, action: "CREATE", after: { source: "CSV import", orderNumber } },
-          tx
-        );
-      });
+      const orderNumber = customOrderNumber || nextAutoOrderNumber(orderDate);
+      const orderId = crypto.randomUUID();
 
-      created++;
+      validGroups.push({
+        rowNums: group.rowNums,
+        orderRow: {
+          id: orderId,
+          orderNumber,
+          offlineOrderNo: first.offlineOrderNo?.trim() || null,
+          clientId: client.id,
+          orderDate,
+          deliveryDate,
+          priority,
+          status: OrderStatus.DRAFT,
+          notes: first.notes?.trim() || null,
+          otherNotes: first.otherNotes?.trim() || null,
+          createdById: userId,
+        },
+        itemRows: items.map((it) => ({ id: crypto.randomUUID(), orderId, ...it })),
+      });
     } catch (err: any) {
       errors.push({ row: group.rowNums[0], message: `Row(s) ${rowLabel}: ${err.message || "Failed to import"}` });
     }
   }
 
+  // Insert in chunks of orders (with their items) instead of one order at a
+  // time — each chunk is 2 round-trips total (one createMany for orders, one
+  // for their items) no matter how many orders it contains.
+  let created = 0;
+  const CHUNK_SIZE = 50;
+  for (let c = 0; c < validGroups.length; c += CHUNK_SIZE) {
+    const chunk = validGroups.slice(c, c + CHUNK_SIZE);
+    try {
+      await db.order.createMany({ data: chunk.map((g) => g.orderRow as any) });
+      await db.orderItem.createMany({ data: chunk.flatMap((g) => g.itemRows as any) });
+      created += chunk.length;
+    } catch (err: any) {
+      for (const g of chunk) {
+        const rowLabel =
+          g.rowNums.length === 1 ? `${g.rowNums[0]}` : `${g.rowNums[0]}-${g.rowNums[g.rowNums.length - 1]}`;
+        errors.push({ row: g.rowNums[0], message: `Row(s) ${rowLabel}: ${err.message || "Failed to import this batch"}` });
+      }
+    }
+  }
+
   if (created > 0) {
+    await logAudit({
+      userId,
+      entityType: "Order",
+      entityId: "bulk-import",
+      action: "CREATE",
+      after: { source: "CSV import", count: created },
+    });
     revalidatePath("/orders");
     revalidateTag(DASHBOARD_TAG);
   }
@@ -754,6 +857,12 @@ export async function updateOrder(id: string, data: OrderFormInput) {
       }
     }
 
+    const newOrderNumber = validated.orderNumber?.trim() || existing.orderNumber;
+    if (newOrderNumber !== existing.orderNumber) {
+      const dup = await db.order.findFirst({ where: { orderNumber: newOrderNumber } });
+      if (dup && dup.id !== id) return { error: `Order number "${newOrderNumber}" is already in use.` };
+    }
+
     const updated = await db.$transaction(async (tx) => {
     // Delete existing items and recreate
     await tx.orderItem.deleteMany({ where: { orderId: id } });
@@ -761,6 +870,7 @@ export async function updateOrder(id: string, data: OrderFormInput) {
     const res = await tx.order.update({
       where: { id },
       data: {
+        orderNumber: newOrderNumber,
         offlineOrderNo: validated.offlineOrderNo?.trim() || null,
         clientId: validated.clientId,
         orderDate: validated.orderDate,

@@ -88,6 +88,10 @@ export const orderItemSchema = z.object({
 export const orderFormSchema = z
   .object({
     clientId: z.string().min(1, "Please select a client"),
+    // The system's own order number. Leave blank to auto-generate
+    // "SO-YYMM-0001" as before; provide one to use it instead (e.g. to match
+    // a legacy/offline numbering scheme) — uniqueness is enforced server-side.
+    orderNumber: z.string().max(40, "Too long").trim().optional().nullable(),
     // The client's own PO/booking reference — optional, purely for matching
     // an offline booking to this system order.
     offlineOrderNo: z.string().max(100, "Too long").trim().optional().nullable(),

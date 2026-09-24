@@ -203,6 +203,12 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
               {order.orderNumber}
             </h1>
             {renderStatusBadge(order.status)}
+            {order.items.some((it: any) => it.isBookingOnly) && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                <span className="h-2 w-2 rounded-full bg-amber-500" />
+                BOOKING
+              </span>
+            )}
           </div>
 
           <p className="text-xs text-slate-500 font-medium">
@@ -516,6 +522,46 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
               const rate = Number(it.ratePerKg || 0);
               const lineTotal = reqKg * rate;
               const isFulfilled = prodKg >= reqKg * 0.95;
+
+              if (it.isBookingOnly) {
+                return (
+                  <TableRow key={it.id} className="hover:bg-amber-50/40 bg-amber-50/20 text-xs">
+                    <TableCell className="text-center font-mono font-bold text-slate-400">
+                      {idx + 1}
+                    </TableCell>
+                    <TableCell colSpan={5} className="text-[11px]">
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] uppercase">
+                        Booking Only — no size/reel yet
+                      </span>
+                      {it.remark && (
+                        <span className="block font-sans font-normal text-[10px] text-slate-400 mt-1 max-w-[280px] truncate" title={it.remark}>
+                          {it.remark}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-slate-900">
+                      {formatWeightKg(reqKg)}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold">
+                      <span className={isFulfilled ? "text-emerald-600" : "text-amber-600"}>
+                        {formatWeightKg(prodKg)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-slate-700">
+                      {formatWeightKg(dispKg)}
+                    </TableCell>
+                    <TableCell className="font-mono text-slate-500 text-[11px]">
+                      ±{Number(it.tolerancePercent || 5).toFixed(1)}%
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-slate-700">
+                      {rate > 0 ? `₹${rate.toFixed(2)}` : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono font-bold text-slate-900">
+                      {lineTotal > 0 ? formatCurrencyINR(lineTotal) : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              }
 
               return (
                 <TableRow key={it.id} className="hover:bg-slate-50/50 text-xs">

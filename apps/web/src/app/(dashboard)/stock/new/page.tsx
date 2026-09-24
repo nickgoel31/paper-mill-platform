@@ -27,6 +27,9 @@ export default async function NewStockPage() {
         orderNumber: true,
         client: { select: { name: true, code: true } },
         items: {
+          // Booking-only lines have no real width/GSM yet — offering them
+          // here would let a reel get "matched" to a size that doesn't exist.
+          where: { isBookingOnly: false },
           select: {
             id: true,
             widthInch: true,

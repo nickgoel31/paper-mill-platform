@@ -87,11 +87,13 @@ interface OrderItemRef {
   producedKg: any;
   dispatchedKg: any;
   ratePerKg: any;
+  isBookingOnly?: boolean;
 }
 
 interface OrderRow {
   id: string;
   orderNumber: string;
+  offlineOrderNo?: string | null;
   orderDate: Date | string;
   deliveryDate: Date | string | null;
   priority: OrderPriority;
@@ -283,6 +285,7 @@ export function OrderList({
       const exportRows = (rawRows as any[]).flatMap((o) =>
         o.items.map((it: any) => ({
           orderNumber: o.orderNumber,
+          offlineOrderNo: o.offlineOrderNo || "",
           orderDate: new Date(o.orderDate).toISOString().slice(0, 10),
           deliveryDate: o.deliveryDate ? new Date(o.deliveryDate).toISOString().slice(0, 10) : "",
           status: o.status,
@@ -305,6 +308,7 @@ export function OrderList({
       );
       const csv = objectsToCsv(exportRows, [
         { key: "orderNumber", header: "orderNumber" },
+        { key: "offlineOrderNo", header: "offlineOrderNo" },
         { key: "orderDate", header: "orderDate" },
         { key: "deliveryDate", header: "deliveryDate" },
         { key: "status", header: "status" },
@@ -495,12 +499,19 @@ export function OrderList({
       accessorKey: "orderNumber",
       header: "Order No.",
       cell: ({ row }) => (
-        <Link
-          href={`/orders/${row.original.id}`}
-          className="font-mono font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center gap-1"
-        >
-          {row.getValue("orderNumber")}
-        </Link>
+        <div>
+          <Link
+            href={`/orders/${row.original.id}`}
+            className="font-mono font-bold text-sky-600 hover:text-sky-700 hover:underline flex items-center gap-1"
+          >
+            {row.getValue("orderNumber")}
+          </Link>
+          {row.original.offlineOrderNo && (
+            <div className="text-[10px] font-mono text-slate-400 mt-0.5" title="Offline order no.">
+              Off: {row.original.offlineOrderNo}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -574,7 +585,8 @@ export function OrderList({
       header: "Items & Widths",
       cell: ({ row }) => {
         const items = row.original.items || [];
-        const distinctGsms = Array.from(new Set(items.map((it) => it.gsm)));
+        const hasBooking = items.some((it) => it.isBookingOnly);
+        const distinctGsms = Array.from(new Set(items.filter((it) => !it.isBookingOnly).map((it) => it.gsm)));
         return (
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-bold text-slate-900 font-mono">
@@ -589,6 +601,11 @@ export function OrderList({
                   {gsm}G
                 </span>
               ))}
+              {hasBooking && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                  BOOKING
+                </span>
+              )}
             </div>
           </div>
         );
@@ -770,7 +787,9 @@ export function OrderList({
         optionalColumns={[
           "widthInch (or leave blank if GSM Weight Chart is set)",
           "quantityKg (or leave blank if GSM Weight Chart is set)",
+          "bookingOnly (true/yes — weight-only line, no size/reel yet; skips widthInch/gsm)",
           "orderNumber",
+          "offlineOrderNo (client's own PO/diary booking reference)",
           "orderDate",
           "deliveryDate",
           "priority (URGENT/NORMAL/STOCK)",
@@ -1086,7 +1105,7 @@ export function OrderList({
 
           {/* Search Box */}
           <Input
-            placeholder="Search Order # or Notes..."
+            placeholder="Search Order #, Offline No. or Notes..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-9 text-xs w-[200px] bg-slate-50/70 border-slate-200 rounded-xl"
