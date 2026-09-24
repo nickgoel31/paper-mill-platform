@@ -563,6 +563,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
     bf: number;
     quantityKg: number;
     orderItemId: string | null;
+    status: StockStatus;
     location: string;
     remarks: string | null;
   }
@@ -584,6 +585,22 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
       const reelNumber = r.reelNumber?.trim() || "";
       const orderNumber = r.orderNumber?.trim() || "";
       const kgPerInch = gsmWeightMap[gsm];
+
+      // Explicit status column — AVAILABLE/ALLOCATED/REJECTED (DISPATCHED is
+      // never settable here; that only happens through the dispatch flow).
+      // Leave blank to keep the old default: allocated if orderNumber
+      // matches, otherwise available.
+      const statusRaw = r.status?.trim().toUpperCase();
+      let explicitStatus: StockStatus | null = null;
+      if (statusRaw) {
+        if (!["AVAILABLE", "ALLOCATED", "REJECTED"].includes(statusRaw)) {
+          throw new Error(`Invalid "status": "${r.status}" — must be AVAILABLE, ALLOCATED, or REJECTED.`);
+        }
+        explicitStatus = statusRaw as StockStatus;
+        if (explicitStatus === StockStatus.ALLOCATED && !orderNumber) {
+          throw new Error(`status "ALLOCATED" requires an "orderNumber" to allocate this reel to.`);
+        }
+      }
 
       let widthRaw = r.widthInch?.trim() ? parseFloat(r.widthInch) : NaN;
       let quantityKg = r.quantityKg?.trim() ? parseFloat(r.quantityKg) : NaN;
@@ -615,9 +632,12 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
 
       // Optional allocation: find the matching line (by width + GSM) on the
       // named order. The reel then takes that line's paper type, same as
-      // allocating an existing reel does.
+      // allocating an existing reel does. Skipped entirely when the status
+      // column explicitly says AVAILABLE or REJECTED — those never carry an
+      // order link, whatever "orderNumber" says.
       let orderItemId: string | null = null;
-      if (orderNumber) {
+      const wantsAllocation = orderNumber && explicitStatus !== "AVAILABLE" && explicitStatus !== "REJECTED";
+      if (wantsAllocation) {
         const order = orderMap.get(orderNumber);
         if (!order) throw new Error(`No order found with number "${orderNumber}".`);
 
@@ -636,6 +656,8 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         if (!r.bf?.trim()) bf = match.bf;
       }
 
+      const status = explicitStatus ?? (orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE);
+
       validRows.push({
         rowNum,
         reelNumber: finalReelNumber,
@@ -650,6 +672,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
         bf,
         quantityKg,
         orderItemId,
+        status,
         location: r.location?.trim() || defaultLocation,
         remarks: r.remarks?.trim() || null,
       });
@@ -705,7 +728,7 @@ export async function importStockItemsCsv(rows: Record<string, string>[]) {
           size: vr.size,
           bf: vr.bf,
           quantityKg: new Prisma.Decimal(vr.quantityKg.toFixed(3)),
-          status: vr.orderItemId ? StockStatus.ALLOCATED : StockStatus.AVAILABLE,
+          status: vr.status,
           location: vr.location,
           remarks: vr.remarks,
           orderItemId: vr.orderItemId,

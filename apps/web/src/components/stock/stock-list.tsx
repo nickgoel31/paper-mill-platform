@@ -767,6 +767,7 @@ export function StockList({
           "location",
           "remarks",
           "orderNumber (allocates to that order's matching line)",
+          "status (AVAILABLE/ALLOCATED/REJECTED — leave blank to auto-set from orderNumber)",
         ]}
         onImport={importStockItemsCsv}
         onDone={fetchFilteredStock}
