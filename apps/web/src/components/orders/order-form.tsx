@@ -172,6 +172,9 @@ export function OrderForm({
   const recalcWeight = (idx: number) => {
     if (manualWeightRows.current.has(idx)) return;
     const item = form.getValues(`items.${idx}`);
+    // Booking-only weight is the known fact typed directly — never overwrite
+    // it from an optionally-entered width/GSM/reel count.
+    if (item?.isBookingOnly) return;
     const gsm = Number(item?.gsm);
     const override = Number(item?.kgPerInchOverride);
     const kgPerInch = override > 0 ? override : gsmWeightMap[gsm];
@@ -208,6 +211,10 @@ export function OrderForm({
   // Whichever of weight/reels the user typed by hand drives the other —
   // width/GSM/override changes resync in that same direction.
   const syncItemCalc = (idx: number) => {
+    // A booking-only line's weight is the one known fact (e.g. "100 tons")
+    // typed in directly — an optionally-entered width/GSM must never
+    // silently recompute or override it.
+    if (form.getValues(`items.${idx}.isBookingOnly`)) return;
     if (manualWeightRows.current.has(idx) && !manualReelsRows.current.has(idx)) {
       recalcReelsFromWeight(idx);
     } else {
@@ -685,7 +692,17 @@ export function OrderForm({
                             <label className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 cursor-pointer select-none">
                               <Checkbox
                                 checked={itField.value}
-                                onCheckedChange={(v) => itField.onChange(!!v)}
+                                onCheckedChange={(v) => {
+                                  itField.onChange(!!v);
+                                  // Clear any leftover default width/GSM when
+                                  // switching to booking-only — otherwise the
+                                  // 45"/120 GSM row defaults would get saved
+                                  // as if they were real known figures.
+                                  if (v) {
+                                    form.setValue(`items.${idx}.widthInch`, 0, { shouldDirty: true });
+                                    form.setValue(`items.${idx}.gsm`, 0, { shouldDirty: true });
+                                  }
+                                }}
                               />
                               Booking only (no size/reel yet)
                             </label>
@@ -707,7 +724,7 @@ export function OrderForm({
 
                     {isBookingOnly && (
                       <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 -mt-1">
-                        No size/reel needed yet — this line won&apos;t appear in deckle planning or stock matching until it&apos;s edited with real dimensions.
+                        Width and GSM are optional here — fill in either if already known, leave blank otherwise. This line won&apos;t appear in deckle planning or stock matching until it&apos;s confirmed with full dimensions, and its weight is never recalculated from width/GSM while booking-only.
                       </p>
                     )}
 
@@ -727,7 +744,7 @@ export function OrderForm({
                                   <Input
                                     type="number"
                                     step="0.01"
-                                    disabled={isBookingOnly}
+                                    placeholder={isBookingOnly ? "Optional" : undefined}
                                     {...itField}
                                     onChange={(e) => {
                                       itField.onChange(e);
@@ -735,7 +752,7 @@ export function OrderForm({
                                     }}
                                     className={`h-10 text-sm rounded-xl font-mono ${
                                       isExceedingDeckle ? "border-rose-500 bg-rose-50" : "bg-white border-slate-200"
-                                    } disabled:opacity-50 disabled:bg-slate-100`}
+                                    }`}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -785,13 +802,13 @@ export function OrderForm({
                                 <div className="relative">
                                   <Input
                                     type="number"
-                                    disabled={isBookingOnly}
+                                    placeholder={isBookingOnly ? "Optional" : undefined}
                                     {...itField}
                                     onChange={(e) => {
                                       itField.onChange(e);
                                       syncItemCalc(idx);
                                     }}
-                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200 disabled:opacity-50 disabled:bg-slate-100"
+                                    className="h-10 text-sm rounded-xl font-mono bg-white border-slate-200"
                                   />
                                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 font-mono">
                                     GSM

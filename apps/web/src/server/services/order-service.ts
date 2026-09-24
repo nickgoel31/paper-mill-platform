@@ -452,10 +452,13 @@ export async function createOrder(data: OrderFormInput) {
         createdById: userId,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(item.isBookingOnly ? 0 : itemWidthInches(item).toFixed(2)),
-            enteredWidth: new Prisma.Decimal(item.isBookingOnly ? 0 : item.widthInch.toFixed(2)),
+            // A booking-only line may still have a known width and/or GSM even
+            // though it's not a full spec yet — store whatever was actually
+            // entered (0 if left blank) instead of always zeroing it out.
+            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
             enteredWidthUnit: item.widthUnit,
-            gsm: item.isBookingOnly ? 0 : item.gsm,
+            gsm: item.gsm,
             isBookingOnly: item.isBookingOnly,
             paperType: item.paperType,
             size: item.size,
@@ -658,11 +661,17 @@ export async function importOrdersCsv(rows: Record<string, string>[]) {
             throw new Error(`Invalid "quantityKg" on line ${idx + 1} of this order: "${r.quantityKg}"`);
           }
           const ratePerKg = r.ratePerKg?.trim() ? parseFloat(r.ratePerKg) : null;
+          // A booking can still name a known width and/or GSM even without a
+          // full spec yet — use whatever the CSV gave (0 if left blank).
+          const bookingWidthRaw = r.widthInch?.trim() ? parseFloat(r.widthInch) : NaN;
+          const bookingWidth = !isNaN(bookingWidthRaw) && bookingWidthRaw > 0 ? bookingWidthRaw : 0;
+          const bookingGsmRaw = r.gsm?.trim() ? parseInt(r.gsm, 10) : NaN;
+          const bookingGsm = !isNaN(bookingGsmRaw) && bookingGsmRaw > 0 ? bookingGsmRaw : 0;
           return {
-            widthInch: new Prisma.Decimal(0),
-            enteredWidth: new Prisma.Decimal(0),
+            widthInch: new Prisma.Decimal(bookingWidth > 0 ? toInches(bookingWidth, widthUnit as any).toFixed(2) : 0),
+            enteredWidth: new Prisma.Decimal(bookingWidth.toFixed(2)),
             enteredWidthUnit: widthUnit as any,
-            gsm: 0,
+            gsm: bookingGsm,
             isBookingOnly: true,
             paperType: "NATURAL" as any,
             size: "NORMAL" as any,
@@ -884,10 +893,13 @@ export async function updateOrder(id: string, data: OrderFormInput) {
         otherNotes: validated.otherNotes?.trim() || null,
         items: {
           create: validated.items.map((item) => ({
-            widthInch: new Prisma.Decimal(item.isBookingOnly ? 0 : itemWidthInches(item).toFixed(2)),
-            enteredWidth: new Prisma.Decimal(item.isBookingOnly ? 0 : item.widthInch.toFixed(2)),
+            // A booking-only line may still have a known width and/or GSM even
+            // though it's not a full spec yet — store whatever was actually
+            // entered (0 if left blank) instead of always zeroing it out.
+            widthInch: new Prisma.Decimal(itemWidthInches(item).toFixed(2)),
+            enteredWidth: new Prisma.Decimal(item.widthInch.toFixed(2)),
             enteredWidthUnit: item.widthUnit,
-            gsm: item.isBookingOnly ? 0 : item.gsm,
+            gsm: item.gsm,
             isBookingOnly: item.isBookingOnly,
             paperType: item.paperType,
             size: item.size,
@@ -977,10 +989,10 @@ export async function addOrderItem(orderId: string, item: import("@/lib/schemas/
       const row = await tx.orderItem.create({
         data: {
           orderId,
-          widthInch: new Prisma.Decimal(validated.isBookingOnly ? 0 : itemWidthInches(validated).toFixed(2)),
-          enteredWidth: new Prisma.Decimal(validated.isBookingOnly ? 0 : validated.widthInch.toFixed(2)),
+          widthInch: new Prisma.Decimal(itemWidthInches(validated).toFixed(2)),
+          enteredWidth: new Prisma.Decimal(validated.widthInch.toFixed(2)),
           enteredWidthUnit: validated.widthUnit,
-          gsm: validated.isBookingOnly ? 0 : validated.gsm,
+          gsm: validated.gsm,
           isBookingOnly: validated.isBookingOnly,
           paperType: validated.paperType,
           size: validated.size,

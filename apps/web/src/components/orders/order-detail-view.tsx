@@ -533,6 +533,13 @@ export function OrderDetailView({ order, userRole, displayUnit = "INCH" }: Order
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px] uppercase">
                         Booking Only — no size/reel yet
                       </span>
+                      {(Number(it.widthInch) > 0 || Number(it.gsm) > 0) && (
+                        <span className="ml-2 font-mono text-[10px] text-amber-700">
+                          {Number(it.widthInch) > 0 ? `${formatWidthInch(Number(it.widthInch))} known` : "width TBD"}
+                          {" • "}
+                          {Number(it.gsm) > 0 ? `${it.gsm} GSM known` : "GSM TBD"}
+                        </span>
+                      )}
                       {it.remark && (
                         <span className="block font-sans font-normal text-[10px] text-slate-400 mt-1 max-w-[280px] truncate" title={it.remark}>
                           {it.remark}
