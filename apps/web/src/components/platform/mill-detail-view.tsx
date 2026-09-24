@@ -12,7 +12,9 @@ import {
   updateTenantUser,
   resetTenantUserPassword,
   updateTenantWhatsAppSettings,
+  factoryResetTenantData,
 } from "@/server/services/platform-service";
+import { FACTORY_RESET_CATEGORY_INFO, type FactoryResetCategory } from "@/lib/factory-reset";
 import { Role, PostProductionMode } from "@/generated/prisma/browser";
 import { EnterMillButton } from "@/components/platform/enter-mill-button";
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Loader2, KeyRound, Plus, MessageCircle } from "lucide-react";
+import { ArrowLeft, Loader2, KeyRound, Plus, MessageCircle, AlertTriangle, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type Tenant = {
   id: string;
@@ -90,6 +93,19 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
   const [addingUser, setAddingUser] = React.useState(false);
   const [resetFor, setResetFor] = React.useState<MillUser | null>(null);
   const [waEnabled, setWaEnabled] = React.useState(tenant.whatsappEnabled);
+
+  // Factory reset (Danger Zone)
+  const [resetCategories, setResetCategories] = React.useState<Set<FactoryResetCategory>>(new Set());
+  const [resetConfirmCode, setResetConfirmCode] = React.useState("");
+  const [isResetting, setIsResetting] = React.useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = React.useState(false);
+
+  const toggleResetCategory = (cat: FactoryResetCategory) =>
+    setResetCategories((prev) => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
@@ -179,6 +195,35 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
       "Password reset."
     );
     if (okDone) setResetFor(null);
+  }
+
+  async function onFactoryReset() {
+    setIsResetting(true);
+    try {
+      const res = await factoryResetTenantData({
+        tenantId: tenant.id,
+        categories: Array.from(resetCategories),
+        confirmCode: resetConfirmCode,
+      });
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      const counts = res.counts || {};
+      const summary = Object.entries(counts)
+        .filter(([, n]) => (n as number) > 0)
+        .map(([k, n]) => `${n} ${k}`)
+        .join(", ");
+      toast.success(summary ? `Factory reset done — deleted ${summary}.` : "Factory reset done — nothing matched.");
+      setResetConfirmOpen(false);
+      setResetCategories(new Set());
+      setResetConfirmCode("");
+      router.refresh();
+    } catch (err: any) {
+      toast.error(err?.message || "Factory reset failed");
+    } finally {
+      setIsResetting(false);
+    }
   }
 
   return (
@@ -433,6 +478,95 @@ export function MillDetailView({ tenant, users }: { tenant: Tenant; users: MillU
           </TableBody>
         </Table>
       </section>
+
+      <section className="bg-white rounded-2xl border-2 border-rose-200 p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-4.5 w-4.5 text-rose-600" />
+          <h2 className="text-sm font-bold text-rose-700">Danger Zone — Factory Reset</h2>
+        </div>
+        <p className="text-xs text-slate-500">
+          Permanently deletes this mill's own transactional data, category by category. Masters
+          (clients, machines, trucks, GSM chart, warehouse locations, paper types), users, and
+          settings are never touched — only the day-to-day data generated in the categories you
+          pick below. This cannot be undone; there is no backup taken automatically.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-2">
+          {(Object.keys(FACTORY_RESET_CATEGORY_INFO) as FactoryResetCategory[]).map((cat) => {
+            const info = FACTORY_RESET_CATEGORY_INFO[cat];
+            const checked = resetCategories.has(cat);
+            return (
+              <label
+                key={cat}
+                className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer ${
+                  checked ? "border-rose-300 bg-rose-50/60" : "border-slate-200 bg-slate-50/40"
+                }`}
+              >
+                <Checkbox checked={checked} onCheckedChange={() => toggleResetCategory(cat)} className="mt-0.5" />
+                <div>
+                  <div className="text-xs font-bold text-slate-900">{info.label}</div>
+                  <div className="text-[11px] text-slate-500">{info.description}</div>
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        <Button
+          variant="destructive"
+          disabled={resetCategories.size === 0}
+          onClick={() => setResetConfirmOpen(true)}
+          className="rounded-xl gap-1.5"
+        >
+          <Trash2 className="h-4 w-4" /> Factory Reset Selected Data
+        </Button>
+      </section>
+
+      {resetConfirmOpen && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4 border border-rose-200">
+            <h3 className="text-sm font-bold text-rose-700 flex items-center gap-2">
+              <AlertTriangle className="h-4.5 w-4.5" /> Confirm Factory Reset — {tenant.name}
+            </h3>
+            <p className="text-xs text-slate-600">
+              This will permanently delete: {Array.from(resetCategories).map((c) => FACTORY_RESET_CATEGORY_INFO[c].label).join(", ")}.
+              This cannot be undone.
+            </p>
+            <F
+              label={`Type the mill code "${tenant.code}" to confirm`}
+              name="confirmCode"
+              value={resetConfirmCode}
+              onChange={(e) => setResetConfirmCode(e.target.value)}
+              placeholder={tenant.code}
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={isResetting}
+                onClick={() => {
+                  setResetConfirmOpen(false);
+                  setResetConfirmCode("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="rounded-xl gap-1.5"
+                disabled={isResetting || resetConfirmCode.trim().toUpperCase() !== tenant.code.toUpperCase()}
+                onClick={onFactoryReset}
+              >
+                {isResetting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Confirm Factory Reset
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {resetFor && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">

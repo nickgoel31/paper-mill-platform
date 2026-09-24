@@ -36,7 +36,11 @@ export function WarehouseLocationsManager({ initialData, canManage }: WarehouseL
     e.preventDefault();
     setAdding(true);
     try {
-      await createWarehouseLocation(name);
+      const res = await createWarehouseLocation(name);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success(`Added location "${name.trim()}".`);
       setName("");
       await reload();
@@ -55,7 +59,11 @@ export function WarehouseLocationsManager({ initialData, canManage }: WarehouseL
   const saveEdit = async (id: string) => {
     setBusyId(id);
     try {
-      await updateWarehouseLocation(id, editName);
+      const res = await updateWarehouseLocation(id, editName);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Location renamed — existing stock at that bay was updated too.");
       setEditingId(null);
       await reload();
@@ -70,7 +78,11 @@ export function WarehouseLocationsManager({ initialData, canManage }: WarehouseL
     if (!confirm(`Delete the location "${row.name}"?`)) return;
     setBusyId(row.id);
     try {
-      await deleteWarehouseLocation(row.id);
+      const res = await deleteWarehouseLocation(row.id);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Location deleted.");
       await reload();
     } catch (err: any) {

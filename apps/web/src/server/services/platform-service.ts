@@ -22,6 +22,7 @@ import { Role, PostProductionMode } from "@/generated/prisma/browser";
 import { cookies } from "next/headers";
 import { VIEW_AS_COOKIE, createViewAsCookieValue } from "@/lib/view-as";
 import { logAudit } from "./audit-service";
+import type { FactoryResetCategory } from "@/lib/factory-reset";
 
 /**
  * Platform (TWJ Labs) management of mills and their users.
@@ -371,5 +372,99 @@ export async function resetTenantUserPassword(
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err?.message || "Failed to reset password." };
+  }
+}
+
+// -----------------------------------------------------------------------------
+// FACTORY RESET — wipe a mill's own transactional data, category by category.
+// Masters (Client, Machine, Truck, Transporter, StockPreset, GsmWeightProfile,
+// WarehouseLocation, PaperTypeOption), Users, SystemSettings and the Tenant
+// row itself are never touched here — this only clears data the mill
+// generated day-to-day, so they can start clean without re-configuring the
+// mill from scratch.
+// -----------------------------------------------------------------------------
+
+export interface FactoryResetInput {
+  tenantId: string;
+  categories: FactoryResetCategory[];
+  /** Must exactly match the mill's own code — the confirmation gate. */
+  confirmCode: string;
+}
+
+export async function factoryResetTenantData(input: FactoryResetInput) {
+  try {
+    const admin = await requirePlatform();
+    const { tenantId, categories, confirmCode } = input;
+
+    if (!categories || categories.length === 0) {
+      return { success: false, error: "Select at least one category to reset." };
+    }
+
+    const tenant = await db.tenant.findFirst({ where: { id: tenantId } });
+    if (!tenant) return { success: false, error: "Mill not found." };
+
+    if (confirmCode?.trim().toUpperCase() !== tenant.code.toUpperCase()) {
+      return { success: false, error: `Type the mill code "${tenant.code}" exactly to confirm.` };
+    }
+
+    const want = new Set(categories);
+    const counts: Record<string, number> = {};
+
+    await db.$transaction(async (tx) => {
+      // Dispatch/invoices first — Dispatch must be cleared before LoadBatch
+      // (a real DB-level FK RESTRICT blocks deleting a LoadBatch that still
+      // has a Dispatch pointing at it).
+      if (want.has("dispatch")) {
+        counts.invoices = (await tx.invoice.deleteMany({ where: { tenantId } })).count;
+        counts.dispatches = (await tx.dispatch.deleteMany({ where: { tenantId } })).count;
+        counts.notifications = (await tx.whatsAppNotification.deleteMany({ where: { tenantId } })).count;
+        counts.loadBatches = (await tx.loadBatch.deleteMany({ where: { tenantId } })).count;
+      }
+
+      if (want.has("production")) {
+        counts.wastageLogs = (await tx.wastageLog.deleteMany({ where: { tenantId } })).count;
+        counts.productionRuns = (await tx.productionRun.deleteMany({ where: { tenantId } })).count;
+      }
+
+      if (want.has("stock")) {
+        counts.stockItems = (await tx.stockItem.deleteMany({ where: { tenantId } })).count;
+      }
+
+      if (want.has("orders")) {
+        counts.orders = (await tx.order.deleteMany({ where: { tenantId } })).count;
+      }
+
+      if (want.has("auditLogs")) {
+        counts.auditLogs = (await tx.auditLog.deleteMany({ where: { tenantId } })).count;
+      }
+
+      // Log the reset itself — after the AuditLog wipe (if selected) so this
+      // entry survives as the record of what just happened.
+      await logAudit(
+        {
+          userId: admin.id,
+          entityType: "Tenant",
+          entityId: tenantId,
+          action: "FACTORY_RESET",
+          before: { categories, millCode: tenant.code },
+          after: { counts },
+        },
+        tx
+      );
+    });
+
+    revalidatePath("/platform");
+    revalidatePath(`/platform/mills/${tenantId}`);
+    revalidatePath("/orders");
+    revalidatePath("/stock");
+    revalidatePath("/dispatch");
+    revalidatePath("/production");
+    revalidatePath("/deckle");
+    revalidatePath("/invoices");
+    revalidatePath("/logs");
+
+    return { success: true, counts };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Factory reset failed." };
   }
 }

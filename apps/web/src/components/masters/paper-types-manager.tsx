@@ -39,7 +39,11 @@ export function PaperTypesManager({ initialData, canManage }: PaperTypesManagerP
     e.preventDefault();
     setAdding(true);
     try {
-      await createPaperTypeOption(name, label);
+      const res = await createPaperTypeOption(name, label);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success(`Added paper type "${name.trim().toUpperCase()}".`);
       setName("");
       setLabel("");
@@ -60,7 +64,11 @@ export function PaperTypesManager({ initialData, canManage }: PaperTypesManagerP
   const saveEdit = async (id: string) => {
     setBusyId(id);
     try {
-      await updatePaperTypeOption(id, editName, editLabel);
+      const res = await updatePaperTypeOption(id, editName, editLabel);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Paper type updated — existing orders/stock at that value were kept in sync.");
       setEditingId(null);
       await reload();
@@ -75,7 +83,11 @@ export function PaperTypesManager({ initialData, canManage }: PaperTypesManagerP
     if (!confirm(`Delete the paper type "${row.name}"?`)) return;
     setBusyId(row.id);
     try {
-      await deletePaperTypeOption(row.id);
+      const res = await deletePaperTypeOption(row.id);
+      if (res?.error) {
+        toast.error(res.error);
+        return;
+      }
       toast.success("Paper type deleted.");
       await reload();
     } catch (err: any) {
