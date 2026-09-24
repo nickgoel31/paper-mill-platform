@@ -12,8 +12,11 @@ workers_dev = true
 # width/GSM configurations from the trailing month and refresh Stock
 # Presets (see worker-entry.ts's scheduled() handler and
 # /api/cron/auto-stock-presets).
+# Daily at 18:25 UTC (23:55 IST, end of business day): snapshot each
+# client's order backlog for the Daily Order Backlog report
+# (/api/cron/daily-order-report).
 [triggers]
-crons = ["0 3 1 * *"]
+crons = ["0 3 1 * *", "25 18 * * *"]
 
 [assets]
 directory = ".open-next/assets"

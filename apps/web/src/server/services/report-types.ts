@@ -4,7 +4,8 @@ export type ReportType =
   | "dispatch"
   | "wastage"
   | "invoices"
-  | "stock";
+  | "stock"
+  | "daily-backlog";
 
 export interface ReportFilter {
   startDate?: string | Date;
@@ -28,4 +29,5 @@ export const REPORT_DEFINITIONS: { type: ReportType; title: string; description:
   { type: "wastage", title: "Wastage Report", description: "Recorded wastage by type and reason.", dated: true },
   { type: "invoices", title: "Invoices & Payments Report", description: "Invoices raised, amounts and payment status.", dated: true },
   { type: "stock", title: "Current Stock Report", description: "Live snapshot of stock items in inventory (not date-filtered).", dated: false },
+  { type: "daily-backlog", title: "Daily Order Backlog (PDF)", description: "Per-party opening/new/dispatched/closing order backlog by client type, generated automatically every day at close of business.", dated: false },
 ];

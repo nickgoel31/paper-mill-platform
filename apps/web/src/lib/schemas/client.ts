@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { GSTIN_REGEX, PINCODE_REGEX, PHONE_REGEX, INDIAN_STATES } from "@/lib/constants";
 
+export const CLIENT_TYPES = ["DEALER", "CORRUGATOR", "DIRECT", "RETAIL", "EXPORT"] as const;
+
+export const CLIENT_TYPE_LABELS: Record<(typeof CLIENT_TYPES)[number], string> = {
+  DEALER: "Dealer",
+  CORRUGATOR: "Corrugator",
+  DIRECT: "Direct",
+  RETAIL: "Retail",
+  EXPORT: "Export",
+};
+
 export const clientSchema = z.object({
   name: z.string().min(2, "Client name must be at least 2 characters"),
   code: z
@@ -8,6 +18,7 @@ export const clientSchema = z.object({
     .min(2, "Client code must be at least 2 characters")
     .max(20, "Client code must be at most 20 characters")
     .regex(/^[A-Z0-9_-]+$/, "Code must be uppercase alphanumeric (e.g. AMBER-01)"),
+  clientType: z.enum(CLIENT_TYPES).default("DEALER"),
   // Fully optional: missing/undefined/null/blank all pass through as "no
   // GSTIN yet" — only a non-blank value gets format-checked.
   gstin: z

@@ -86,6 +86,14 @@ enum PostProductionMode {
   INVENTORY
 }
 
+enum ClientType {
+  DEALER
+  CORRUGATOR
+  DIRECT
+  RETAIL
+  EXPORT
+}
+
 enum InvoiceStatus {
   DRAFT
   ISSUED
@@ -157,6 +165,7 @@ model Tenant {
   payments      Payment[]
   warehouseLocations WarehouseLocation[]
   paperTypeOptions   PaperTypeOption[]
+  dailyOrderReportLines DailyOrderReportLine[]
 }
 
 model User {
@@ -196,10 +205,11 @@ model User {
 }
 
 model Client {
-  id             String    @id @default(cuid())
+  id             String     @id @default(cuid())
   tenantId       String?
   name           String
   code           String
+  clientType     ClientType @default(DEALER)
   gstin          String?
   addressLine1   String
   addressLine2   String?
@@ -221,6 +231,7 @@ model Client {
   orders        Order[]
   invoices      Invoice[]
   notifications WhatsAppNotification[]
+  dailyOrderReportLines DailyOrderReportLine[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -228,6 +239,7 @@ model Client {
   @@index([deletedAt])
   @@index([city, state])
   @@index([createdById])
+  @@index([clientType])
 }
 
 model Machine {
@@ -859,5 +871,37 @@ model StockPreset {
   @@index([isActive])
   @@index([deletedAt])
   @@index([createdById])
+}
+
+// -----------------------------------------------------------------------------
+// DAILY ORDER BACKLOG REPORT — one immutable snapshot row per client per day,
+// captured automatically at end-of-day (see the cron in
+// /api/cron/daily-order-report). Once written, a date's rows are never
+// recomputed retroactively from live order data (which can change via edits),
+// so historical reports stay exactly what they were on the day they ran.
+// -----------------------------------------------------------------------------
+
+model DailyOrderReportLine {
+  id             String   @id @default(cuid())
+  tenantId       String?
+  // Normalized to midnight UTC of the report date.
+  reportDate     DateTime
+  clientId       String
+  clientType     ClientType
+  monthQtyKg     Decimal // cumulative new-order qty this calendar month through reportDate
+  openingKg      Decimal // undispatched backlog as of start of reportDate
+  newOrdersKg    Decimal // new order demand received during reportDate
+  dispatchedKg   Decimal // dispatched during reportDate
+  closingKg      Decimal // undispatched backlog as of end of reportDate (openingKg + newOrdersKg - dispatchedKg)
+  pendingSizesKg Decimal // portion of closingKg still missing a confirmed width/GSM (booking-only lines)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  client Client  @relation(fields: [clientId], references: [id])
+
+  @@unique([tenantId, reportDate, clientId])
+  @@index([tenantId, reportDate])
+  @@index([clientId])
 }
 

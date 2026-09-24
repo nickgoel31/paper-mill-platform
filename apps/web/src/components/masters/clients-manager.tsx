@@ -36,7 +36,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { clientSchema, ClientFormInput } from "@/lib/schemas/client";
+import { clientSchema, ClientFormInput, CLIENT_TYPES, CLIENT_TYPE_LABELS } from "@/lib/schemas/client";
 import {
   getClients,
   createClient,
@@ -58,6 +58,7 @@ interface ClientRow {
   id: string;
   name: string;
   code: string;
+  clientType: (typeof CLIENT_TYPES)[number];
   gstin: string | null;
   addressLine1: string;
   addressLine2: string | null;
@@ -106,6 +107,7 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
     defaultValues: {
       name: "",
       code: "",
+      clientType: "DEALER",
       gstin: "",
       addressLine1: "",
       addressLine2: "",
@@ -151,6 +153,7 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
     form.reset({
       name: "",
       code: "",
+      clientType: "DEALER",
       gstin: "",
       addressLine1: "",
       addressLine2: "",
@@ -173,6 +176,7 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
     form.reset({
       name: client.name,
       code: client.code,
+      clientType: client.clientType,
       gstin: client.gstin || "",
       addressLine1: client.addressLine1,
       addressLine2: client.addressLine2 || "",
@@ -285,6 +289,15 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
             </div>
           )}
         </div>
+      ),
+    },
+    {
+      accessorKey: "clientType",
+      header: "Type",
+      cell: ({ row }) => (
+        <Badge variant="outline" className="text-[10px] font-semibold">
+          {CLIENT_TYPE_LABELS[row.original.clientType]}
+        </Badge>
       ),
     },
     {
@@ -448,6 +461,34 @@ export function ClientsManager({ initialData, isAdmin }: ClientsManagerProps) {
                     </FormControl>
                     <FormDescription className="text-[10px]">
                       Unique uppercase code used on cutting plans.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="clientType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-semibold">Client Type *</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="text-xs">
+                          <SelectValue placeholder="Select client type" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CLIENT_TYPES.map((t) => (
+                          <SelectItem key={t} value={t} className="text-xs">
+                            {CLIENT_TYPE_LABELS[t]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-[10px]">
+                      Used to group parties on the Daily Order Backlog report.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

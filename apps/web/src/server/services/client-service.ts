@@ -83,6 +83,7 @@ export async function createClient(data: ClientFormInput) {
         data: {
           name: validated.name.trim(),
           code: validated.code.trim().toUpperCase(),
+          clientType: validated.clientType,
           gstin: validated.gstin || null,
           addressLine1: validated.addressLine1.trim(),
           addressLine2: validated.addressLine2?.trim() || null,
@@ -150,6 +151,7 @@ export async function updateClient(id: string, data: ClientFormInput) {
         data: {
           name: validated.name.trim(),
           code: validated.code.trim().toUpperCase(),
+          clientType: validated.clientType,
           gstin: validated.gstin || null,
           addressLine1: validated.addressLine1.trim(),
           addressLine2: validated.addressLine2?.trim() || null,

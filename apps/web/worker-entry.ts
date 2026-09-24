@@ -26,6 +26,9 @@ const CRON_ROUTES: Record<string, string> = {
   // Monthly, 1st of the month: auto-detect top-ordered width/GSM
   // configurations from the trailing month and refresh Stock Presets.
   "0 3 1 * *": "/api/cron/auto-stock-presets",
+  // Daily, end of day (23:55 IST = 18:25 UTC): snapshot the day's order
+  // backlog per client (Dealer/Corrugator report).
+  "25 18 * * *": "/api/cron/daily-order-report",
 };
 
 export default {

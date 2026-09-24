@@ -17,13 +17,15 @@ import {
 import { downloadCsv, objectsToCsv } from "@/lib/csv";
 import { getReportData } from "@/server/services/report-service";
 import { REPORT_DEFINITIONS, ReportResult, ReportType } from "@/server/services/report-types";
+import { DailyOrderBacklogPanel } from "@/components/reports/daily-order-backlog-panel";
 
 interface Props {
   initialType: ReportType;
   initialData: ReportResult;
+  millName: string;
 }
 
-export function ReportsClient({ initialType, initialData }: Props) {
+export function ReportsClient({ initialType, initialData, millName }: Props) {
   const [reportType, setReportType] = React.useState<ReportType>(initialType);
   const [data, setData] = React.useState<ReportResult>(initialData);
   const [dateFrom, setDateFrom] = React.useState("");
@@ -50,7 +52,9 @@ export function ReportsClient({ initialType, initialData }: Props) {
   const handleTypeChange = (value: string) => {
     const type = value as ReportType;
     setReportType(type);
-    loadReport(type, dateFrom, dateTo);
+    if (type !== "daily-backlog") {
+      loadReport(type, dateFrom, dateTo);
+    }
   };
 
   const handleApplyRange = () => {
@@ -95,77 +99,81 @@ export function ReportsClient({ initialType, initialData }: Props) {
         </div>
 
         {/* Report view */}
-        <Card className="rounded-[26px] border-slate-100 shadow-sm">
-          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-base font-bold">{definition.title}</CardTitle>
-              <CardDescription>{definition.description}</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {definition.dated && (
-                <>
-                  <Input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(e) => setDateFrom(e.target.value)}
-                    className="h-9 text-xs w-[150px]"
-                  />
-                  <span className="text-xs text-slate-400">to</span>
-                  <Input
-                    type="date"
-                    value={dateTo}
-                    onChange={(e) => setDateTo(e.target.value)}
-                    className="h-9 text-xs w-[150px]"
-                  />
-                  <Button size="sm" disabled={isLoading} onClick={handleApplyRange} className="h-9 text-xs font-bold">
-                    {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
-                  </Button>
-                </>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={isLoading || data.rows.length === 0}
-                onClick={handleExport}
-                className="h-9 text-xs font-bold gap-1.5"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Export CSV
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {data.columns.map((c) => (
-                      <TableHead key={c.key}>{c.header}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.rows.map((row, i) => (
-                    <TableRow key={i}>
+        {reportType === "daily-backlog" ? (
+          <DailyOrderBacklogPanel millName={millName} />
+        ) : (
+          <Card className="rounded-[26px] border-slate-100 shadow-sm">
+            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-base font-bold">{definition.title}</CardTitle>
+                <CardDescription>{definition.description}</CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {definition.dated && (
+                  <>
+                    <Input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="h-9 text-xs w-[150px]"
+                    />
+                    <span className="text-xs text-slate-400">to</span>
+                    <Input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="h-9 text-xs w-[150px]"
+                    />
+                    <Button size="sm" disabled={isLoading} onClick={handleApplyRange} className="h-9 text-xs font-bold">
+                      {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Apply"}
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isLoading || data.rows.length === 0}
+                  onClick={handleExport}
+                  className="h-9 text-xs font-bold gap-1.5"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-xl border border-slate-100">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
                       {data.columns.map((c) => (
-                        <TableCell key={c.key} className="text-xs">
-                          {String(row[c.key] ?? "")}
-                        </TableCell>
+                        <TableHead key={c.key}>{c.header}</TableHead>
                       ))}
                     </TableRow>
-                  ))}
-                  {data.rows.length === 0 && !isLoading && (
-                    <TableRow>
-                      <TableCell colSpan={data.columns.length} className="text-center text-xs text-slate-400 py-8">
-                        No data for this report in the selected range.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {data.rows.map((row, i) => (
+                      <TableRow key={i}>
+                        {data.columns.map((c) => (
+                          <TableCell key={c.key} className="text-xs">
+                            {String(row[c.key] ?? "")}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                    {data.rows.length === 0 && !isLoading && (
+                      <TableRow>
+                        <TableCell colSpan={data.columns.length} className="text-center text-xs text-slate-400 py-8">
+                          No data for this report in the selected range.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { Metadata } from "next";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getReportData } from "@/server/services/report-service";
+import { getSystemSettings } from "@/server/services/settings-service";
 import { ReportsClient } from "./reports-client";
 
 export const metadata: Metadata = {
@@ -15,7 +16,7 @@ export default async function ReportsPage() {
     redirect("/login");
   }
 
-  const initialData = await getReportData("orders");
+  const [initialData, settings] = await Promise.all([getReportData("orders"), getSystemSettings()]);
 
   return (
     <div className="p-4 sm:p-6 max-w-[1600px] mx-auto">
@@ -28,6 +29,7 @@ export default async function ReportsPage() {
       <ReportsClient
         initialType="orders"
         initialData={JSON.parse(JSON.stringify(initialData))}
+        millName={settings.millName}
       />
     </div>
   );
